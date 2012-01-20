@@ -73,6 +73,7 @@
 #include "nsXPCOMPrivate.h" // for MAXPATHLEN and XPCOM_DLL
 
 #include "mozilla/Telemetry.h"
+#include "nsComponentManagerUtils.h"
 
 static void Output(const char *fmt, ... )
 {
@@ -141,11 +142,61 @@ static const nsDynamicFunctionLoad kXULFuncs[] = {
     { nsnull, nsnull }
 };
 
+static int do_webapp_main(const char *exePath, int argc, char* argv[])
+{
+  nsresult rv;
+  int result;
+  if (argc == 2) {
+    Output("Mode -webapp requires a url to a manifest.\n");
+    return 255;
+  }
+
+  // XXX This needs to be assembled during the build
+  // to include latest Gecko version
+  nsXREAppData webShellAppData = {
+      sizeof(nsXREAppData),
+      NULL, // directory will be assigned below
+      "Mozilla",
+      "WebRuntime",
+      "12.0a1", // should come from build
+      "20120118130802", // should come from build
+      "{fc882682-1f34-4d82-9dc7-5f31f14f623e}", // not {ec8030f7-c20a-464f-9b0e-13a3a9e97384} which is Firefox
+      NULL, // copyright
+      NS_XRE_ENABLE_EXTENSION_MANAGER | NS_XRE_ENABLE_PROFILE_MIGRATOR, // ??? maybe none of these
+      NULL, // xreDirectory will be assigned below
+      "12.0a1", // should come from build
+      "12.0a1", // should come from build
+      NULL, // crash reporter URL might be nice
+      NULL};
+
+  char webappShellPath[MAXPATHLEN];
+  snprintf(webappShellPath, MAXPATHLEN, "%s%c%s",
+    exePath, XPCOM_FILE_PATH_SEPARATOR[0], "webappshell");
+  nsCOMPtr<nsILocalFile> webAppShellDir;
+
+  // exePath comes from mozilla::BinaryPath::Get, which returns a UTF-8
+  // encoded path, so it is safe to convert it
+#ifdef XP_WIN
+  rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(webappShellPath), PR_FALSE,
+                       getter_AddRefs(webAppShellDir));
+#else
+  rv = NS_NewNativeLocalFile(nsDependentCString(webappShellPath), PR_FALSE,
+                             getter_AddRefs(webAppShellDir));
+#endif
+  NS_ENSURE_SUCCESS(rv, rv);
+  
+  webShellAppData.directory = webAppShellDir;
+  webShellAppData.xreDirectory = webAppShellDir;
+  result = XRE_main(argc, argv, &webShellAppData);
+  return result;
+}
+
 static int do_main(const char *exePath, int argc, char* argv[])
 {
   nsCOMPtr<nsILocalFile> appini;
   nsresult rv;
-
+  int result;
+  
   // Allow firefox.exe to launch XULRunner apps via -app <application.ini>
   // Note that -app must be the *first* argument.
   const char *appDataFile = getenv("XUL_APP_FILE");
@@ -177,9 +228,10 @@ static int do_main(const char *exePath, int argc, char* argv[])
     argv[2] = argv[0];
     argv += 2;
     argc -= 2;
+  } else if (argc > 1 && IsArg(argv[1], "webapp")) {
+    return do_webapp_main(exePath, argc, argv);
   }
 
-  int result;
   if (appini) {
     nsXREAppData *appData;
     rv = XRE_CreateAppData(appini, &appData);
