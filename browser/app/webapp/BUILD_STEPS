@@ -1,0 +1,8 @@
+To assemble the webappshell we:
+
+1. Make the webappshell directory
+2. Copy BIN/greprefs.js to it
+3. Create a chrome.manifest that is identical to Firefox, but with WebappShellComponents.manifest instead of BrowserComponents.manifest and with "content webapp content/""
+4. symlink the chrome, components, modules, and res directories
+5. copy the content directory from browser/app/webapp to it
+6. copy BIN/defaults to it, and rename defaults/pref/firefox.js to defaults/pref/webappshell.js; then change the chromeURL and hiddenWindowChromeURL of to chrome://webapp/content/window.xul and chrome://webapp/content/hiddenWindow.xul

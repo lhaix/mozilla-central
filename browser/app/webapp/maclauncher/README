@@ -1,0 +1,7 @@
+MacOS requires that applications be started by a binary in the application bundle;
+violating that requirement leads to strange behavior from the Application menu.
+
+The foxlauncher program finds an installed Firefox executable by using NSWorkspace
+methods (or a developer-specified override).  It then creates a directory inside
+the application bundle, symlinks the Firefox executable directory's contents (including
+firefox-bin as well as all supporting files and directories) into it, and executes that.
