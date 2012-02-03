@@ -142,36 +142,93 @@ static const nsDynamicFunctionLoad kXULFuncs[] = {
     { nsnull, nsnull }
 };
 
-static int do_webapp_main(const char *exePath, int argc, char* argv[])
-{
-  nsresult rv;
-  int result;
-  if (argc == 2) {
-    Output("Mode -webapp requires a url to a manifest.\n");
-    return 255;
-  }
+
+//NOTES FOR do_webapp_main
+//NEW, EASIER METHOD:
+// ----------------
+// Firefox changes:
+//  load incoming application.ini
+//  scribble directory and xredirectory to our custom singleton XUL app
+//  use provided profile path in .ini, and direct launch there.  
+//  on xul app start, our custom XUL app reads the origin from the .ini file 
+//  that was copied to the profile directory at install tim by the addon
+//
+// Addon changes:
+//  during native app install, we create the .ini file as usual
+//  we do not symlink to the firefox binaries (we can control our own menubar now...)
+//  we create the profile directory for the app, and symlink the applications.sqlite from their 
+//    default directory there
+//  we copy the app.ini file to the profile directory too, so the XUL app knows which origin to launch
 
   // XXX This needs to be assembled during the build
   // to include latest Gecko version
-  nsXREAppData webShellAppData = {
-      sizeof(nsXREAppData),
-      NULL, // directory will be assigned below
-      "Mozilla",
-      "WebRuntime",
-      "12.0a1", // should come from build
-      "20120118130802", // should come from build
-      "{fc882682-1f34-4d82-9dc7-5f31f14f623e}", // not {ec8030f7-c20a-464f-9b0e-13a3a9e97384} which is Firefox
-      NULL, // copyright
-      NS_XRE_ENABLE_EXTENSION_MANAGER | NS_XRE_ENABLE_PROFILE_MIGRATOR, // ??? maybe none of these
-      NULL, // xreDirectory will be assigned below
-      "12.0a1", // should come from build
-      "12.0a1", // should come from build
-      NULL, // crash reporter URL might be nice
-      NULL};
+  // nsXREAppData webShellAppData = {
+  //     sizeof(nsXREAppData),
+  //     NULL, // directory will be assigned below
+  //     "Mozilla",
+  //     "WebRuntime",
+  //     "12.0a1", // should come from build
+  //     "20120118130802", // should come from build
+  //     "{fc882682-1f34-4d82-9dc7-5f31f14f623e}", // not {ec8030f7-c20a-464f-9b0e-13a3a9e97384} which is Firefox
+  //     NULL, // copyright
+  //     NS_XRE_ENABLE_EXTENSION_MANAGER | NS_XRE_ENABLE_PROFILE_MIGRATOR, // ??? maybe none of these
+  //     NULL, // xreDirectory will be assigned below
+  //     "12.0a1", // should come from build
+  //     "12.0a1", // should come from build
+  //     NULL, // crash reporter URL might be nice
+  //     NULL};  //should put allocated ownerProfile here in future
 
+
+static int do_webapp_main(const char *exePath, int argc, char* argv[])
+{
+  //this is -very- similar yo what happens when we are launched with -app,
+  //  except we use a different XUL package to launch with, by setting the
+  //  appData.directory and appData.xreDirectory to our new path
+
+  nsCOMPtr<nsILocalFile> appini;
+  nsresult rv;
+  int result;
+  
+  // Allow firefox.exe to launch webapps via -webapp <application.ini>
+  // Note that -webapp must be the *first* argument.
+  if (argc == 2) {
+    Output("Incorrect number of arguments passed to -webapp");
+    return 255;
+  }
+
+  rv = XRE_GetFileFromPath(argv[2], getter_AddRefs(appini));
+  if (NS_FAILED(rv)) {
+    Output("application.ini path not recognized: '%s'", argv[2]);
+    return 255;
+  }
+
+  //save the location of the .ini file in an environment variable.
+  // ??? perhaps we can just use this instead of copying the .ini file to the profile dir?
+  char appEnv[MAXPATHLEN];
+  snprintf(appEnv, MAXPATHLEN, "XUL_APP_FILE=%s", argv[2]);
+  if (putenv(appEnv)) {
+    Output("Couldn't set %s.\n", appEnv);
+    return 255;
+  }
+  argv[2] = argv[0];
+  argv += 2;
+  argc -= 2;
+
+  if (!appini) {
+    Output("Error: missing application.ini");
+    return 255; 
+  }
+
+  nsXREAppData *webShellAppData;
+  rv = XRE_CreateAppData(appini, &webShellAppData);
+  if (NS_FAILED(rv)) {
+    Output("Couldn't read application.ini");
+    return 255;
+  }
+
+  //now fiddle the data structure
   char webappShellPath[MAXPATHLEN];
-  snprintf(webappShellPath, MAXPATHLEN, "%s%c%s",
-    exePath, XPCOM_FILE_PATH_SEPARATOR[0], "webappshell");
+  snprintf(webappShellPath, MAXPATHLEN, "%s%c%s", exePath, XPCOM_FILE_PATH_SEPARATOR[0], "webappshell");
   nsCOMPtr<nsILocalFile> webAppShellDir;
 
   // exePath comes from mozilla::BinaryPath::Get, which returns a UTF-8
@@ -185,11 +242,17 @@ static int do_webapp_main(const char *exePath, int argc, char* argv[])
 #endif
   NS_ENSURE_SUCCESS(rv, rv);
   
-  webShellAppData.directory = webAppShellDir;
-  webShellAppData.xreDirectory = webAppShellDir;
-  result = XRE_main(argc, argv, &webShellAppData);
+  webShellAppData->directory = webAppShellDir;
+  webShellAppData->xreDirectory = webAppShellDir;
+
+  result = XRE_main(argc, argv, webShellAppData);
+  XRE_FreeAppData(webShellAppData);
+
   return result;
 }
+
+
+
 
 static int do_main(const char *exePath, int argc, char* argv[])
 {
