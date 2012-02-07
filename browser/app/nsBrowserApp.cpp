@@ -189,27 +189,37 @@ static int do_webapp_main(const char *exePath, int argc, char* argv[])
   nsresult rv;
   int result;
   
-  // Allow firefox.exe to launch webapps via -webapp <application.ini>
+  // Allow firefox.exe to launch webapps via -webapp <origin>
   // Note that -webapp must be the *first* argument.
   if (argc == 2) {
-    Output("Incorrect number of arguments passed to -webapp");
+    Output("Incorrect number of arguments passed to -webapp\n");
     return 255;
   }
 
-  rv = XRE_GetFileFromPath(argv[2], getter_AddRefs(appini));
+//WARNING!!!! HARD-CODED TO WORK ON MAC ONLY FOR NOW
+  //now construct the path to the application.ini file, which is in ~/Library/Application Support/Mozilla/ on OSX
+  //hard coded for now....
+  //char profileDirPath[MAXPATHLEN];
+  char appIniPath[MAXPATHLEN];
+  snprintf(appIniPath, MAXPATHLEN, "%s%c%s%c%s", /*profileDirPath,*/ "/Users/dwalkowski/Library/Application Support/Firefox/Profiles", 
+                                                  XPCOM_FILE_PATH_SEPARATOR[0], 
+                                                  argv[2], 
+                                                  XPCOM_FILE_PATH_SEPARATOR[0], 
+                                                  "application.ini");
+
+  rv = XRE_GetFileFromPath(appIniPath, getter_AddRefs(appini));
   if (NS_FAILED(rv)) {
-    Output("application.ini path not recognized: '%s'", argv[2]);
+    Output("application.ini path not recognized: '%s'\n", appIniPath);
     return 255;
   }
 
-  //save the location of the .ini file in an environment variable.
-  // ??? perhaps we can just use this instead of copying the .ini file to the profile dir?
   char appEnv[MAXPATHLEN];
-  snprintf(appEnv, MAXPATHLEN, "XUL_APP_FILE=%s", argv[2]);
+  snprintf(appEnv, MAXPATHLEN, "XUL_APP_FILE=%s", appIniPath);
   if (putenv(appEnv)) {
     Output("Couldn't set %s.\n", appEnv);
     return 255;
   }
+
   argv[2] = argv[0];
   argv += 2;
   argc -= 2;
@@ -222,7 +232,7 @@ static int do_webapp_main(const char *exePath, int argc, char* argv[])
   nsXREAppData *webShellAppData;
   rv = XRE_CreateAppData(appini, &webShellAppData);
   if (NS_FAILED(rv)) {
-    Output("Couldn't read application.ini");
+    Output("Couldn't read application.ini\n");
     return 255;
   }
 
@@ -242,6 +252,7 @@ static int do_webapp_main(const char *exePath, int argc, char* argv[])
 #endif
   NS_ENSURE_SUCCESS(rv, rv);
   
+  printf("webbappShellPath is %s\n", webappShellPath);
   webShellAppData->directory = webAppShellDir;
   webShellAppData->xreDirectory = webAppShellDir;
 
