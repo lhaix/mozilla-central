@@ -189,32 +189,21 @@ static int do_webapp_main(const char *exePath, int argc, char* argv[])
   nsresult rv;
   int result;
   
-  // Allow firefox.exe to launch webapps via -webapp <origin>
+  // Allow firefox.exe to launch webapps via -webapp <app.ini>
   // Note that -webapp must be the *first* argument.
   if (argc == 2) {
     Output("Incorrect number of arguments passed to -webapp\n");
     return 255;
   }
 
-//WARNING!!!! HARD-CODED TO WORK ON MAC ONLY FOR NOW
-  //now construct the path to the application.ini file, which is in ~/Library/Application Support/Mozilla/ on OSX
-  //hard coded for now....
-  //char profileDirPath[MAXPATHLEN];
-  char appIniPath[MAXPATHLEN];
-  snprintf(appIniPath, MAXPATHLEN, "%s%c%s%c%s", /*profileDirPath,*/ "/Users/dwalkowski/Library/Application Support/Firefox/Profiles", 
-                                                  XPCOM_FILE_PATH_SEPARATOR[0], 
-                                                  argv[2], 
-                                                  XPCOM_FILE_PATH_SEPARATOR[0], 
-                                                  "application.ini");
-
-  rv = XRE_GetFileFromPath(appIniPath, getter_AddRefs(appini));
+  rv = XRE_GetFileFromPath(argv[2], getter_AddRefs(appini));
   if (NS_FAILED(rv)) {
-    Output("application.ini path not recognized: '%s'\n", appIniPath);
+    Output("application.ini path not recognized: '%s'\n", argv[2]);
     return 255;
   }
 
   char appEnv[MAXPATHLEN];
-  snprintf(appEnv, MAXPATHLEN, "XUL_APP_FILE=%s", appIniPath);
+  snprintf(appEnv, MAXPATHLEN, "XUL_APP_FILE=%s", argv[2]);
   if (putenv(appEnv)) {
     Output("Couldn't set %s.\n", appEnv);
     return 255;
