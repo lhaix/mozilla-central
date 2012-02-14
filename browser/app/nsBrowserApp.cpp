@@ -242,8 +242,8 @@ static int do_webapp_main(const char *exePath, int argc, char* argv[])
   NS_ENSURE_SUCCESS(rv, rv);
   
   printf("webbappShellPath is %s\n", webappShellPath);
-  webShellAppData->directory = webAppShellDir;
   webShellAppData->xreDirectory = webAppShellDir;
+  webAppShellDir.forget(&webShellAppData->xreDirectory);
 
   result = XRE_main(argc, argv, webShellAppData);
   XRE_FreeAppData(webShellAppData);
