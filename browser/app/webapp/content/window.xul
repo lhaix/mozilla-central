@@ -1,9 +1,8 @@
 <?xml version="1.0"?>
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<window id="Roundball" windowtype="app" title="Roundball" width="1024" height="800" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" sizemode="normal" resizable="true">
+<window id="topwindow" windowtype="app" title="" width="1024" height="800" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" sizemode="normal" resizable="true">
 
  <!-- TODO Escape quotes! -->
-  <script type="application/javascript" src="chrome://webapp/content/window.js"/>
   <commandset id="main_commandset">
   	<command id="new_window" oncommand="newWindow()"/>
   </commandset>
@@ -26,6 +25,5 @@
       </menupopup>
       </menu>
   </menubar>
-  <!--<browser id="content_browser" type="content" src="http://www.limejs.com/static/roundball/index.html" flex="1"/>-->
-  <browser id="content_browser" type="content" src="http://localhost:8126/index.html" flex="1"/>
+  <script type="application/javascript" src="chrome://webapp/content/window.js"/>
 </window>

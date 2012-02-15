@@ -15,6 +15,42 @@ window.addEventListener("click", function(e) {
     }
 }, false);
 
+
+Components.utils.import("resource://gre/modules/NetUtil.jsm");  
+Components.utils.import("resource://gre/modules/FileUtils.jsm");  
+
+var appPrefDir = Components.classes["@mozilla.org/file/directory_service;1"].  
+                    getService(Components.interfaces.nsIProperties).  
+                    get("AppRegD", Components.interfaces.nsIFile);  
+
+var originFile = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
+originFile.initWithFile(appPrefDir);
+originFile.appendRelativePath("origin");
+
+var origin = "http://www.appnotinstalled.com";
+
+NetUtil.asyncFetch(originFile, function(inputStream, status) {  
+    if (!Components.isSuccessCode(status)) {  
+        // Handle error!  
+        console.log("ERROR: " + status + " failed to read file: " + inFile);
+        return;  
+    }  
+    var origin = NetUtil.readInputStreamToString(inputStream, inputStream.available());  
+    inputStream.close();
+    dump("### ORIGIN:" + origin);
+
+    //now write the origin into the page
+    var contentThing = document.createElement("browser");
+    contentThing.setAttribute("id", "appContent");
+    contentThing.setAttribute("type", "content");
+    contentThing.setAttribute("src", origin);
+    contentThing.setAttribute("flex", "1");
+
+    document.getElementById("topwindow").appendChild(contentThing);
+});
+
+
+
 // Commands:
 var appName = "Roundball";
 function newWindow()
