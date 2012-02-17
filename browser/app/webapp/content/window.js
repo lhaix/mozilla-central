@@ -15,51 +15,96 @@ window.addEventListener("click", function(e) {
     }
 }, false);
 
+//globals
+var origin;
+var installRecord;
 
+
+//get the install record. very important :)
 Components.utils.import("resource://gre/modules/NetUtil.jsm");  
 Components.utils.import("resource://gre/modules/FileUtils.jsm");  
+Components.utils.import("resource://gre/modules/Services.jsm");
 
 var appPrefDir = Components.classes["@mozilla.org/file/directory_service;1"].  
                     getService(Components.interfaces.nsIProperties).  
                     get("AppRegD", Components.interfaces.nsIFile);  
 
-var originFile = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
-originFile.initWithFile(appPrefDir);
-originFile.appendRelativePath("origin");
+//make the path to the config file
+var configFile = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
+configFile.initWithFile(appPrefDir);
+configFile.appendRelativePath("config.json");
 
-var origin = "http://www.appnotinstalled.com";
 
-NetUtil.asyncFetch(originFile, function(inputStream, status) {  
+//open the config file
+NetUtil.asyncFetch(configFile, function(inputStream, status) {  
     if (!Components.isSuccessCode(status)) {  
         // Handle error!  
-        console.log("ERROR: " + status + " failed to read file: " + inFile);
+        console.log("ERROR: " + status + " failed to read file: " + configFile);
         return;  
     }  
-    var origin = NetUtil.readInputStreamToString(inputStream, inputStream.available());  
+    //read the file
+    var data = NetUtil.readInputStreamToString(inputStream, inputStream.available());  
+    //parse the file
+    var config = JSON.parse(data);
     inputStream.close();
-    dump("### ORIGIN:" + origin);
 
-    //now write the origin into the page
+    dump("### ORIGIN:" + config.origin + "\n");
+    dump("### PROFILE:" + config.profile + "\n");
+
+    //open the database and look for the installrecord
+    //find the profiles directory of Firefox, not our current app
+    var libDir = Components.classes["@mozilla.org/file/directory_service;1"].  
+                    getService(Components.interfaces.nsIProperties).  
+                    get("ULibDir", Components.interfaces.nsIFile); 
+
+    var ffProfiles = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
+    //FIX FIX!!! MAC ONLY!!!!!!!!!               
+    ffProfiles.initWithPath(libDir.path + "/Application Support/Firefox/Profiles");
+    dump("### FFPROFILES:   " + ffProfiles.path);
+
+    //create the path to the app database, and open it
+    var dbFile = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
+    dbFile.initWithFile(ffProfiles);
+    dbFile.appendRelativePath(config.profile);
+    dbFile.append("applications.sqlite");
+    dump("### DATABASE PATH: " + dbFile.path + "\n");
+
+    let db = Services.storage.openUnsharedDatabase(dbFile);
+    let stmt = db.createStatement("SELECT data FROM app WHERE key = '" + config.origin + "'");
+    if (stmt.executeStep()) {
+        var jdata = stmt.getString(0);
+        installRecord = JSON.parse(jdata);
+        dump("### PARSED MANIFEST: " + JSON.stringify(installRecord));
+    }
+    stmt.finalize();
+
+    //now configure the page
+    var topwindow = document.getElementById("topwindow");
+
     var contentThing = document.createElement("browser");
     contentThing.setAttribute("id", "appContent");
     contentThing.setAttribute("type", "content");
-    contentThing.setAttribute("src", origin);
+    contentThing.setAttribute("src", installRecord.launch_url);
     contentThing.setAttribute("flex", "1");
 
-    document.getElementById("topwindow").appendChild(contentThing);
+    topwindow.appendChild(contentThing);
+
+    topwindow.setAttribute("title", installRecord.manifest.name);
+
+    var aboutMenu = document.getElementById("aboutName");
+    aboutMenu.setAttribute("label", "About Pants");
 });
 
 
 
 // Commands:
-var appName = "Roundball";
-function newWindow()
-{
-    var ww = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
-                       .getService(Components.interfaces.nsIWindowWatcher);
-    var win = ww.openWindow(null, "chrome://webapp/content/window.xul",
-                            null, "chrome,centerscreen,resizable", null);
-}
+// function newWindow()
+// {
+//     var ww = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
+//                        .getService(Components.interfaces.nsIWindowWatcher);
+//     var win = ww.openWindow(null, "chrome://webapp/content/window.xul",
+//                             null, "chrome,centerscreen,resizable", null);
+// }
 
 
 // Register the injector to add new APIs to the content windows:
@@ -300,16 +345,16 @@ try {
     }
   });
 
-  window.appinjector.register({
-    apibase: "navigator.mozApps",
-    name: "newWindow",
-    script: null,
-    getapi: function(contentWindowRef) {
-        return function() {
-            newWindow();
-        }
-    }
-  });
+  // window.appinjector.register({
+  //   apibase: "navigator.mozApps",
+  //   name: "newWindow",
+  //   script: null,
+  //   getapi: function(contentWindowRef) {
+  //       return function() {
+  //           newWindow();
+  //       }
+  //   }
+  // });
 
   window.appinjector.register({
     apibase: "navigator.mozApps",
