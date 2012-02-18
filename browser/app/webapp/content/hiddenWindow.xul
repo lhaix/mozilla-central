@@ -3,13 +3,16 @@
 <window id="Roundball" windowtype="app" title="Roundball" width="1024" height="800" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" sizemode="normal" resizable="true">
 
  <!-- TODO Escape quotes! -->
-  <script type="application/javascript" src="chrome://webapp/content/main.js"/>
-  <commandset id="main_commandset">
-  	<command id="new_window" oncommand="newWindow()"/>
-  </commandset>
- <keyset id="main_keyset">
-    <key id="key_N" modifiers="meta" key="N" />
-  </keyset>
+<script type="application/javascript" src="chrome://webapp/content/window.js"/>
+<script type="application/javascript" src="chrome://webapp/content/main.js"/>
+
+<commandset id="main_commandset">
+	<command id="new_window" oncommand="newWindow()"/>
+</commandset>
+
+<keyset id="main_keyset">
+  <key id="key_N" modifiers="meta" key="N" />
+</keyset>
 
 <menubar id="main_menu">
       <menu label="Application">
@@ -19,11 +22,12 @@
       </menu>
 </menubar>
   
-  <menubar id="main_menu">
-      <menu label="File">
-      <menupopup>
-        <menuitem label="New Window" command="new_window"/>
-      </menupopup>
-      </menu>
-  </menubar>
+<menubar id="main_menu">
+    <menu label="File">
+    <menupopup>
+      <menuitem label="New Window" command="new_window"/>
+    </menupopup>
+    </menu>
+</menubar>
+
 </window>

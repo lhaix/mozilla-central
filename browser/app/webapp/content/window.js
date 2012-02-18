@@ -15,84 +15,29 @@ window.addEventListener("click", function(e) {
     }
 }, false);
 
-//globals
-var origin;
-var installRecord;
 
 
-//get the install record. very important :)
 Components.utils.import("resource://gre/modules/NetUtil.jsm");  
 Components.utils.import("resource://gre/modules/FileUtils.jsm");  
 Components.utils.import("resource://gre/modules/Services.jsm");
-
-var appPrefDir = Components.classes["@mozilla.org/file/directory_service;1"].  
-                    getService(Components.interfaces.nsIProperties).  
-                    get("AppRegD", Components.interfaces.nsIFile);  
-
-//make the path to the config file
-var configFile = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
-configFile.initWithFile(appPrefDir);
-configFile.appendRelativePath("config.json");
+Components.utils.import("resource://gre/modules/WebAppService.jsm");
 
 
-//open the config file
-NetUtil.asyncFetch(configFile, function(inputStream, status) {  
-    if (!Components.isSuccessCode(status)) {  
-        // Handle error!  
-        console.log("ERROR: " + status + " failed to read file: " + configFile);
-        return;  
-    }  
-    //read the file
-    var data = NetUtil.readInputStreamToString(inputStream, inputStream.available());  
-    //parse the file
-    var config = JSON.parse(data);
-    inputStream.close();
-
-    dump("### ORIGIN:" + config.origin + "\n");
-    dump("### PROFILE:" + config.profile + "\n");
-
-    //open the database and look for the installrecord
-    //find the profiles directory of Firefox, not our current app
-    var libDir = Components.classes["@mozilla.org/file/directory_service;1"].  
-                    getService(Components.interfaces.nsIProperties).  
-                    get("ULibDir", Components.interfaces.nsIFile); 
-
-    var ffProfiles = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
-    //FIX FIX!!! MAC ONLY!!!!!!!!!               
-    ffProfiles.initWithPath(libDir.path + "/Application Support/Firefox/Profiles");
-    dump("### FFPROFILES:   " + ffProfiles.path);
-
-    //create the path to the app database, and open it
-    var dbFile = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
-    dbFile.initWithFile(ffProfiles);
-    dbFile.appendRelativePath(config.profile);
-    dbFile.append("applications.sqlite");
-    dump("### DATABASE PATH: " + dbFile.path + "\n");
-
-    let db = Services.storage.openUnsharedDatabase(dbFile);
-    let stmt = db.createStatement("SELECT data FROM app WHERE key = '" + config.origin + "'");
-    if (stmt.executeStep()) {
-        var jdata = stmt.getString(0);
-        installRecord = JSON.parse(jdata);
-        dump("### PARSED MANIFEST: " + JSON.stringify(installRecord));
-    }
-    stmt.finalize();
-
+//get the install record, and parameterize the page.  more stuff needs to be done here too.
+ getInstallRecord(function(record) {
     //now configure the page
     var topwindow = document.getElementById("topwindow");
 
+    //embed the actual content browser frame, pointing at the origin+launch path
     var contentThing = document.createElement("browser");
     contentThing.setAttribute("id", "appContent");
     contentThing.setAttribute("type", "content");
-    contentThing.setAttribute("src", installRecord.launch_url);
+    contentThing.setAttribute("src", record.launch_url);
     contentThing.setAttribute("flex", "1");
 
     topwindow.appendChild(contentThing);
 
-    topwindow.setAttribute("title", installRecord.manifest.name);
-
-    var aboutMenu = document.getElementById("aboutName");
-    aboutMenu.setAttribute("label", "About Pants");
+    topwindow.setAttribute("title", record.manifest.name);
 });
 
 
@@ -107,37 +52,12 @@ NetUtil.asyncFetch(configFile, function(inputStream, status) {
 // }
 
 
+
 // Register the injector to add new APIs to the content windows:
 try {
   var injector = {};
   Components.utils.import("chrome://webapp/content/injector.js", injector);
   
-  function getInstallRecord(cb) {
-    var appDirectory = Components.classes["@mozilla.org/file/directory_service;1"].  
-                        getService(Components.interfaces.nsIProperties).  
-                        get("CurProcD", Components.interfaces.nsIFile);  
-              
-    var aNsLocalFile = Components.classes['@mozilla.org/file/local;1'].createInstance(Components.interfaces.nsILocalFile);
-    aNsLocalFile.initWithFile(appDirectory);
-    aNsLocalFile.appendRelativePath("installrecord.json");
-
-    Components.utils.import("resource://gre/modules/NetUtil.jsm");  
-    Components.utils.import("resource://gre/modules/FileUtils.jsm");  
-            
-    dump(aNsLocalFile.path + "\n");
-    NetUtil.asyncFetch(aNsLocalFile, function(inputStream, status) {  
-        if (!Components.isSuccessCode(status)) {  
-            // Handle error!  
-            console.log("ERROR: " + status + " failed to read file: " + inFile);
-            return;  
-        }  
-        var data = NetUtil.readInputStreamToString(inputStream, inputStream.available());  
-        var parsed = JSON.parse(data);
-        inputStream.close();
-        cb(parsed);
-    });
-  }
-
   injector.InjectorInit(window); // we inject on the XUL window and observe content-document-global-created //   theBrowser.contentWindow.wrappedJSObject); // wrappedJSObject the right thing here?
   window.appinjector.register({
     apibase: "navigator.mozApps",

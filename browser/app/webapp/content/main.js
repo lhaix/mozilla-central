@@ -22,11 +22,3 @@ if("Darwin" === os) {
     var observerService = Components.classes["@mozilla.org/observer-service;1"].getService(Components.interfaces.nsIObserverService);
     observerService.addObserver(observer, "xul-window-destroyed", false);
 };
-
-// Create the first window
-var appName = "Roundball";
-var ww = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
-                   .getService(Components.interfaces.nsIWindowWatcher);
-var win = ww.openWindow(null, "chrome://webapp/content/window.xul",
-                        appName, "chrome,centerscreen,resizable", null);
-window.hidden = true;
