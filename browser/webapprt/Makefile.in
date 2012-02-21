@@ -1,3 +1,4 @@
+# vim:set ts=8 sw=8 sts=8 et:
 # ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
@@ -11,16 +12,15 @@
 # for the specific language governing rights and limitations under the
 # License.
 #
-# The Original Code is Mozilla XULRunner.
+# The Original Code is the Mozilla Browser code.
 #
 # The Initial Developer of the Original Code is
-# Benjamin Smedberg <benjamin@smedbergs.us>.
-#
-# Portions created by the Initial Developer are Copyright (C) 2005
+# Netscape Communications Corporation.
+# Portions created by the Initial Developer are Copyright (C) 2002
 # the Initial Developer. All Rights Reserved.
 #
 # Contributor(s):
-# Mark Finkle <mfinkle@mozilla.com>
+#  Brian Ryner <bryner@brianryner.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -42,8 +42,6 @@ srcdir    = @srcdir@
 VPATH     = @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
-
-MODULE    = apprt
 
 CPPSRCS   = apprt.cpp
 

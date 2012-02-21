@@ -84,10 +84,6 @@
 #pragma comment(lib, "version.lib")
 #endif
 
-#define APP_INI "application.ini"
-#define APP_RT "apprt.exe"
-#define WEBAPP_SHELL_DIR "webappshell"
-
 XRE_GetFileFromPathType XRE_GetFileFromPath;
 XRE_CreateAppDataType XRE_CreateAppData;
 XRE_FreeAppDataType XRE_FreeAppData;
@@ -98,8 +94,38 @@ XRE_TelemetryAccumulateType XRE_TelemetryAccumulate;
 XRE_mainType XRE_main;
 
 namespace {
-  void Output(const char *fmt, ... )
-  {
+  const char * APP_INI = "application.ini";
+  const char * APP_RT = "apprt.exe";
+  const char * WEBAPPSHELL_DIR = "webappshell";
+  const char * APP_RT_BACKUP = "apprt.old";
+
+  bool isGreLoaded = false;
+  char curEXE[MAXPATHLEN];
+
+  struct Version {
+    DWORD major,
+          minor,
+          revision,
+          build;
+
+    bool operator<(Version const& rhs) const {
+      return (major < rhs.major
+           || minor < rhs.minor
+           || revision < rhs.revision
+           || build < rhs.build);
+    }
+
+    bool operator==(Version const& rhs) const {
+      return (major == rhs.major
+           && minor == rhs.minor
+           && revision == rhs.revision
+           && build == rhs.build);
+    }
+  };
+
+  const Version minVersion = { 13, 0, 0, 0 };
+
+  void Output(const char *fmt, ... ) {
     va_list ap;
     va_start(ap, fmt);
 
@@ -114,33 +140,13 @@ namespace {
                         wide_msg,
                         sizeof(wide_msg) / sizeof(wchar_t));
 
-  MessageBoxW(NULL, wide_msg, L"AppRT", MB_OK);
+    MessageBoxW(NULL, wide_msg, L"AppRT", MB_OK);
 
   #else
     vfprintf(stderr, fmt, ap);
   #endif
 
     va_end(ap);
-  }
-
-  /**
-   * Return true if |arg| matches the given argument name.
-   */
-  bool IsArg(const char* arg, const char* s)
-  {
-    if (*arg == '-')
-    {
-      if (*++arg == '-')
-        ++arg;
-      return !strcasecmp(arg, s);
-    }
-
-  #if defined(XP_WIN) || defined(XP_OS2)
-    if (*arg == '/')
-      return !strcasecmp(++arg, s);
-  #endif
-
-    return false;
   }
 
   const nsDynamicFunctionLoad kXULFuncs[] = {
@@ -157,7 +163,8 @@ namespace {
 
 
   /**
-   * Obtains the version number from the specified PE file's version information
+   * Obtains the version number from the specified PE file's version
+   * information
    * Version Format: A.B.C.D (Example 10.0.0.300)
    *
    * @param  path The path of the file to check the version on
@@ -167,38 +174,36 @@ namespace {
    * @param  D    The fourth part of the version number
    * @return TRUE if successful
    */
-  BOOL GetVersionNumberFromPath(char *narrowPath, DWORD &A, DWORD &B, 
-                                DWORD &C, DWORD &D) 
-   {
-     PRUnichar path[2048];
-     ::MultiByteToWideChar(CP_UTF8,
-                           nsnull,
-                           narrowPath,
-                           -1,
-                           path,
-                           2048);
+  BOOL GetVersionFromPath(char *narrowPath, Version &version) {
+    PRUnichar path[2048];
+    ::MultiByteToWideChar(CP_UTF8,
+                          nsnull,
+                          narrowPath,
+                          -1,
+                          path,
+                          2048);
 
-     DWORD fileVersionInfoSize = GetFileVersionInfoSizeW(path, 0);
-     nsAutoArrayPtr<char> fileVersionInfo = new char[fileVersionInfoSize];
-     if (!GetFileVersionInfoW(path, 0, fileVersionInfoSize,
-                              fileVersionInfo.get())) {
-         return FALSE;
-     }
+    DWORD fileVersionInfoSize = GetFileVersionInfoSizeW(path, 0);
+    nsAutoArrayPtr<char> fileVersionInfo = new char[fileVersionInfoSize];
+    if (!GetFileVersionInfoW(path, 0, fileVersionInfoSize,
+                             fileVersionInfo.get())) {
+        return FALSE;
+    }
 
-     VS_FIXEDFILEINFO *fixedFileInfo = 
-       reinterpret_cast<VS_FIXEDFILEINFO *>(fileVersionInfo.get());
-     UINT size;
-     if (!VerQueryValueW(fileVersionInfo.get(), L"\\", 
-       reinterpret_cast<LPVOID*>(&fixedFileInfo), &size)) {
-         return FALSE;
-     }
+    VS_FIXEDFILEINFO *fixedFileInfo = 
+      reinterpret_cast<VS_FIXEDFILEINFO *>(fileVersionInfo.get());
+    UINT size;
+    if (!VerQueryValueW(fileVersionInfo.get(), L"\\", 
+      reinterpret_cast<LPVOID*>(&fixedFileInfo), &size)) {
+        return FALSE;
+    }
 
-     A = HIWORD(fixedFileInfo->dwFileVersionMS);
-     B = LOWORD(fixedFileInfo->dwFileVersionMS);
-     C = HIWORD(fixedFileInfo->dwFileVersionLS);
-     D = LOWORD(fixedFileInfo->dwFileVersionLS);
-     return TRUE;
-   }
+    version.major = HIWORD(fixedFileInfo->dwFileVersionMS);
+    version.minor = LOWORD(fixedFileInfo->dwFileVersionMS);
+    version.revision = HIWORD(fixedFileInfo->dwFileVersionLS);
+    version.build = LOWORD(fixedFileInfo->dwFileVersionLS);
+    return TRUE;
+  }
 
   nsresult AttemptGRELoad(char *xpcomDLL) {
     nsresult rv;
@@ -266,7 +271,7 @@ namespace {
     return rv;
   }
 
-  bool AppendFileName(char *base, char *toAppend, int baseSize) {
+  bool AppendLeaf(char *base, const char *toAppend, int baseSize) {
     if (strlen(base)
       + sizeof(XPCOM_FILE_PATH_SEPARATOR[0])
       + strlen(toAppend)
@@ -284,7 +289,7 @@ namespace {
     return true;
   }
 
-  bool StripFileName(char *base) {
+  bool StripLeaf(char *base) {
     char *lastSlash = strrchr(base, XPCOM_FILE_PATH_SEPARATOR[0]);
     if (!lastSlash) {
       return false;
@@ -293,41 +298,79 @@ namespace {
     return true;
   }
 
-  bool VersionsMatch(DWORD a, DWORD b, DWORD c, DWORD d,
-                     DWORD e, DWORD f, DWORD g, DWORD h) {
-    return(a==e && b==f && c==g && d==h);
-  }
-
-  bool CopyAndLaunch(char *src, char *dest) {
-    char temp[MAXPATHLEN];
-    strcpy(temp, dest);
-    StripFileName(temp);
-    AppendFileName(temp, "blah.blah", MAXPATHLEN);
-    if(FALSE == ::MoveFile(dest, temp)) {
-      return false;
+  int CopyAndRun(const char *src, const char *dest) {
+    char oldFilePath[MAXPATHLEN];
+    strcpy(oldFilePath, dest);
+    StripLeaf(oldFilePath);
+    AppendLeaf(oldFilePath, APP_RT_BACKUP, MAXPATHLEN);
+    if(FALSE == ::MoveFileEx(dest, oldFilePath, MOVEFILE_REPLACE_EXISTING)) {
+      return 255;
     }
 
     if(FALSE == ::CopyFile(src, dest, TRUE)) {
-      return false;
+      // Try to move the old file back to its original location
+      ::MoveFile(oldFilePath, dest);
+      return 255;
     }
 
-    // "If the function succeeds, it returns a value greater than 32."
-    //
-    // Source: http://msdn.microsoft.com
-    //              /en-us/library/windows
-    //              /desktop/bb762153%28v=vs.85%29.aspx
-    if(reinterpret_cast<HINSTANCE>(32) >= ::ShellExecute(nsnull,
-                                                         nsnull,
-                                                         dest,
-                                                         nsnull,
-                                                         nsnull,
-                                                         SW_SHOWDEFAULT)) {
-      return false;
+    // TODO: On Windows, we need to embed the app's icon in
+    //       the copied file.
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+
+    ::ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ::ZeroMemory(&pi, sizeof(pi));
+
+    if(!CreateProcess(dest,     // No module name (use command line)
+                      NULL,     // Command line
+                      NULL,     // Process handle not inheritable
+                      NULL,     // Thread handle not inheritable
+                      FALSE,    // Set handle inheritance to FALSE
+                      0,        // No creation flags
+                      NULL,     // Use parent's environment block
+                      NULL,     // Use parent's starting directory 
+                      &si,
+                      &pi)) {
+      return GetLastError();
     }
 
-    return true;
+    // Wait until child process exits.
+    WaitForSingleObject(pi.hProcess, INFINITE);
+
+    DWORD exitCode;
+    if(FALSE != GetExitCodeProcess(pi.hProcess, &exitCode)) {
+      exitCode = GetLastError();
+    }
+
+    // Close process and thread handles. 
+    CloseHandle( pi.hProcess );
+    CloseHandle( pi.hThread );
+
+    return exitCode;
+  }
+
+  bool PerformAppropriateAction(Version const &runningVersion,
+                                char *greDir,
+                                DWORD *exitCode) {
+    bool ret = false;
+    Version foundVersion;
+    AppendLeaf(greDir, APP_RT, MAXPATHLEN);
+    if(FALSE != GetVersionFromPath(greDir, foundVersion)) {
+      if(runningVersion == foundVersion) {
+        StripLeaf(greDir);
+        AppendLeaf(greDir, XPCOM_DLL, MAXPATHLEN);
+        isGreLoaded = NS_SUCCEEDED(AttemptGRELoad(greDir));
+        StripLeaf(greDir);
+      } else if(minVersion < runningVersion) {
+        *exitCode = CopyAndRun(greDir, curEXE);
+        ret = true;
+      }
+    }
+    return ret;
   }
 };
+
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -339,10 +382,8 @@ int main(int argc, char* argv[])
   int result = 0;
   int realArgc = 1;
   char **realArgv = argv;
-  char curEXE[MAXPATHLEN];
   char appINIPath[MAXPATHLEN];
   char greDir[MAXPATHLEN];
-  bool isGreLoaded = false;
 
 #ifdef XP_MACOSX
   TriggerQuirks();
@@ -353,15 +394,15 @@ int main(int argc, char* argv[])
     Output("Couldn't calculate the application directory.\n");
     return 255;
   }
-  DWORD a,b,c,d;
-  GetVersionNumberFromPath(curEXE, a,b,c,d);
+  Version runningVersion;
+  GetVersionFromPath(curEXE, runningVersion);
 
   // Get the path to application.ini.  This should be in the
   // same directory as the running executable.
   strcpy(appINIPath, curEXE);
-  StripFileName(appINIPath);
-  if (!AppendFileName(appINIPath, APP_INI, MAXPATHLEN)) {
-    Output("Path to application.ini is invalid (possibly too long)");
+  StripLeaf(appINIPath);
+  if (!AppendLeaf(appINIPath, APP_INI, MAXPATHLEN)) {
+    Output("Path to application is invalid (possibly too long).\n");
     return 255;
   }
 
@@ -369,53 +410,52 @@ int main(int argc, char* argv[])
   // XRE application.ini-specific processing we do later)
   nsINIParser parser;
   if(NS_FAILED(parser.Init(appINIPath))) {
-    Output("%s not found.\n", APP_INI);
+    Output("%s was not found\n", appINIPath);
     return 255;
   }
 
   // Parse AppRT options from application.ini
   if(NS_SUCCEEDED(parser.GetString("AppRT",
-                  "FirefoxDir",
-                  greDir,
-                  MAXPATHLEN))) {
-
-    // We've retrieved the location in which to find our Firefox binaries.
-    // Check whether there is a different version of the AppRT stub there.
-    AppendFileName(greDir, APP_RT, MAXPATHLEN);
-    DWORD e,f,g,h;
-    GetVersionNumberFromPath(greDir, e, f, g, h);
-    if(VersionsMatch(a,b,c,d,
-                     e,f,g,h)) {
-      // The AppRT stub we found is the same version as the one we are
-      // currently running.  Let's go ahead and load the GRE from the
-      // specified location.
-      StripFileName(greDir);
-      AppendFileName(greDir, XPCOM_DLL, MAXPATHLEN);
-      isGreLoaded = NS_SUCCEEDED(AttemptGRELoad(greDir));
-    } else {
-      // Copy the AppRT stub we found over the running EXE and launch it.
-      CopyAndLaunch(greDir, curEXE);
-      // TODO: We probably want to wait for the newly-created process to exit,
-      //       then return its return code.  That way if any processes are
-      //       waiting on us, we will give them an accurate picture of what
-      //       happened during our execution.
-      return 0;
+                                   "FirefoxDir",
+                                   greDir,
+                                   MAXPATHLEN))) {
+    DWORD exitCode;
+    if(PerformAppropriateAction(runningVersion, greDir, &exitCode)) {
+      return exitCode;
     }
   }
 
-  StripFileName(greDir);
+  if(!isGreLoaded) {
+    HKEY key;
+    // Look for firefox path in additional locations
+    RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                 "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App paths\\firefox.exe",
+                 0,
+                 KEY_READ,
+                 &key);
+    DWORD length = MAXPATHLEN;
+    // XXX: When Vista/XP64 become our minimum supported client, we can use
+    //      RegGetValue instead
+    RegQueryValueEx(key,
+                    "Path",
+                    NULL,
+                    NULL,
+                    reinterpret_cast<BYTE*>(greDir),
+                    &length);
+    RegCloseKey(key);
+    DWORD exitCode;
+    if(PerformAppropriateAction(runningVersion, greDir, &exitCode)) {
+      return exitCode;
+    } else if(isGreLoaded) {
+      // TODO: Write gre dir location to application.ini
+    }
+  }
 
   if(!isGreLoaded) {
-    // TODO: Look for firefox path in additional locations (reg key?)
-    Output("Firefox could not be found at %s", greDir);
     return 255;
   }
 
-  // NOTE: The GRE has successfully loaded, so we can use XPCOM in the
-  //       following lines.
-
-  // TODO: If firefox path was found somewhere other than the location
-  //       specified in application.ini, write the new location
+  // NOTE: The GRE has successfully loaded, so we can use XPCOM now
 
   { // Scope for any XPCOM stuff we create
     // Set up our environment to know where application.ini was loaded from.
@@ -442,10 +482,11 @@ int main(int argc, char* argv[])
       return 255;
     }
 
-    AppendFileName(greDir, WEBAPP_SHELL_DIR, MAXPATHLEN);
+    AppendLeaf(greDir, WEBAPPSHELL_DIR, MAXPATHLEN);
 
     nsCOMPtr<nsILocalFile> webAppShellDir;
-    if(NS_FAILED(XRE_GetFileFromPath(greDir, getter_AddRefs(webAppShellDir)))) {
+    if(NS_FAILED(XRE_GetFileFromPath(greDir,
+                                     getter_AddRefs(webAppShellDir)))) {
       Output("Unable to open webappshell dir");
       return 255;
     }
@@ -463,7 +504,8 @@ int main(int argc, char* argv[])
     result = XRE_main(argc, argv, webShellAppData);
 
     // Cleanup
-    // TODO: The app is about to exit; do we care about cleaning this stuff up?
+    // TODO: The app is about to exit;
+    //       do we care about cleaning this stuff up?
     XRE_FreeAppData(webShellAppData);
   }
   XPCOMGlueShutdown();

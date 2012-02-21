@@ -54,6 +54,7 @@ PARALLEL_DIRS = \
 DIRS = \
   devtools \
   app \
+  webapprt \
   $(NULL)
 
 ifeq ($(OS_ARCH),WINNT)

@@ -44,5 +44,7 @@
 #endif
 #endif
 
-pref("browser.chromeURL","chrome://webapp/content/window.xul");
-pref("browser.hiddenWindowChromeURL", "chrome://webapp/content/hiddenWindow.xul");
+pref("browser.chromeURL",
+     "chrome://webapp/content/window.xul");
+pref("browser.hiddenWindowChromeURL",
+     "chrome://webapp/content/hiddenWindow.xul");
