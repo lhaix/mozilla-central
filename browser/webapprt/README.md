@@ -1,7 +1,7 @@
 Build the branch
 
-Create the webappshell directory: dist/bin/webappshell.
 Copy browser/app/webapp/WebAppService.jsm (note that this is from your source dir) into dist/bin/modules.
+Create the webappshell directory: dist/bin/webappshell.
 Copy dist/bin/greprefs.js into dist/bin/webappshell.
 Copy dist/bin/chrome.manifest into dist/bin/webappshell.
 In dist/bin/webappshell/chrome.manifest:
@@ -15,7 +15,7 @@ Symlink the following directories into dist/bin/webappshell:
   dist/bin/components
   dist/bin/modules
   dist/bin/res
-Copy the directory app/webapp/content (note that this is from your source dir) into dist/bin/webappshell.
+Copy the directory browser/app/webapp/content (note that this is from your source dir) into dist/bin/webappshell.
 Copy the directory dist/bin/defaults to dist/bin/webappshell.
 Rename the file dist/bin/webappshell/defaults/pref/firefox.js to webappshell.js.
 In dist/bin/webappshell/defaults/pref/webappshell.js:
