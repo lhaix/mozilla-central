@@ -36,27 +36,6 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#include "nsXPCOMGlue.h"
-#include "nsINIParser.h"
-#include "nsXPCOMPrivate.h" // for MAXPATHLEN and XPCOM_DLL
-#include "nsXULAppAPI.h"
-#include "nsComponentManagerUtils.h"
-
-#if defined(XP_WIN)
-#include <windows.h>
-#include <stdlib.h>
-#include <aclapi.h>
-#include <shlwapi.h>
-#include "shellapi.h"
-#elif defined(XP_UNIX)
-#include <sys/time.h>
-#include <sys/resource.h>
-#endif
-
-#ifdef XP_MACOSX
-#include "MacQuirks.h"
-#endif
-
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -65,23 +44,37 @@
 #include "prprf.h"
 #include "prenv.h"
 
+#include "nsXPCOMGlue.h"
+#include "nsINIParser.h"
+#include "nsXPCOMPrivate.h" // for MAXPATHLEN and XPCOM_DLL
+#include "nsXULAppAPI.h"
+#include "nsComponentManagerUtils.h"
 #include "nsCOMPtr.h"
 #include "nsILocalFile.h"
 #include "nsStringGlue.h"
-
-#ifdef XP_WIN
-// we want a wmain entry point
-#include "nsWindowsWMain.cpp"
-#define snprintf _snprintf
-#define strcasecmp _stricmp
-#endif
 #include "BinaryPath.h"
-
-
 #include "mozilla/Telemetry.h"
 
+#if defined(XP_WIN)
+  #include <windows.h>
+  #include <stdlib.h>
+  #include <aclapi.h>
+  #include <shlwapi.h>
+  #include "shellapi.h"
+  // we want a wmain entry point
+  #include "nsWindowsWMain.cpp"
+  #define snprintf _snprintf
+  #define strcasecmp _stricmp
+#elif defined(XP_UNIX)
+  #include <sys/time.h>
+  #include <sys/resource.h>
+#endif
+#ifdef XP_MACOSX
+  #include "MacQuirks.h"
+#endif
+
 #ifdef XP_WIN
-#pragma comment(lib, "version.lib")
+  #pragma comment(lib, "version.lib")
 #endif
 
 XRE_GetFileFromPathType XRE_GetFileFromPath;
@@ -95,15 +88,18 @@ XRE_mainType XRE_main;
 
 namespace {
   const char * APP_INI = "application.ini";
-  const char * APP_RT = "apprt.exe";
-  const char * WEBAPPSHELL_DIR = "webappshell";
-  const char * APP_RT_BACKUP = "apprt.old";
+  const char * APP_RT_BACKUP = "webapprt.old";
+#ifdef XP_WIN
+  const char * APP_RT = "webapprt.exe";
+#else
+  const char * APP_RT = "webapprt-bin";
+#endif
 
   bool isGreLoaded = false;
   char curEXE[MAXPATHLEN];
 
   struct Version {
-    DWORD major,
+    int major,
           minor,
           revision,
           build;
@@ -140,7 +136,7 @@ namespace {
                         wide_msg,
                         sizeof(wide_msg) / sizeof(wchar_t));
 
-    MessageBoxW(NULL, wide_msg, L"AppRT", MB_OK);
+    MessageBoxW(NULL, wide_msg, L"WebAppRT", MB_OK);
 
   #else
     vfprintf(stderr, fmt, ap);
@@ -172,9 +168,10 @@ namespace {
    * @param  B    The second part of the version number
    * @param  C    The third part of the version number
    * @param  D    The fourth part of the version number
-   * @return TRUE if successful
+   * @return true if successful
    */
-  BOOL GetVersionFromPath(char *narrowPath, Version &version) {
+  bool GetVersionFromPath(char *narrowPath, Version &version) {
+#ifdef XP_WIN
     PRUnichar path[2048];
     ::MultiByteToWideChar(CP_UTF8,
                           nsnull,
@@ -187,7 +184,7 @@ namespace {
     nsAutoArrayPtr<char> fileVersionInfo = new char[fileVersionInfoSize];
     if (!GetFileVersionInfoW(path, 0, fileVersionInfoSize,
                              fileVersionInfo.get())) {
-        return FALSE;
+        return false;
     }
 
     VS_FIXEDFILEINFO *fixedFileInfo = 
@@ -195,14 +192,22 @@ namespace {
     UINT size;
     if (!VerQueryValueW(fileVersionInfo.get(), L"\\", 
       reinterpret_cast<LPVOID*>(&fixedFileInfo), &size)) {
-        return FALSE;
+        return false;
     }
 
     version.major = HIWORD(fixedFileInfo->dwFileVersionMS);
     version.minor = LOWORD(fixedFileInfo->dwFileVersionMS);
     version.revision = HIWORD(fixedFileInfo->dwFileVersionLS);
     version.build = LOWORD(fixedFileInfo->dwFileVersionLS);
-    return TRUE;
+    return true;
+#else
+    // TODO
+    version.major = 13;
+    version.minor = 0;
+    version.revision = 0;
+    version.build = 1337;
+    return true;
+#endif
   }
 
   nsresult AttemptGRELoad(char *xpcomDLL) {
@@ -303,6 +308,8 @@ namespace {
     strcpy(oldFilePath, dest);
     StripLeaf(oldFilePath);
     AppendLeaf(oldFilePath, APP_RT_BACKUP, MAXPATHLEN);
+
+#ifdef XP_WIN
     if(FALSE == ::MoveFileEx(dest, oldFilePath, MOVEFILE_REPLACE_EXISTING)) {
       return 255;
     }
@@ -315,6 +322,7 @@ namespace {
 
     // TODO: On Windows, we need to embed the app's icon in
     //       the copied file.
+
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
 
@@ -348,11 +356,17 @@ namespace {
     CloseHandle( pi.hThread );
 
     return exitCode;
+#else
+    // TODO: Try to move dest to oldFilePath
+    //       If that succeeds, try to copy src to dest
+    //       Finally, exec the newly-copied file
+#endif
+    return 255;
   }
 
   bool PerformAppropriateAction(Version const &runningVersion,
                                 char *greDir,
-                                DWORD *exitCode) {
+                                int *exitCode) {
     bool ret = false;
     Version foundVersion;
     AppendLeaf(greDir, APP_RT, MAXPATHLEN);
@@ -414,17 +428,19 @@ int main(int argc, char* argv[])
     return 255;
   }
 
-  // Parse AppRT options from application.ini
-  if(NS_SUCCEEDED(parser.GetString("AppRT",
+  // Parse WebAppRT options from application.ini
+  if(NS_SUCCEEDED(parser.GetString("WebAppRT",
                                    "FirefoxDir",
                                    greDir,
                                    MAXPATHLEN))) {
-    DWORD exitCode;
+    int exitCode;
     if(PerformAppropriateAction(runningVersion, greDir, &exitCode)) {
       return exitCode;
     }
   }
 
+#ifdef XP_WIN
+  // On Windows, check the registry for a valid FF location
   if(!isGreLoaded) {
     HKEY key;
     // Look for firefox path in additional locations
@@ -443,13 +459,16 @@ int main(int argc, char* argv[])
                     reinterpret_cast<BYTE*>(greDir),
                     &length);
     RegCloseKey(key);
-    DWORD exitCode;
+    int exitCode;
     if(PerformAppropriateAction(runningVersion, greDir, &exitCode)) {
       return exitCode;
     } else if(isGreLoaded) {
       // TODO: Write gre dir location to application.ini
     }
   }
+#endif
+
+  // TODO: Maybe there are some mac/linux things we can do to find FF?
 
   if(!isGreLoaded) {
     return 255;
@@ -482,23 +501,23 @@ int main(int argc, char* argv[])
       return 255;
     }
 
-    AppendLeaf(greDir, WEBAPPSHELL_DIR, MAXPATHLEN);
-
-    nsCOMPtr<nsILocalFile> webAppShellDir;
-    if(NS_FAILED(XRE_GetFileFromPath(greDir,
-                                     getter_AddRefs(webAppShellDir)))) {
-      Output("Unable to open webappshell dir");
+    StripLeaf(curEXE);
+    nsCOMPtr<nsILocalFile> directory;
+    if(NS_FAILED(XRE_GetFileFromPath(curEXE,
+                                     getter_AddRefs(directory)))) {
+      Output("Unable to open app dir");
       return 255;
     }
 
-    nsCOMPtr<nsIFile> webAppShellDirClone;
-    webAppShellDir->Clone(getter_AddRefs(webAppShellDirClone));
+    nsCOMPtr<nsILocalFile> xreDir;
+    if(NS_FAILED(XRE_GetFileFromPath(greDir,
+                                     getter_AddRefs(xreDir)))) {
+      Output("Unable to open XRE dir");
+      return 255;
+    }
 
-    nsCOMPtr<nsILocalFile> webAppShellDirCloneLocal =
-                                    do_QueryInterface(webAppShellDirClone);
-
-    webAppShellDir.forget(&webShellAppData->xreDirectory);
-    webAppShellDirCloneLocal.forget(&webShellAppData->directory);
+    xreDir.forget(&webShellAppData->xreDirectory);
+    directory.forget(&webShellAppData->directory);
 
     // There is only XUL.
     result = XRE_main(argc, argv, webShellAppData);

@@ -1,0 +1,8 @@
+webapprt.jar:
+%  content webapp %content/
+*       content/hiddenWindow.xul                      (content/hiddenWindow.xul)
+*       content/injector.js                           (content/injector.js)
+*       content/main.js                               (content/main.js)
+        content/main.xul                              (content/main.xul)
+        content/window.js                             (content/window.js)
+        content/window.xul                            (content/window.xul)

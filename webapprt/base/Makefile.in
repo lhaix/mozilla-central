@@ -1,4 +1,4 @@
-# vim:set ts=8 sw=8 sts=8 et:
+#
 # ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
@@ -12,15 +12,15 @@
 # for the specific language governing rights and limitations under the
 # License.
 #
-# The Original Code is the Mozilla Browser code.
+# The Original Code is mozilla.org code.
 #
 # The Initial Developer of the Original Code is
 # Netscape Communications Corporation.
-# Portions created by the Initial Developer are Copyright (C) 2002
+# Portions created by the Initial Developer are Copyright (C) 1998
 # the Initial Developer. All Rights Reserved.
 #
 # Contributor(s):
-#  Brian Ryner <bryner@brianryner.com>
+#  Robert Strong <robert.bugzilla@gmail.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -36,79 +36,17 @@
 #
 # ***** END LICENSE BLOCK *****
 
-DEPTH     = ../..
+DEPTH   = ../..
 topsrcdir = @top_srcdir@
 srcdir    = @srcdir@
-VPATH     = @srcdir@
+VPATH   = @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
-CPPSRCS   = apprt.cpp
-
-PROGRAM   = apprt$(BIN_SUFFIX)
-
-LOCAL_INCLUDES = \
-  -I$(topsrcdir)/xpcom/build \
-  -I$(topsrcdir)/xpcom/base \
-  $(NULL)
-
-DEFINES  += -DXPCOM_GLUE
-STL_FLAGS=
-
-LIBS = \
-  $(XPCOM_STANDALONE_GLUE_LDOPTS) \
-  $(NULL)
-
-# Need to link with CoreFoundation on Mac
-ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
-LIBS            += \
-		$(TK_LIBS) \
-		$(NULL)
-endif
-
-ifeq ($(OS_ARCH),WINNT)
-RCINCLUDE = apprt.rc
-ifndef GNU_CC
-RCFLAGS += -DMOZ_XULRUNNER -I$(srcdir)
-else
-RCFLAGS += -DMOZ_XULRUNNER --include-dir $(srcdir)
-endif
-LOCAL_INCLUDES += -I$(topsrcdir)/toolkit/xre
-endif
-
-ifndef MOZ_WINCONSOLE
-ifdef MOZ_DEBUG
-MOZ_WINCONSOLE = 1
-else
-MOZ_WINCONSOLE = 0
-endif
-endif
-
 include $(topsrcdir)/config/config.mk
 
-ifdef _MSC_VER
-WIN32_EXE_LDFLAGS += -ENTRY:wmainCRTStartup
+ifdef ENABLE_TESTS
+DIRS += content/test
 endif
 
 include $(topsrcdir)/config/rules.mk
-
-ifeq ($(OS_ARCH),WINNT)
-OS_LIBS += $(call EXPAND_LIBNAME,shell32)
-endif
-
-ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
-
-FRAMEWORK_NAME = XUL
-FRAMEWORK_VERSION = $(MOZILLA_VERSION)
-
-FRAMEWORK_DIR = \
-   $(DIST)/$(FRAMEWORK_NAME).framework/Versions/$(FRAMEWORK_VERSION)
-
-$(FRAMEWORK_DIR):
-	$(NSINSTALL) -D $@
-
-$(FRAMEWORK_DIR)/$(PROGRAM): $(PROGRAM) $(FRAMEWORK_DIR)
-	$(NSINSTALL) $(PROGRAM) $(FRAMEWORK_DIR)
-
-libs:: $(FRAMEWORK_DIR)/$(PROGRAM)
-endif

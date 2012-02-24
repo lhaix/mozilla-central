@@ -4627,6 +4627,7 @@ NECKO_COOKIES=1
 NECKO_PROTOCOLS_DEFAULT="about data file ftp http res viewsource websocket wyciwyg device"
 USE_ARM_KUSER=
 BUILD_CTYPES=1
+MOZ_WEBAPP_RUNTIME=1
 MOZ_USE_NATIVE_POPUP_WINDOWS=
 MOZ_ANDROID_HISTORY=
 MOZ_GRAPHITE=1
@@ -8320,6 +8321,18 @@ MOZ_ARG_DISABLE_BOOL(cookies,
 AC_SUBST(NECKO_COOKIES)
 if test "$NECKO_COOKIES"; then
     AC_DEFINE(NECKO_COOKIES)
+fi
+
+dnl
+dnl Option to disable Web App Runtime
+dnl
+MOZ_ARG_DISABLE_BOOL(webapp-runtime,
+[  --disable-webapp-runtime  Disable Web App Runtime],
+    MOZ_WEBAPP_RUNTIME=,
+    MOZ_WEBAPP_RUNTIME=1)
+AC_SUBST(MOZ_WEBAPP_RUNTIME)
+if test "$MOZ_WEBAPP_RUNTIME"; then
+    AC_DEFINE(MOZ_WEBAPP_RUNTIME)
 fi
 
 dnl

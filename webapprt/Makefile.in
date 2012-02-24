@@ -40,39 +40,20 @@ topsrcdir = @top_srcdir@
 srcdir    = @srcdir@
 VPATH     = @srcdir@
 
+MODULE = webapprt
+XPIDL_MODULE = webapprt
+GRE_MODULE = 1
+
 include $(topsrcdir)/config/config.mk
 
 PARALLEL_DIRS = \
   base \
   components \
-  fuel \
-  locales \
   modules \
-  themes \
   $(NULL)
 
 DIRS = \
-  devtools \
   app \
   $(NULL)
 
-ifeq ($(OS_ARCH),WINNT)
-ifdef MOZ_INSTALLER
-DIRS += installer/windows
-endif
-endif
-
 include $(topsrcdir)/config/rules.mk
-
-ifeq ($(OS_ARCH),WINNT)
-ifdef MOZ_INSTALLER
-
-# For Windows build the uninstaller during the application build since the
-# uninstaller is included with the application for mar file generation.
-libs::
-	$(MAKE) -C installer/windows uninstaller
-ifdef MOZ_MAINTENANCE_SERVICE
-	$(MAKE) -C installer/windows maintenanceservice_installer
-endif
-endif
-endif
