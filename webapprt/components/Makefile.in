@@ -46,7 +46,8 @@ EXTRA_PP_COMPONENTS = \
   WebappShellComponents.manifest \
   $(NULL)
 
-TEST_DIRS += test
+# XXX Uncomment this once we get tests.
+#TEST_DIRS += test
 
 ifdef MOZILLA_OFFICIAL
 DEFINES += -DOFFICIAL_BUILD=1

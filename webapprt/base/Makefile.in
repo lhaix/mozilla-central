@@ -45,8 +45,9 @@ include $(DEPTH)/config/autoconf.mk
 
 include $(topsrcdir)/config/config.mk
 
-ifdef ENABLE_TESTS
-DIRS += content/test
-endif
+# XXX Uncomment this once we get tests.
+#ifdef ENABLE_TESTS
+#DIRS += content/test
+#endif
 
 include $(topsrcdir)/config/rules.mk

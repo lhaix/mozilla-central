@@ -44,9 +44,10 @@ include $(DEPTH)/config/autoconf.mk
 
 include $(topsrcdir)/config/config.mk
 
-ifdef ENABLE_TESTS
-DIRS += test
-endif
+# XXX Uncomment this once we get tests.
+#ifdef ENABLE_TESTS
+#DIRS += test
+#endif
 
 EXTRA_JS_MODULES = \
 	WebAppService.jsm \
