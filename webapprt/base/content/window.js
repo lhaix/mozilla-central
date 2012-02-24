@@ -35,57 +35,45 @@ function parameterizeAppWindow() {
   return function (installRecord) {
     try {
       //now configure the page
-      var topwindow = document.getElementById("topwindow");
+      let topwindow = document.getElementById("topwindow");
       topwindow.setAttribute("title", installRecord.manifest.name);
 
       //embed the actual content browser frame,
       //pointing at the origin+launch path
-      var contentThing = document.createElement("browser");
+      let contentThing = document.createElement("browser");
       contentThing.setAttribute("id", "appContent");
       contentThing.setAttribute("type", "content");
       contentThing.setAttribute("src", installRecord.launch_url);
       contentThing.setAttribute("flex", "1");
       topwindow.appendChild(contentThing);
 
-      // These commands are here as an example of the types of commands
-      // we could add in the future
-      var mainCommandSet = document.createElement("commandset");
+      // Hook up commands to be used by menu items
+      let newWindowCommand = document.getElementById("new_window_command");
+      // TODO: Implement the function newWindow() and uncomment this line
+      //newWindowCommand.setAttribute("oncommand", "newWindow()");
 
-      var commandNewWindow = document.createElement("command");
-      commandNewWindow.setAttribute("id", "new_window");
-      commandNewWindow.setAttribute("oncommand", "newWindow()");
-      mainCommandSet.appendChild(commandNewWindow);
+      let aboutCommand = document.getElementById("about_command");
+      // TODO: Implement the function about() and uncomment this line
+      //aboutCommand.setAttribute("oncommand", "about()");
 
-      var commandAbout = document.createElement("command");
-      commandAbout.setAttribute("id", "about");
-      commandAbout.setAttribute("oncommand", "about()");
-      mainCommandSet.appendChild(commandAbout);
+      let copyCommand = document.getElementById("copy_command");
+      // TODO: Implement the function copy() and uncomment this line
+      //copyCommand.setAttribute("oncommand", "copy()");
 
-      topwindow.insertBefore(mainCommandSet, windowjs);
+      let cutCommand = document.getElementById("cut_command");
+      // TODO: Implement the function cut() and uncomment this line
+      //cutCommand.setAttribute("oncommand", "cut()");
 
-      // These menu elements are here as an example of the types
-      // of menus we could add in the future
-      var mainMenuBar = document.createElement("menubar");
+      let pasteCommand = document.getElementById("paste_command");
+      // TODO: Implement the function paste() and uncomment this line
+      //pasteCommand.setAttribute("oncommand", "paste()");
 
-      var fileMenu = document.createElement("menu");
-      fileMenu.setAttribute("label", "File");
-
-      var fileMenuPopup = document.createElement("menupopup");
-
-      var menuItemAbout = document.createElement("menuitem");
-      menuItemAbout.setAttribute("label", "About " + installRecord.manifest.name);
-      menuItemAbout.setAttribute("command", "about");
-      fileMenuPopup.appendChild(menuItemAbout);
-
-      var menuItemNewWindow = document.createElement("menuitem");
-      menuItemNewWindow.setAttribute("label", "New Window");
-      menuItemNewWindow.setAttribute("command", "new_window");
-      fileMenuPopup.appendChild(menuItemNewWindow);
-
-      fileMenu.appendChild(fileMenuPopup);
-      mainMenuBar.appendChild(fileMenu);
-      var windowjs = document.getElementById("windowjs");
-      topwindow.insertBefore(mainMenuBar, windowjs);
+      // Parameterize individual menu items
+      let menuItemAbout = document.getElementById("about_menu_item");
+      menuItemAbout.setAttribute("label", "About "
+                                        + installRecord.manifest.name);
+      // TODO: When the `about` command  is implemented, uncomment this line
+      //menuItemAbout.setAttribute("command", "about");
     } catch(e) {
       dump("ERROR: Exception trying to set up app window:\n"
           + e + "\n");
