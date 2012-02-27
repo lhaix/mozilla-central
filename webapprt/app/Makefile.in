@@ -133,3 +133,26 @@ libs::
 	cp -p $(WEBAPPRT_APP_NAME)$(BIN_SUFFIX) $(DIST)/bin/$(WEBAPPRT_APP_NAME)-bin$(BIN_SUFFIX)
 
 endif
+
+# XXX Factor out with copies in browser/app/profile/extensions/webapprtext@mozilla.org/Makefile.in and config/Makefile.in.
+ifdef LIBXUL_SDK
+GRE_MILESTONE = $(shell $(PYTHON) $(topsrcdir)/config/printconfigsetting.py $(LIBXUL_DIST)/bin/platform.ini Build Milestone)
+APP_INI_DEPS = $(LIBXUL_DIST)/bin/platform.ini
+else
+GRE_MILESTONE = $(shell tail -n 1 $(topsrcdir)/config/milestone.txt 2>/dev/null || tail -1 $(topsrcdir)/config/milestone.txt)
+APP_INI_DEPS = $(topsrcdir)/config/milestone.txt
+endif
+APP_BUILDID := $(shell cat $(DEPTH)/config/buildid)
+APP_INI_DEPS += $(DEPTH)/config/buildid
+DEFINES += -DGRE_MILESTONE=$(GRE_MILESTONE) -DAPP_BUILDID=$(APP_BUILDID)
+
+webapprt.ini: webapprt.ini.in $(APP_INI_DEPS)
+	$(PYTHON) $(topsrcdir)/config/Preprocessor.py $(DEFINES) $< > $@
+
+libs:: webapprt.ini
+	$(INSTALL) $(IFLAGS1) webapprt.ini $(DIST)/bin
+
+install:: webapprt.ini
+	$(SYSINSTALL) $(IFLAGS1) webapprt.ini $(DESTDIR)$(mozappdir)
+
+GARBAGE += webapprt.ini

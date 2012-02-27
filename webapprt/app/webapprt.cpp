@@ -88,6 +88,7 @@ XRE_mainType XRE_main;
 
 namespace {
   const char * APP_INI = "application.ini";
+  const char * RT_INI = "webapprt.ini";
   const char * APP_RT_BACKUP = "webapprt.old";
 #ifdef XP_WIN
   const char * APP_RT = "webapprt.exe";
@@ -383,6 +384,18 @@ namespace {
     }
     return ret;
   }
+
+  // Copied from toolkit/xre/nsAppData.cpp.
+  void SetAllocatedString(const char *&str, const char *newvalue) {
+    NS_Free(const_cast<char*>(str));
+    if (newvalue) {
+      str = NS_strdup(newvalue);
+    }
+    else {
+      str = nsnull;
+    }
+  }
+
 };
 
 
@@ -397,6 +410,7 @@ int main(int argc, char* argv[])
   int realArgc = 1;
   char **realArgv = argv;
   char appINIPath[MAXPATHLEN];
+  char rtINIPath[MAXPATHLEN];
   char greDir[MAXPATHLEN];
 
 #ifdef XP_MACOSX
@@ -485,25 +499,42 @@ int main(int argc, char* argv[])
       return 255;
     }
 
-    // Load application.ini from the path we got earlier.
-    nsCOMPtr<nsILocalFile> appINI;
-    if(NS_FAILED(XRE_GetFileFromPath(appINIPath, getter_AddRefs(appINI)))) {
-      Output("application.ini path not recognized: '%s'\n", appINIPath);
-      return 255;
-    }
-    if(!appINI) {
-      Output("Error: missing application.ini");
-      return 255;
-    }
-    nsXREAppData *webShellAppData;
-    if (NS_FAILED(XRE_CreateAppData(appINI, &webShellAppData))) {
-      Output("Couldn't read application.ini\n");
+    // Get the path to the runtime's INI file.  This should be in the
+    // same directory as the GRE.
+    strcpy(rtINIPath, greDir);
+    if (!AppendLeaf(rtINIPath, RT_INI, MAXPATHLEN)) {
+      Output("Path to runtime INI is invalid (possibly too long).\n");
       return 255;
     }
 
-    StripLeaf(curEXE);
+    // Load the runtime's INI from its path.
+    nsCOMPtr<nsILocalFile> rtINI;
+    if(NS_FAILED(XRE_GetFileFromPath(rtINIPath, getter_AddRefs(rtINI)))) {
+      Output("Runtime INI path not recognized: '%s'\n", rtINIPath);
+      return 255;
+    }
+    if(!rtINI) {
+      Output("Error: missing webapprt.ini");
+      return 255;
+    }
+    nsXREAppData *webShellAppData;
+    if (NS_FAILED(XRE_CreateAppData(rtINI, &webShellAppData))) {
+      Output("Couldn't read webapprt.ini\n");
+      return 255;
+    }
+
+    char profile[MAXPATHLEN];
+    if(NS_FAILED(parser.GetString("App",
+                                  "Profile",
+                                  profile,
+                                  MAXPATHLEN))) {
+      Output("Unable to retrieve profile from web app INI file");
+      return 255;
+    }
+    SetAllocatedString(webShellAppData->profile, profile);
+
     nsCOMPtr<nsILocalFile> directory;
-    if(NS_FAILED(XRE_GetFileFromPath(curEXE,
+    if(NS_FAILED(XRE_GetFileFromPath(greDir,
                                      getter_AddRefs(directory)))) {
       Output("Unable to open app dir");
       return 255;

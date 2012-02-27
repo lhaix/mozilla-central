@@ -645,6 +645,12 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
     LoadDirsIntoArray(mAppBundleDirectories,
                       kAppendPrefDir, directories);
 
+    if (gAppData) {
+      static const char *const kAppendAppIDPrefDir[] =
+        { "defaults", "preferences", gAppData->ID, nsnull };
+      LoadAppDirIntoArray(mXULAppDir, kAppendAppIDPrefDir, directories);
+    }
+
     rv = NS_NewArrayEnumerator(aResult, directories);
   }
   else if (!strcmp(aProperty, NS_EXT_PREFS_DEFAULTS_DIR_LIST)) {

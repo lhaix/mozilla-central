@@ -576,3 +576,14 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/*.xqs
 @BINPATH@/components/*.xqs
 #endif
+
+#ifdef MOZ_WEBAPP_RUNTIME
+; [Webapp Runtime]
+#ifndef XP_UNIX
+@BINPATH@/webapprt.exe
+#else
+@BINPATH@/webapprt-bin
+@BINPATH@/webapprt
+#endif
+@BINPATH@/defaults/preferences/webapprt@mozilla.org/prefs.js
+#endif
