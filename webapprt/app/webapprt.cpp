@@ -485,6 +485,7 @@ int main(int argc, char* argv[])
   // TODO: Maybe there are some mac/linux things we can do to find FF?
 
   if(!isGreLoaded) {
+    // TODO: User-friendly message explaining that FF needs to be installed
     return 255;
   }
 

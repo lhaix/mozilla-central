@@ -52,6 +52,10 @@ function parameterizeAppWindow() {
       // TODO: Implement the function newWindow() and uncomment this line
       //newWindowCommand.setAttribute("oncommand", "newWindow()");
 
+      let quitCommand = document.getElementById("quit_command");
+      // TODO: Implement the function quitApp() and uncomment this line
+      //newWindowCommand.setAttribute("oncommand", "quitApp()");
+
       let aboutCommand = document.getElementById("about_command");
       // TODO: Implement the function about() and uncomment this line
       //aboutCommand.setAttribute("oncommand", "about()");
@@ -73,7 +77,7 @@ function parameterizeAppWindow() {
       menuItemAbout.setAttribute("label", "About "
                                         + installRecord.manifest.name);
       // TODO: When the `about` command  is implemented, uncomment this line
-      //menuItemAbout.setAttribute("command", "about");
+      //menuItemAbout.setAttribute("command", "about_command");
     } catch(e) {
       dump("ERROR: Exception trying to set up app window:\n"
           + e + "\n");

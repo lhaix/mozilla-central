@@ -4,6 +4,7 @@
 
   <commandset id="main_command_set">
     <command id="new_window_command" />
+    <command id="quit_command" />
     <command id="copy_command" />
     <command id="cut_command" />
     <command id="paste_command" />
@@ -14,6 +15,7 @@
     <menu id="file_menu" label="File">
       <menupopup id="file_menu_main_popup">
         <menuitem id="new_window_menu_item" label="New Window" command="new_window_command" />
+        <menuitem id="quit_menu_item" label="Quit" command="quit_command" />
       </menupopup>
     </menu>
     <menu id="edit_menu" label="Edit">
