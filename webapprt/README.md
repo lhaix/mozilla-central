@@ -1,7 +1,6 @@
 Build Instructions
 ==================
-- Build the branch using the normal mechanism.
-- `cd` into src/webapprt and run `make`
+- Build Firefox using the normal mechanism.
 
 Windows Native App Installation Flow
 ====================================
