@@ -92,6 +92,8 @@ namespace {
   const char * APP_RT_BACKUP = "webapprt.old";
 #ifdef XP_WIN
   const char * APP_RT = "webapprt.exe";
+  const char * REDIT = "redit.exe";
+  const char * ICON = "appicon.ico";
 #else
   const char * APP_RT = "webapprt-bin";
 #endif
@@ -321,14 +323,43 @@ namespace {
       return 255;
     }
 
-    // TODO: On Windows, we need to embed the app's icon in
-    //       the copied file.
-
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
 
     ::ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
+    ::ZeroMemory(&pi, sizeof(pi));
+
+    char reditPath[MAXPATHLEN];
+    strcpy(reditPath, src);
+    StripLeaf(reditPath);
+    AppendLeaf(reditPath, REDIT, MAXPATHLEN);
+
+    char iconPath[MAXPATHLEN];
+    strcpy(iconPath, dest);
+    StripLeaf(iconPath);
+    AppendLeaf(iconPath, ICON, MAXPATHLEN);
+
+    char reditArgs[2048];
+    sprintf(reditArgs, "\"%s\" \"%s\" \"%s\"", reditPath, dest, iconPath);
+
+    if(!CreateProcess(NULL,           // Module name
+                      reditArgs,      // Command line
+                      NULL,           // Process handle not inheritable
+                      NULL,           // Thread handle not inheritable
+                      FALSE,          // Set handle inheritance to FALSE
+                      0,              // No creation flags
+                      NULL,           // Use parent's environment block
+                      NULL,           // Use parent's starting directory 
+                      &si,
+                      &pi)) {
+      // TODO: Maybe log redit failure?
+    } else {
+      // Wait until child process exits.
+      WaitForSingleObject(pi.hProcess, INFINITE);
+    }
+
+    ::ZeroMemory(&si, sizeof(si));
     ::ZeroMemory(&pi, sizeof(pi));
 
     if(!CreateProcess(dest,     // No module name (use command line)

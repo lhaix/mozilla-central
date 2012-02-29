@@ -11,15 +11,15 @@
 # for the specific language governing rights and limitations under the
 # License.
 #
-# The Original Code is the Mozilla Browser code.
+# The Original Code is Mozilla XULRunner.
 #
 # The Initial Developer of the Original Code is
-# Netscape Communications Corporation.
-# Portions created by the Initial Developer are Copyright (C) 2002
+# the Mozilla Foundation <http://www.mozilla.org/>.
+# Portions created by the Initial Developer are Copyright (C) 2008
 # the Initial Developer. All Rights Reserved.
 #
 # Contributor(s):
-#  Brian Ryner <bryner@brianryner.com>
+#   Mark Finkle <mfinkle@mozilla.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -35,33 +35,21 @@
 #
 # ***** END LICENSE BLOCK *****
 
-DEPTH     = ..
+DEPTH     = ../../..
 topsrcdir = @top_srcdir@
 srcdir    = @srcdir@
 VPATH     = @srcdir@
 
-MODULE = webapprt
-XPIDL_MODULE = webapprt
-GRE_MODULE = 1
+include $(DEPTH)/config/autoconf.mk
 
-include $(topsrcdir)/config/config.mk
-
-PARALLEL_DIRS = \
-  base \
-  components \
-  modules \
-  $(NULL)
+MODULE = redit
 
 ifeq ($(OS_ARCH),WINNT)
-PARALLEL_DIRS += tools/redit
+CPPSRCS    = redit.cpp
+PROGRAM    = redit$(BIN_SUFFIX)
+SDK_BINARY =  \
+	$(PROGRAM) \
+	$(NULL)
 endif
 
-DIRS = \
-  app \
-  $(NULL)
-
 include $(topsrcdir)/config/rules.mk
-
-libs:: prefs.js
-	$(MKDIR) -p $(DIST)/bin/defaults/preferences/webapprt@mozilla.org
-	$(INSTALL) $^ $(DIST)/bin/defaults/preferences/webapprt@mozilla.org

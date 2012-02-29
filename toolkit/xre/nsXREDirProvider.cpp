@@ -422,24 +422,26 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
 }
 
 static void
-LoadAppDirIntoArray(nsIFile* aXULAppDir,
-                    const char *const *aAppendList,
-                    nsCOMArray<nsIFile>& aDirectories)
+LoadDirIntoArray(nsIFile* dir,
+                 const char *const *aAppendList,
+                 nsCOMArray<nsIFile>& aDirectories)
 {
-  if (!aXULAppDir)
+  if (!dir)
     return;
 
   nsCOMPtr<nsIFile> subdir;
-  aXULAppDir->Clone(getter_AddRefs(subdir));
+  dir->Clone(getter_AddRefs(subdir));
   if (!subdir)
     return;
 
-  for (; *aAppendList; ++aAppendList)
-    subdir->AppendNative(nsDependentCString(*aAppendList));
+  for (const char *const *a = aAppendList; *a; ++a) {
+    subdir->AppendNative(nsDependentCString(*a));
+  }
 
   bool exists;
-  if (NS_SUCCEEDED(subdir->Exists(&exists)) && exists)
+  if (NS_SUCCEEDED(subdir->Exists(&exists)) && exists) {
     aDirectories.AppendObject(subdir);
+  }
 }
 
 static void
@@ -447,19 +449,17 @@ LoadDirsIntoArray(nsCOMArray<nsIFile>& aSourceDirs,
                   const char *const* aAppendList,
                   nsCOMArray<nsIFile>& aDirectories)
 {
-  nsCOMPtr<nsIFile> appended;
+  nsCOMPtr<nsIFile> curDir;
   bool exists;
 
   for (PRInt32 i = 0; i < aSourceDirs.Count(); ++i) {
-    aSourceDirs[i]->Clone(getter_AddRefs(appended));
-    if (!appended)
+    aSourceDirs[i]->Clone(getter_AddRefs(curDir));
+    if (!curDir)
       continue;
 
-    for (const char *const *a = aAppendList; *a; ++a)
-      appended->AppendNative(nsDependentCString(*a));
-
-    if (NS_SUCCEEDED(appended->Exists(&exists)) && exists)
-      aDirectories.AppendObject(appended);
+    LoadDirIntoArray(curDir,
+                     aAppendList,
+                     aDirectories);
   }
 }
 
@@ -641,14 +641,14 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
   else if (!strcmp(aProperty, NS_APP_PREFS_DEFAULTS_DIR_LIST)) {
     nsCOMArray<nsIFile> directories;
 
-    LoadAppDirIntoArray(mXULAppDir, kAppendPrefDir, directories);
+    LoadDirIntoArray(mXULAppDir, kAppendPrefDir, directories);
     LoadDirsIntoArray(mAppBundleDirectories,
                       kAppendPrefDir, directories);
 
     if (gAppData) {
       static const char *const kAppendAppIDPrefDir[] =
         { "defaults", "preferences", gAppData->ID, nsnull };
-      LoadAppDirIntoArray(mXULAppDir, kAppendAppIDPrefDir, directories);
+      LoadDirIntoArray(mXULAppDir, kAppendAppIDPrefDir, directories);
     }
 
     rv = NS_NewArrayEnumerator(aResult, directories);
@@ -677,15 +677,22 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
 
     static const char *const kAppendChromeDir[] = { "chrome", nsnull };
     nsCOMArray<nsIFile> directories;
-    LoadAppDirIntoArray(mXULAppDir,
-                        kAppendChromeDir,
-                        directories);
+    LoadDirIntoArray(mXULAppDir,
+                     kAppendChromeDir,
+                     directories);
     LoadDirsIntoArray(mAppBundleDirectories,
                       kAppendChromeDir,
                       directories);
     LoadDirsIntoArray(mExtensionDirectories,
                       kAppendChromeDir,
                       directories);
+
+    nsCOMPtr<nsILocalFile> profileDir;
+    rv = GetUserDataDirectory(getter_AddRefs(profileDir), false);
+    NS_ENSURE_SUCCESS(rv, rv);
+    LoadDirIntoArray(profileDir,
+                     kAppendChromeDir,
+                     directories);
 
     rv = NS_NewArrayEnumerator(aResult, directories);
   }
