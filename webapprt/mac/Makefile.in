@@ -11,6 +11,10 @@ include $(topsrcdir)/config/config.mk
 
 PROGRAM = webapprt$(BIN_SUFFIX)
 
+# No need for libmozglue.  Yet.  As far as we know.  Stay tuned.
+MOZ_GLUE_LDFLAGS =
+MOZ_GLUE_PROGRAM_LDFLAGS =
+
 CMMSRCS = webapprt.mm
 
 include $(topsrcdir)/config/rules.mk
