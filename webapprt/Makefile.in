@@ -60,6 +60,10 @@ DIRS = \
   app \
   $(NULL)
 
+ifeq ($(OS_ARCH),Darwin)
+  DIRS += mac
+endif
+
 include $(topsrcdir)/config/rules.mk
 
 libs:: prefs.js
