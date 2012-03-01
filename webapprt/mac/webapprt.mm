@@ -63,7 +63,9 @@ void execNewBinary(NSString* launchPath);
 
 NSString *pathToCurrentFirefox(NSString* identifier);
 
-void displayErrorAlert(CFStringRef title, CFStringRef message);
+NSException* makeException(NSString* name, NSString* message);
+
+void displayErrorAlert(NSString* title, NSString* message);
 
 
 int gVerbose = 0;
@@ -81,11 +83,12 @@ int main(int argc, char **argv)
       gVerbose = 1;
     } else if (!strcmp(argv[i], "-b")) {
       if (i+1 < argc) {
-        bundleID = [[NSString alloc] initWithCString:argv[i+1]];
+        bundleID = [NSString stringWithFormat: @"%s", argv[i+1]];
         i++;
       }
     }
   }
+
 
   NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];  
 
@@ -95,9 +98,10 @@ int main(int argc, char **argv)
     firefoxPath = pathToCurrentFirefox(bundleID); // XXX developer feature to specify other firefox here
     if (!firefoxPath) {
       // Launch a dialog to explain to the user that there's no compatible web runtime
-      displayErrorAlert(CFSTR("Cannot start"),
-        CFSTR("Cannot start application.  This application requires that Firefox be installed.\n\nDownload it from http://getfirefox.com"));
-      return 0;
+      @throw makeException(@"Missing Web Runtime", @"Web Applications require Firefox to be installed");
+      // displayErrorAlert(CFSTR("Cannot start"),
+      //   CFSTR("Cannot start application.  This application requires that Firefox be installed.\n\nDownload it from http://getfirefox.com"));
+      // return 0;
     }
   }
 
@@ -110,6 +114,7 @@ int main(int argc, char **argv)
   if (![[NSFileManager defaultManager] fileExistsAtPath:myInfoFilePath]) {
     //get out of here, I don't have a bundle file?
     NSLog(@"webapp bundle file not found at path: %@", myInfoFilePath);
+    @throw makeException(@"Invalid App Package", @"This App appears to be damaged, please reinstall it");
   }
   //get writable copy of my Info.plist file as a dictionary
   NSData *myAppData = [[NSData alloc] initWithContentsOfFile:myInfoFilePath];
@@ -123,7 +128,7 @@ int main(int argc, char **argv)
   if (errorDesc != nil) {
     //we failed to deserialize the property list, so we likely need to bail
     NSLog(@"unable to deserialize webapp property list: %@", errorDesc);
-    //exit probably
+    @throw makeException(@"Unable To Read App Version", @"This App appears to be damaged, please reinstall it");
   }
   //ok now read my version string
   NSString* myVersion = [myAppInfo objectForKey:@"CFBundleVersion"];
@@ -149,7 +154,7 @@ int main(int argc, char **argv)
     int err = unlink(argv[0]);
     if (err) {
       NSLog(@"failed to unlink old binary file at path: %s", argv[0]);
-      //exit, probably
+      @throw makeException(@"Unable To Update", @"Failed preparation for runtime update");
     }
 
     //we know the firefox path, so copy the new webapprt here
@@ -163,7 +168,7 @@ int main(int argc, char **argv)
     [clerk release];
     if (errorDesc != nil) {
       NSLog(@"failed to copy new webrt file");
-      //exit, probably
+      @throw makeException(@"Unable To Update", @"Failed to update runtime");
     }
 
     //If we successfully copied over the newer webapprt, then overwrite my version number with the firefox version number,
@@ -174,7 +179,7 @@ int main(int argc, char **argv)
     BOOL success = [newProps writeToFile: myInfoFilePath atomically: YES];
     if (!success) {
       NSLog(@"Failed to write out updated Info.plist: %@", errorDesc);
-      //exit, probably
+      @throw makeException(@"Version Update Failure", @"Failed to update the app version number to the current version");
     }
 
     //execv the new binary, and ride off into the sunset
@@ -183,12 +188,17 @@ int main(int argc, char **argv)
   }
   else {
     //we are ready to load XUL and such, and go go go
+    //DO C++ TIM STUFF HERE!!!
+
+
+
 
   }
   
 }
 @catch (NSException *e) {
   NSLog(@"got exception: %@", e);
+  displayErrorAlert([e name], [e reason]);
 }
 @finally {
   [pool drain];
@@ -198,12 +208,20 @@ int main(int argc, char **argv)
 }
 
 
-void displayErrorAlert(CFStringRef title, CFStringRef message)
+NSException* makeException(NSString* name, NSString* message) {
+  NSException* myException = [NSException
+        exceptionWithName:name
+        reason:message
+        userInfo:nil];
+  return myException;
+}
+
+void displayErrorAlert(NSString* title, NSString* message)
 {
   CFUserNotificationDisplayNotice(0, kCFUserNotificationNoteAlertLevel, 
     NULL, NULL, NULL, 
-    title,
-    message,
+    (CFStringRef)title,
+    (CFStringRef)message,
     CFSTR("Quit")
     );
 }
@@ -229,7 +247,7 @@ NSString *pathToCurrentFirefox(NSString* identifier)
 void execNewBinary(NSString* launchPath)
 {
 
-  NSLog(@" lauching webrt at path: %s\n", launchPath);
+  NSLog(@" lauching webrt at path: %@\n", launchPath);
   char binfile[100];
   sprintf(binfile, "%s", WEBAPPRT_EXECUTABLE);
 
@@ -237,6 +255,6 @@ void execNewBinary(NSString* launchPath)
   newargv[0] = binfile;
   newargv[1] = NULL;
 
-  NSLog(@"COMMAND LINE: '%s %s'", launchPath, newargv[0]);
+  NSLog(@"COMMAND LINE: '%@ %s'", launchPath, newargv[0]);
   execv([launchPath UTF8String], (char **)newargv);
 }
