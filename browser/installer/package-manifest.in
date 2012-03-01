@@ -585,5 +585,9 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/webapprt-bin
 @BINPATH@/webapprt
 #endif
-@BINPATH@/defaults/preferences/webapprt@mozilla.org/prefs.js
+@BINPATH@/chrome/webapprt@JAREXT@
+@BINPATH@/chrome/webapprt.manifest
+@BINPATH@/components/WebappShellComponents.manifest
+@BINPATH@/@PREF_DIR@/webapprt@mozilla.org/prefs.js
+@BINPATH@/webapprt.ini
 #endif

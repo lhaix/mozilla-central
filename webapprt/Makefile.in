@@ -63,5 +63,5 @@ DIRS = \
 include $(topsrcdir)/config/rules.mk
 
 libs:: prefs.js
-	$(MKDIR) -p $(DIST)/bin/defaults/preferences/webapprt@mozilla.org
-	$(INSTALL) $^ $(DIST)/bin/defaults/preferences/webapprt@mozilla.org
+	$(MKDIR) -p $(DIST)/bin/defaults/pref/webapprt@mozilla.org
+	$(INSTALL) $^ $(DIST)/bin/defaults/pref/webapprt@mozilla.org

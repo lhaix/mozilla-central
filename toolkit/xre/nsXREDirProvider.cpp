@@ -645,10 +645,27 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
     LoadDirsIntoArray(mAppBundleDirectories,
                       kAppendPrefDir, directories);
 
+    // Include the dir named after the app ID, if any, so multiple apps sharing
+    // an app dir can have their own preferences, f.e.:
+    //   defaults/preferences/*.js (prefs for all apps)
+    //   defaults/pref/foo@example.com/*.js (foo@example.com-only prefs)
+    //   defaults/pref/bar@example.com/*.js (bar@example.com-only prefs)
+    //
+    // These dirs live in defaults/pref/ instead of defaults/preferences/
+    // because the omnijarred version of defaults/preferences/ is not consulted
+    // in the unified omnijar case, i.e. when the GRE and the app(s) share
+    // a dir.
+    //
+    // Putting them in defaults/pref/ ensures they get read from that dir
+    // whether it's in the filesystem or an omnijar.  Nevertheless, they are
+    // still app prefs rather than GRE prefs, so it makes sense to return
+    // the appropriate one here rather than for NS_APP_PREF_DEFAULTS_50_DIR
+    // (which in any case only supports returning a single value).
+    //
     if (gAppData) {
       static const char *const kAppendAppIDPrefDir[] =
-        { "defaults", "preferences", gAppData->ID, nsnull };
-      LoadDirIntoArray(mXULAppDir, kAppendAppIDPrefDir, directories);
+        { "defaults", "pref", gAppData->ID, nsnull };
+      LoadAppDirIntoArray(mXULAppDir, kAppendAppIDPrefDir, directories);
     }
 
     rv = NS_NewArrayEnumerator(aResult, directories);

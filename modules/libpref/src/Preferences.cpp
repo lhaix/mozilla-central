@@ -42,6 +42,7 @@
 #include "mozilla/Util.h"
 
 #include "nsXULAppAPI.h"
+#include "nsIXULAppInfo.h"
 
 #include "mozilla/Preferences.h"
 #include "nsAppDirectoryServiceDefs.h"
@@ -985,15 +986,19 @@ static nsresult pref_InitInitialObjects()
   // In omni.jar case, we load the following prefs:
   // - jar:$gre/omni.jar!/greprefs.js
   // - jar:$gre/omni.jar!/defaults/pref/*.js
+  // - jar:$gre/omni.jar!/defaults/pref/$appID/*.js
+
   // In non omni.jar case, we load:
   // - $gre/greprefs.js
   //
   // In both cases, we also load:
   // - $gre/defaults/pref/*.js
-  // This is kept for bug 591866 (channel-prefs.js should not be in omni.jar)
-  // on $app == $gre case ; we load all files instead of channel-prefs.js only
-  // to have the same behaviour as $app != $gre, where this is required as
-  // a supported location for GRE preferences.
+  // - $gre/defaults/pref/$appID/*.js
+  // Loading the former, even when building an omni.jar, is kept for bug 591866
+  // (channel-prefs.js should not be in omni.jar) on $app == $gre case;
+  // we load all files instead of channel-prefs.js only to have the same
+  // behaviour as $app != $gre, where this is required as a supported location
+  // for GRE preferences.
   //
   // When $app != $gre, we additionally load, in omni.jar case:
   // - jar:$app/omni.jar!/defaults/preferences/*.js
@@ -1023,6 +1028,29 @@ static nsresult pref_InitInitialObjects()
     }
 
     prefEntries.Sort();
+
+    // Load jar:$gre/omni.jar!/defaults/pref/$appID/*.js
+    nsCOMPtr<nsIXULAppInfo> appInfo =
+      do_GetService("@mozilla.org/xre/app-info;1", &rv);
+    if (NS_SUCCEEDED(rv)) {
+      nsCAutoString appID;
+      if (NS_SUCCEEDED(appInfo->GetID(appID))) {
+        nsCAutoString prefsPath("defaults/pref/");
+        prefsPath.Append(appID);
+        prefsPath.AppendLiteral("/*.js$");
+        rv = jarReader->FindInit(prefsPath.get(), &findPtr);
+        NS_ENSURE_SUCCESS(rv, rv);
+
+        // Make sure these files get read last by putting them at the beginning
+        // of the list of pref entries (which is processed backwards), so prefs
+        // in these app-specific files override those in non-app-specific ones.
+        find = findPtr;
+        while (NS_SUCCEEDED(find->FindNext(&entryName, &entryNameLen))) {
+          prefEntries.InsertElementAt(0, Substring(entryName, entryNameLen));
+        }
+      }
+    }
+
     for (PRUint32 i = prefEntries.Length(); i--; ) {
       rv = pref_ReadPrefFromJar(jarReader, prefEntries[i].get());
       if (NS_FAILED(rv))
