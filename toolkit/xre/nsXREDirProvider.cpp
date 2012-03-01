@@ -665,7 +665,7 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
     if (gAppData) {
       static const char *const kAppendAppIDPrefDir[] =
         { "defaults", "pref", gAppData->ID, nsnull };
-      LoadAppDirIntoArray(mXULAppDir, kAppendAppIDPrefDir, directories);
+      LoadDirIntoArray(mXULAppDir, kAppendAppIDPrefDir, directories);
     }
 
     rv = NS_NewArrayEnumerator(aResult, directories);
