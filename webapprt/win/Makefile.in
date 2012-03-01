@@ -76,10 +76,6 @@ MOZ_WINCONSOLE = 0
 endif
 endif
 
-# This switches $(INSTALL) to copy mode, like $(SYSINSTALL), so things that
-# shouldn't get 755 perms need $(IFLAGS1) for either way of calling nsinstall.
-NSDISTMODE = copy
-
 include $(topsrcdir)/config/config.mk
 
 ifdef _MSC_VER
@@ -88,11 +84,8 @@ ifdef _MSC_VER
 WIN32_EXE_LDFLAGS += -ENTRY:wmainCRTStartup
 endif
 
-ifeq ($(OS_ARCH),WINNT)
 OS_LIBS += $(call EXPAND_LIBNAME,shell32)
-endif
 
-ifeq ($(OS_ARCH),WINNT)
 RCINCLUDE = webapprt.rc
 ifndef GNU_CC
 RCFLAGS += -I$(srcdir)
@@ -102,12 +95,9 @@ endif
 ifdef DEBUG
 RCFLAGS += -DDEBUG
 endif
-endif
-
 
 include $(topsrcdir)/config/rules.mk
 
-ifeq ($(OS_ARCH),WINNT)
 #
 # Control the default heap size.
 # This is the heap returned by GetProcessHeap().
@@ -125,34 +115,3 @@ ifeq ($(OS_TEST),x86_64)
 LDFLAGS += -STACK:2097152
 endif
 endif
-endif
-
-ifneq (,$(filter-out OS2 WINNT,$(OS_ARCH)))
-
-libs::
-	cp -p $(WEBAPPRT_APP_NAME)$(BIN_SUFFIX) $(DIST)/bin/$(WEBAPPRT_APP_NAME)-bin$(BIN_SUFFIX)
-
-endif
-
-# XXX Factor out with copies in browser/app/profile/extensions/webapprtext@mozilla.org/Makefile.in and config/Makefile.in.
-ifdef LIBXUL_SDK
-GRE_MILESTONE = $(shell $(PYTHON) $(topsrcdir)/config/printconfigsetting.py $(LIBXUL_DIST)/bin/platform.ini Build Milestone)
-APP_INI_DEPS = $(LIBXUL_DIST)/bin/platform.ini
-else
-GRE_MILESTONE = $(shell tail -n 1 $(topsrcdir)/config/milestone.txt 2>/dev/null || tail -1 $(topsrcdir)/config/milestone.txt)
-APP_INI_DEPS = $(topsrcdir)/config/milestone.txt
-endif
-APP_BUILDID := $(shell cat $(DEPTH)/config/buildid)
-APP_INI_DEPS += $(DEPTH)/config/buildid
-DEFINES += -DGRE_MILESTONE=$(GRE_MILESTONE) -DAPP_BUILDID=$(APP_BUILDID)
-
-webapprt.ini: webapprt.ini.in $(APP_INI_DEPS)
-	$(PYTHON) $(topsrcdir)/config/Preprocessor.py $(DEFINES) $< > $@
-
-libs:: webapprt.ini
-	$(INSTALL) $(IFLAGS1) webapprt.ini $(DIST)/bin
-
-install:: webapprt.ini
-	$(SYSINSTALL) $(IFLAGS1) webapprt.ini $(DESTDIR)$(mozappdir)
-
-GARBAGE += webapprt.ini
