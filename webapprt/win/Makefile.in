@@ -54,6 +54,9 @@ DEFINES += -DAPP_VERSION="$(APP_VERSION)"
 WEBAPPRT_APP_NAME = webapprt
 PROGRAM   = $(WEBAPPRT_APP_NAME)$(BIN_SUFFIX)
 
+# Don't create a dependency on mozglue
+MOZ_GLUE_LDFLAGS =
+
 CPPSRCS   = webapprt.cpp
 
 LOCAL_INCLUDES += -I$(topsrcdir)/toolkit/xre

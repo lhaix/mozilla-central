@@ -36,11 +36,9 @@ will be referred to as `${AppFilename}`.
 
 **TODO** Create the file `${AppDir}\application.ini`
 according to this template (IMPL NOTE: See
-[nsIINIParserWriter](https://mxr.mozilla.org/mozilla-central/source/
-xpcom/ds/nsIINIParser.idl#63)
+[nsIINIParserWriter](https://mxr.mozilla.org/mozilla-central/source/xpcom/ds/nsIINIParser.idl#63)
 and
-[nsINIProcessor](https://mxr.mozilla.org/mozilla-central/source/
-xpcom/ds/nsINIProcessor.js#63)):
+[nsINIProcessor](https://mxr.mozilla.org/mozilla-central/source/xpcom/ds/nsINIProcessor.js#63)):
 
     # ==== Windows application.ini template ====
     [App]
@@ -58,7 +56,7 @@ xpcom/ds/nsINIProcessor.js#63)):
 **PORT** Retrieve the largest icon specified in the app's manifest.  
 **PORT** Convert the icon to .ICO format  
 **PORT** Write the converted icon to
-`${InstallDir}\\chrome\icons\default\topwindow.ico`.
+`${InstallDir}\chrome\icons\default\topwindow.ico`.
 
 **TODO** Embed the icon in `${AppDir}\${AppFilename}.exe`.
 
@@ -79,7 +77,7 @@ Specifically, we'll want to make sure we write the following values:
   - **InstallLocation** (String) Full path to `${InstallDir}`
   - **NoModify** (Int) 1
   - **NoRepair** (Int) 1
-  - **ShortcutName** (String) `${AppFilename}`
+  - **AppFilename** (String) `${AppFilename}`
   - **UninstallString** See the addon implementation for how to generate this
 
 **PORT** Run the webapp installer executable.  

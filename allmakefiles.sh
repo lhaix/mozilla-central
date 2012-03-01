@@ -76,10 +76,6 @@ extensions/Makefile
 if [ "$MOZ_WEBAPP_RUNTIME" ]; then
   add_makefiles "
 webapprt/Makefile
-webapprt/app/Makefile
-webapprt/base/Makefile
-webapprt/components/Makefile
-webapprt/modules/Makefile
   "
 fi
 

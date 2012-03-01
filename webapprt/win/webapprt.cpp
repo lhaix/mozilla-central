@@ -46,57 +46,37 @@
 
 #include "nsXPCOMGlue.h"
 #include "nsINIParser.h"
-#include "nsXPCOMPrivate.h" // for MAXPATHLEN and XPCOM_DLL
+#include "nsXPCOMPrivate.h"              // for MAXPATHLEN and XPCOM_DLL
 #include "nsXULAppAPI.h"
 #include "nsComponentManagerUtils.h"
 #include "nsCOMPtr.h"
 #include "nsILocalFile.h"
 #include "nsStringGlue.h"
 #include "BinaryPath.h"
-#include "mozilla/Telemetry.h"
+#include "nsWindowsWMain.cpp"            // we want a wmain entry point
 
-#if defined(XP_WIN)
-  #include <windows.h>
-  #include <stdlib.h>
-  #include <aclapi.h>
-  #include <shlwapi.h>
-  #include "shellapi.h"
-  // we want a wmain entry point
-  #include "nsWindowsWMain.cpp"
-  #define snprintf _snprintf
-  #define strcasecmp _stricmp
-#elif defined(XP_UNIX)
-  #include <sys/time.h>
-  #include <sys/resource.h>
-#endif
-#ifdef XP_MACOSX
-  #include "MacQuirks.h"
-#endif
+#include <windows.h>
+#include <stdlib.h>
+#include <aclapi.h>
+#include <shlwapi.h>
+#include "shellapi.h"
+#define snprintf _snprintf
+#define strcasecmp _stricmp
 
-#ifdef XP_WIN
-  #pragma comment(lib, "version.lib")
-#endif
+#pragma comment(lib, "version.lib")
 
 XRE_GetFileFromPathType XRE_GetFileFromPath;
 XRE_CreateAppDataType XRE_CreateAppData;
 XRE_FreeAppDataType XRE_FreeAppData;
-#ifdef XRE_HAS_DLL_BLOCKLIST
-XRE_SetupDllBlocklistType XRE_SetupDllBlocklist;
-#endif
-XRE_TelemetryAccumulateType XRE_TelemetryAccumulate;
 XRE_mainType XRE_main;
 
 namespace {
   const char * APP_INI = "application.ini";
   const char * RT_INI = "webapprt.ini";
   const char * APP_RT_BACKUP = "webapprt.old";
-#ifdef XP_WIN
   const char * APP_RT = "webapprt.exe";
   const char * REDIT = "redit.exe";
-  const char * ICON = "appicon.ico";
-#else
-  const char * APP_RT = "webapprt-bin";
-#endif
+  const char * ICON = "chrome\\icons\\default\\topwindow.ico";
 
   bool isGreLoaded = false;
   char curEXE[MAXPATHLEN];
@@ -152,132 +132,9 @@ namespace {
       { "XRE_GetFileFromPath", (NSFuncPtr*) &XRE_GetFileFromPath },
       { "XRE_CreateAppData", (NSFuncPtr*) &XRE_CreateAppData },
       { "XRE_FreeAppData", (NSFuncPtr*) &XRE_FreeAppData },
-  #ifdef XRE_HAS_DLL_BLOCKLIST
-      { "XRE_SetupDllBlocklist", (NSFuncPtr*) &XRE_SetupDllBlocklist },
-  #endif
-      { "XRE_TelemetryAccumulate", (NSFuncPtr*) &XRE_TelemetryAccumulate },
       { "XRE_main", (NSFuncPtr*) &XRE_main },
       { nsnull, nsnull }
   };
-
-
-  /**
-   * Obtains the version number from the specified PE file's version
-   * information
-   * Version Format: A.B.C.D (Example 10.0.0.300)
-   *
-   * @param  path The path of the file to check the version on
-   * @param  A    The first part of the version number
-   * @param  B    The second part of the version number
-   * @param  C    The third part of the version number
-   * @param  D    The fourth part of the version number
-   * @return true if successful
-   */
-  bool GetVersionFromPath(char *narrowPath, Version &version) {
-#ifdef XP_WIN
-    PRUnichar path[2048];
-    ::MultiByteToWideChar(CP_UTF8,
-                          nsnull,
-                          narrowPath,
-                          -1,
-                          path,
-                          2048);
-
-    DWORD fileVersionInfoSize = GetFileVersionInfoSizeW(path, 0);
-    nsAutoArrayPtr<char> fileVersionInfo = new char[fileVersionInfoSize];
-    if (!GetFileVersionInfoW(path, 0, fileVersionInfoSize,
-                             fileVersionInfo.get())) {
-        return false;
-    }
-
-    VS_FIXEDFILEINFO *fixedFileInfo = 
-      reinterpret_cast<VS_FIXEDFILEINFO *>(fileVersionInfo.get());
-    UINT size;
-    if (!VerQueryValueW(fileVersionInfo.get(), L"\\", 
-      reinterpret_cast<LPVOID*>(&fixedFileInfo), &size)) {
-        return false;
-    }
-
-    version.major = HIWORD(fixedFileInfo->dwFileVersionMS);
-    version.minor = LOWORD(fixedFileInfo->dwFileVersionMS);
-    version.revision = HIWORD(fixedFileInfo->dwFileVersionLS);
-    version.build = LOWORD(fixedFileInfo->dwFileVersionLS);
-    return true;
-#else
-    // TODO
-    version.major = 13;
-    version.minor = 0;
-    version.revision = 0;
-    version.build = 1337;
-    return true;
-#endif
-  }
-
-  nsresult AttemptGRELoad(char *xpcomDLL) {
-    nsresult rv;
-    int gotCounters;
-  #if defined(XP_UNIX)
-    struct rusage initialRUsage;
-    gotCounters = !getrusage(RUSAGE_SELF, &initialRUsage);
-  #elif defined(XP_WIN)
-    // GetProcessIoCounters().ReadOperationCount seems to have little to
-    // do with actual read operations. It reports 0 or 1 at this stage
-    // in the program. Luckily 1 coincides with when prefetch is
-    // enabled. If Windows prefetch didn't happen we can do our own
-    // faster dll preloading.
-    IO_COUNTERS ioCounters;
-    gotCounters = GetProcessIoCounters(GetCurrentProcess(), &ioCounters);
-    if (gotCounters && !ioCounters.ReadOperationCount)
-  #endif
-    {
-        XPCOMGlueEnablePreload();
-    }
-
-    rv = XPCOMGlueStartup(xpcomDLL);
-    if(NS_FAILED(rv)) {
-      return rv;
-    }
-
-    rv = XPCOMGlueLoadXULFunctions(kXULFuncs);
-    if(NS_FAILED(rv)) {
-      return rv;
-    }
-
-  #ifdef XRE_HAS_DLL_BLOCKLIST
-    XRE_SetupDllBlocklist();
-  #endif
-
-    if (gotCounters) {
-  #if defined(XP_WIN)
-      XRE_TelemetryAccumulate(mozilla::Telemetry::EARLY_GLUESTARTUP_READ_OPS,
-                              int(ioCounters.ReadOperationCount));
-      XRE_TelemetryAccumulate(
-                        mozilla::Telemetry::EARLY_GLUESTARTUP_READ_TRANSFER,
-                        int(ioCounters.ReadTransferCount / 1024));
-      IO_COUNTERS newIoCounters;
-      if (GetProcessIoCounters(GetCurrentProcess(), &newIoCounters)) {
-        XRE_TelemetryAccumulate(mozilla::Telemetry::GLUESTARTUP_READ_OPS,
-                                int(newIoCounters.ReadOperationCount
-                                  - ioCounters.ReadOperationCount));
-        XRE_TelemetryAccumulate(mozilla::Telemetry::GLUESTARTUP_READ_TRANSFER,
-                                int((newIoCounters.ReadTransferCount
-                                   - ioCounters.ReadTransferCount) / 1024));
-      }
-  #elif defined(XP_UNIX)
-      XRE_TelemetryAccumulate(
-                        mozilla::Telemetry::EARLY_GLUESTARTUP_HARD_FAULTS,
-                        int(initialRUsage.ru_majflt));
-      struct rusage newRUsage;
-      if (!getrusage(RUSAGE_SELF, &newRUsage)) {
-        XRE_TelemetryAccumulate(mozilla::Telemetry::GLUESTARTUP_HARD_FAULTS,
-                                int(newRUsage.ru_majflt
-                                  - initialRUsage.ru_majflt));
-      }
-  #endif
-    }
-
-    return rv;
-  }
 
   bool AppendLeaf(char *base, const char *toAppend, int baseSize) {
     if (strlen(base)
@@ -306,13 +163,75 @@ namespace {
     return true;
   }
 
+  /**
+   * Obtains the version number from the specified PE file's version
+   * information
+   * Version Format: A.B.C.D (Example 10.0.0.300)
+   *
+   * @param  path The path of the file to check the version on
+   * @param  A    The first part of the version number
+   * @param  B    The second part of the version number
+   * @param  C    The third part of the version number
+   * @param  D    The fourth part of the version number
+   * @return true if successful
+   */
+  bool GetVersionFromPath(char *narrowPath, Version &version) {
+    PRUnichar path[2048];
+    ::MultiByteToWideChar(CP_UTF8,
+                          nsnull,
+                          narrowPath,
+                          -1,
+                          path,
+                          2048);
+
+    DWORD fileVersionInfoSize = GetFileVersionInfoSizeW(path, 0);
+    nsAutoArrayPtr<char> fileVersionInfo = new char[fileVersionInfoSize];
+    if (!GetFileVersionInfoW(path, 0, fileVersionInfoSize,
+                             fileVersionInfo.get())) {
+        return false;
+    }
+
+    VS_FIXEDFILEINFO *fixedFileInfo = 
+      reinterpret_cast<VS_FIXEDFILEINFO *>(fileVersionInfo.get());
+    UINT size;
+    if (!VerQueryValueW(fileVersionInfo.get(), L"\\", 
+      reinterpret_cast<LPVOID*>(&fixedFileInfo), &size)) {
+        return false;
+    }
+
+    version.major = HIWORD(fixedFileInfo->dwFileVersionMS);
+    version.minor = LOWORD(fixedFileInfo->dwFileVersionMS);
+    version.revision = HIWORD(fixedFileInfo->dwFileVersionLS);
+    version.build = LOWORD(fixedFileInfo->dwFileVersionLS);
+    return true;
+  }
+
+  nsresult AttemptGRELoad(char *greDir) {
+    nsresult rv;
+
+    AppendLeaf(greDir, XPCOM_DLL, MAXPATHLEN);
+    rv = XPCOMGlueStartup(greDir);
+    StripLeaf(greDir);
+    if(NS_FAILED(rv)) {
+      return rv;
+    }
+
+    rv = XPCOMGlueLoadXULFunctions(kXULFuncs);
+    if(NS_FAILED(rv)) {
+      return rv;
+    }
+
+    SetDllDirectoryA(greDir);
+
+    return rv;
+  }
+
   int CopyAndRun(const char *src, const char *dest) {
     char oldFilePath[MAXPATHLEN];
     strcpy(oldFilePath, dest);
     StripLeaf(oldFilePath);
     AppendLeaf(oldFilePath, APP_RT_BACKUP, MAXPATHLEN);
 
-#ifdef XP_WIN
     if(FALSE == ::MoveFileEx(dest, oldFilePath, MOVEFILE_REPLACE_EXISTING)) {
       return 255;
     }
@@ -337,6 +256,7 @@ namespace {
 
     char iconPath[MAXPATHLEN];
     strcpy(iconPath, dest);
+    StripLeaf(iconPath);
     StripLeaf(iconPath);
     AppendLeaf(iconPath, ICON, MAXPATHLEN);
 
@@ -388,12 +308,6 @@ namespace {
     CloseHandle( pi.hThread );
 
     return exitCode;
-#else
-    // TODO: Try to move dest to oldFilePath
-    //       If that succeeds, try to copy src to dest
-    //       Finally, exec the newly-copied file
-#endif
-    return 255;
   }
 
   bool PerformAppropriateAction(Version const &runningVersion,
@@ -405,9 +319,7 @@ namespace {
     if(FALSE != GetVersionFromPath(greDir, foundVersion)) {
       if(runningVersion == foundVersion) {
         StripLeaf(greDir);
-        AppendLeaf(greDir, XPCOM_DLL, MAXPATHLEN);
         isGreLoaded = NS_SUCCEEDED(AttemptGRELoad(greDir));
-        StripLeaf(greDir);
       } else if(minVersion < runningVersion) {
         *exitCode = CopyAndRun(greDir, curEXE);
         ret = true;
@@ -443,10 +355,6 @@ int main(int argc, char* argv[])
   char appINIPath[MAXPATHLEN];
   char rtINIPath[MAXPATHLEN];
   char greDir[MAXPATHLEN];
-
-#ifdef XP_MACOSX
-  TriggerQuirks();
-#endif
 
   // Get the path and version of our running executable
   if (NS_FAILED(mozilla::BinaryPath::Get(argv[0], curEXE))) {
@@ -484,7 +392,6 @@ int main(int argc, char* argv[])
     }
   }
 
-#ifdef XP_WIN
   // On Windows, check the registry for a valid FF location
   if(!isGreLoaded) {
     HKEY key;
@@ -511,9 +418,6 @@ int main(int argc, char* argv[])
       // TODO: Write gre dir location to application.ini
     }
   }
-#endif
-
-  // TODO: Maybe there are some mac/linux things we can do to find FF?
 
   if(!isGreLoaded) {
     // TODO: User-friendly message explaining that FF needs to be installed
