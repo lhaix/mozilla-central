@@ -58,6 +58,7 @@
 const char *WEBAPPRT_EXECUTABLE = "webapprt";
 //need the correct relative path here
 const char *WEBAPPRT_PATH = "/Contents/MacOS/"; 
+const char *INFO_FILE_PATH = "/Contents/Info.plist";
 
 void execNewBinary(NSString* launchPath);
 
@@ -99,9 +100,6 @@ int main(int argc, char **argv)
     if (!firefoxPath) {
       // Launch a dialog to explain to the user that there's no compatible web runtime
       @throw makeException(@"Missing Web Runtime", @"Web Applications require Firefox to be installed");
-      // displayErrorAlert(CFSTR("Cannot start"),
-      //   CFSTR("Cannot start application.  This application requires that Firefox be installed.\n\nDownload it from http://getfirefox.com"));
-      // return 0;
     }
   }
 
@@ -110,7 +108,7 @@ int main(int argc, char **argv)
   // it's meant for the OS.  We're supposed to know our version number.  I am reading the file and parsing into a mutable
   // dictionary object so that we can update it if necessary with the current version number and write it out again.
   NSString* myBundlePath = [[NSBundle mainBundle] bundlePath];
-  NSString* myInfoFilePath = [NSString stringWithFormat:@"%@/Info.plist", myBundlePath];
+  NSString* myInfoFilePath = [NSString stringWithFormat:@"%@%s", myBundlePath, INFO_FILE_PATH];
   if (![[NSFileManager defaultManager] fileExistsAtPath:myInfoFilePath]) {
     //get out of here, I don't have a bundle file?
     NSLog(@"webapp bundle file not found at path: %@", myInfoFilePath);
@@ -138,9 +136,18 @@ int main(int argc, char **argv)
 
 
   //now get Firefox version, but read-only, which is much simpler.
-  NSString* firefoxInfoFile = [NSString stringWithFormat:@"%@/Info.plist", firefoxPath];
+  NSString* firefoxInfoFile = [NSString stringWithFormat:@"%@%s", firefoxPath, INFO_FILE_PATH];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:firefoxInfoFile]) {
+    //get out of here, I don't have a bundle file?
+    NSLog(@"Firefox webapprt bundle file not found at path: %@", firefoxInfoFile);
+    @throw makeException(@"Missing WebRT Files", @"This version of Firefox cannot run web applications, because it is not recent enough or damaged");
+  }
+
   //get read-only copy of FF Info.plist file
   NSDictionary *firefoxAppInfo = [NSDictionary dictionaryWithContentsOfFile:firefoxInfoFile];
+  if (!firefoxAppInfo) {
+    @throw makeException(@"Unreadable Info File", @"This version of Firefox cannot run web applications, because it is not recent enough or damaged");
+  }
   NSString* firefoxVersion = [firefoxAppInfo objectForKey:@"CFBundleVersion"];
   //Finished getting Firefox version
 
@@ -150,18 +157,24 @@ int main(int argc, char **argv)
     //we are going to assume that if they are different, we need to re-copy the webapprt, regardless of whether
     // it is newer or older.  If we don't find a webapprt, then the current Firefox must not be new enough to run webapps.
 
-    //unlink my binary file
-    int err = unlink(argv[0]);
-    if (err) {
-      NSLog(@"failed to unlink old binary file at path: %s", argv[0]);
-      @throw makeException(@"Unable To Update", @"Failed preparation for runtime update");
+    //we know the firefox path, so copy the new webapprt here
+    NSString *newWebRTPath = [NSString stringWithFormat: @"%@%s%s", firefoxPath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
+    NSLog(@"firefox webrt path: %@", newWebRTPath);
+    if (![[NSFileManager defaultManager] fileExistsAtPath:newWebRTPath]) {
+      @throw makeException(@"Missing WebRT Files", @"This version of Firefox cannot run web applications, because it is not recent enough or damaged");
     }
 
-    //we know the firefox path, so copy the new webapprt here
-    NSString *newWebRTPath = [NSString stringWithFormat: @"%@%@%@", firefoxPath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
-    NSLog(@"firefox webrt path: %@", newWebRTPath);
-    NSString *myWebRTPath = [NSString stringWithFormat: @"%@%@%@", myBundlePath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
+    NSString *myWebRTPath = [NSString stringWithFormat: @"%@%s%s", myBundlePath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
     NSLog(@"my webrt path: %@", myWebRTPath);
+    if (![[NSFileManager defaultManager] fileExistsAtPath:myWebRTPath]) {
+      @throw makeException(@"Missing WebRT Files", @"Cannot locate binary for this application");
+    }
+        //unlink my binary file
+    int err = unlink([myWebRTPath UTF8String]);
+    if (err) {
+      NSLog(@"failed to unlink old binary file at path: %@", myWebRTPath);
+      @throw makeException(@"Unable To Update", @"Failed preparation for runtime update");
+    }
 
     NSFileManager* clerk = [[NSFileManager alloc] init];
     [clerk copyItemAtPath: newWebRTPath toPath: myWebRTPath error: &errorDesc];
@@ -247,7 +260,7 @@ NSString *pathToCurrentFirefox(NSString* identifier)
 void execNewBinary(NSString* launchPath)
 {
 
-  NSLog(@" lauching webrt at path: %@\n", launchPath);
+  NSLog(@" launching webrt at path: %@\n", launchPath);
   char binfile[100];
   sprintf(binfile, "%s", WEBAPPRT_EXECUTABLE);
 
