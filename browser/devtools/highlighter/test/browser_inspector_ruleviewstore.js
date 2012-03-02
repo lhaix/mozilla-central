@@ -92,8 +92,7 @@ function ruleViewOpened1()
   prop.setEnabled(false);
 
   // Open second tab and switch to it
-  tab2 = gBrowser.addTab();
-  gBrowser.selectedTab = tab2;
+  gBrowser.selectedTab = gBrowser.addTab();
 
   gBrowser.selectedBrowser.addEventListener("load", function(evt) {
     gBrowser.selectedBrowser.removeEventListener(evt.type, arguments.callee,
@@ -129,8 +128,8 @@ function ruleViewOpened2()
   is(prop.name, "background-color", "First prop is the background color prop.");
   ok(!prop.enabled, "First prop should be disabled.");
 
-  gBrowser.removeCurrentTab();
   InspectorUI.closeInspectorUI();
+  gBrowser.removeCurrentTab();
   finish();
 }
 

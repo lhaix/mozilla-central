@@ -159,9 +159,9 @@ frontend::CompileScript(JSContext *cx, JSObject *scopeChain, StackFrame *callerF
                         JSPrincipals *principals, JSPrincipals *originPrincipals,
                         uint32_t tcflags,
                         const jschar *chars, size_t length,
-                        const char *filename, uintN lineno, JSVersion version,
+                        const char *filename, unsigned lineno, JSVersion version,
                         JSString *source /* = NULL */,
-                        uintN staticLevel /* = 0 */)
+                        unsigned staticLevel /* = 0 */)
 {
     TokenKind tt;
     ParseNode *pn;
@@ -316,40 +316,6 @@ frontend::CompileScript(JSContext *cx, JSObject *scopeChain, StackFrame *callerF
 #endif
 
     /*
-     * Global variables (gvars) share the atom index space with locals. Due to
-     * incremental code generation we need to patch the bytecode to adjust the
-     * local references to skip the globals.
-     */
-    if (bce.hasSharps()) {
-        jsbytecode *code, *end;
-        JSOp op;
-        const JSCodeSpec *cs;
-        uintN len, slot;
-
-        code = bce.base();
-        for (end = code + bce.offset(); code != end; code += len) {
-            JS_ASSERT(code < end);
-            op = (JSOp) *code;
-            cs = &js_CodeSpec[op];
-            len = (cs->length > 0)
-                  ? (uintN) cs->length
-                  : js_GetVariableBytecodeLength(code);
-            if ((cs->format & JOF_SHARPSLOT) ||
-                JOF_TYPE(cs->format) == JOF_LOCAL ||
-                (JOF_TYPE(cs->format) == JOF_SLOTATOM)) {
-                JS_ASSERT_IF(!(cs->format & JOF_SHARPSLOT),
-                             JOF_TYPE(cs->format) != JOF_SLOTATOM);
-                slot = GET_SLOTNO(code);
-                if (!(cs->format & JOF_SHARPSLOT))
-                    slot += bce.sharpSlots();
-                if (slot >= SLOTNO_LIMIT)
-                    goto too_many_slots;
-                SET_SLOTNO(code, slot);
-            }
-        }
-    }
-
-    /*
      * Nowadays the threaded interpreter needs a stop instruction, so we
      * do have to emit that here.
      */
@@ -370,11 +336,6 @@ frontend::CompileScript(JSContext *cx, JSObject *scopeChain, StackFrame *callerF
   out:
     Probes::compileScriptEnd(cx, script, filename, lineno);
     return script;
-
-  too_many_slots:
-    parser.reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_TOO_MANY_LOCALS);
-    script = NULL;
-    goto out;
 }
 
 /*
@@ -385,7 +346,7 @@ bool
 frontend::CompileFunctionBody(JSContext *cx, JSFunction *fun,
                               JSPrincipals *principals, JSPrincipals *originPrincipals,
                               Bindings *bindings, const jschar *chars, size_t length,
-                              const char *filename, uintN lineno, JSVersion version)
+                              const char *filename, unsigned lineno, JSVersion version)
 {
     Parser parser(cx, principals, originPrincipals);
     if (!parser.init(chars, length, filename, lineno, version))
@@ -410,7 +371,7 @@ frontend::CompileFunctionBody(JSContext *cx, JSFunction *fun,
         fn->pn_body = NULL;
         fn->pn_cookie.makeFree();
 
-        uintN nargs = fun->nargs;
+        unsigned nargs = fun->nargs;
         if (nargs) {
             /*
              * NB: do not use AutoLocalNameArray because it will release space
@@ -420,7 +381,7 @@ frontend::CompileFunctionBody(JSContext *cx, JSFunction *fun,
             if (!funbce.bindings.getLocalNameArray(cx, &names)) {
                 fn = NULL;
             } else {
-                for (uintN i = 0; i < nargs; i++) {
+                for (unsigned i = 0; i < nargs; i++) {
                     if (!DefineArg(fn, names[i], i, &funbce)) {
                         fn = NULL;
                         break;

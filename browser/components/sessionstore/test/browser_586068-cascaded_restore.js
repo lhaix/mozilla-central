@@ -56,11 +56,13 @@ let tests = [test_cascade, test_select, test_multiWindowState,
              test_setWindowStateNoOverwrite, test_setWindowStateOverwrite,
              test_setBrowserStateInterrupted, test_reload,
              /* test_reloadReload, */ test_reloadCascadeSetup,
-             /* test_reloadCascade, */ test_apptabs_only];
+             /* test_reloadCascade, */ test_apptabs_only,
+             test_restore_apptabs_ondemand];
 function runNextTest() {
   // Reset the pref
   try {
     Services.prefs.clearUserPref("browser.sessionstore.restore_on_demand");
+    Services.prefs.clearUserPref("browser.sessionstore.restore_pinned_tabs_on_demand");
   } catch (e) {}
 
   // set an empty state & run the next test, or finish
@@ -88,6 +90,8 @@ function runNextTest() {
 
 
 function test_cascade() {
+  Services.prefs.setBoolPref("browser.sessionstore.restore_on_demand", false);
+
   // We have our own progress listener for this test, which we'll attach before our state is set
   let progressListener = {
     onStateChange: function (aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -218,6 +222,8 @@ function test_select() {
 
 
 function test_multiWindowState() {
+  Services.prefs.setBoolPref("browser.sessionstore.restore_on_demand", false);
+
   // We have our own progress listener for this test, which we'll attach before our state is set
   let progressListener = {
     onStateChange: function (aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -295,6 +301,8 @@ function test_multiWindowState() {
 
 
 function test_setWindowStateNoOverwrite() {
+  Services.prefs.setBoolPref("browser.sessionstore.restore_on_demand", false);
+
   // We have our own progress listener for this test, which we'll attach before our state is set
   let progressListener = {
     onStateChange: function (aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -364,6 +372,8 @@ function test_setWindowStateNoOverwrite() {
 
 
 function test_setWindowStateOverwrite() {
+  Services.prefs.setBoolPref("browser.sessionstore.restore_on_demand", false);
+
   // We have our own progress listener for this test, which we'll attach before our state is set
   let progressListener = {
     onStateChange: function (aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -433,6 +443,8 @@ function test_setWindowStateOverwrite() {
 
 
 function test_setBrowserStateInterrupted() {
+  Services.prefs.setBoolPref("browser.sessionstore.restore_on_demand", false);
+
   // We have our own progress listener for this test, which we'll attach before our state is set
   let progressListener = {
     onStateChange: function (aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -625,6 +637,8 @@ function test_reload() {
 // This doesn't actually test anything, just does a cascaded restore with default
 // settings. This really just sets up to test that reloads work.
 function test_reloadCascadeSetup() {
+  Services.prefs.setBoolPref("browser.sessionstore.restore_on_demand", false);
+
   // We have our own progress listener for this test, which we'll attach before our state is set
   let progressListener = {
     onStateChange: function (aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -770,6 +784,69 @@ function test_apptabs_only() {
 
     window.gBrowser.removeTabsProgressListener(progressListener);
     runNextTest();
+  }
+
+  window.gBrowser.addTabsProgressListener(progressListener);
+  ss.setBrowserState(JSON.stringify(state));
+}
+
+
+// This test ensures that app tabs are not restored when restore_pinned_tabs_on_demand is set
+function test_restore_apptabs_ondemand() {
+  Services.prefs.setBoolPref("browser.sessionstore.restore_on_demand", true);
+  Services.prefs.setBoolPref("browser.sessionstore.restore_pinned_tabs_on_demand", true);
+
+  // We have our own progress listener for this test, which we'll attach before our state is set
+  let progressListener = {
+    onStateChange: function (aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
+      if (aBrowser.__SS_restoreState == TAB_STATE_RESTORING &&
+          aStateFlags & Ci.nsIWebProgressListener.STATE_STOP &&
+          aStateFlags & Ci.nsIWebProgressListener.STATE_IS_NETWORK &&
+          aStateFlags & Ci.nsIWebProgressListener.STATE_IS_WINDOW)
+        test_restore_apptabs_ondemand_progressCallback(aBrowser);
+    }
+  }
+
+  let state = { windows: [{ tabs: [
+    { entries: [{ url: "http://example.org/#1" }], extData: { "uniq": r() }, pinned: true },
+    { entries: [{ url: "http://example.org/#2" }], extData: { "uniq": r() }, pinned: true },
+    { entries: [{ url: "http://example.org/#3" }], extData: { "uniq": r() }, pinned: true },
+    { entries: [{ url: "http://example.org/#4" }], extData: { "uniq": r() } },
+    { entries: [{ url: "http://example.org/#5" }], extData: { "uniq": r() } },
+    { entries: [{ url: "http://example.org/#6" }], extData: { "uniq": r() } },
+    { entries: [{ url: "http://example.org/#7" }], extData: { "uniq": r() } },
+  ], selected: 5 }] };
+
+  let loadCount = 0;
+  let nextTestTimer;
+  function test_restore_apptabs_ondemand_progressCallback(aBrowser) {
+    loadCount++;
+
+    // get the tab
+    let tab;
+    for (let i = 0; i < window.gBrowser.tabs.length; i++) {
+      if (!tab && window.gBrowser.tabs[i].linkedBrowser == aBrowser)
+        tab = window.gBrowser.tabs[i];
+    }
+
+    // Check that the load only comes from the selected tab.
+    ok(gBrowser.selectedTab == tab,
+       "test_restore_apptabs_ondemand: load came from selected tab");
+
+    // We should get only 1 load: the selected tab
+    if (loadCount == 1) {
+      nextTestTimer = setTimeout(nextTest, 1000);
+      return;
+    }
+    else if (loadCount > 1) {
+      clearTimeout(nextTestTimer);
+    }
+
+    function nextTest() {
+      window.gBrowser.removeTabsProgressListener(progressListener);
+      runNextTest();
+    }
+    nextTest();
   }
 
   window.gBrowser.addTabsProgressListener(progressListener);

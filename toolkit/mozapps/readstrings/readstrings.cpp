@@ -178,7 +178,7 @@ ReadStrings(const NS_tchar *path,
   size_t flen = size_t(len);
   AutoCharArray fileContents(flen + 1);
   if (!fileContents)
-    return MEM_ERROR;
+    return READ_STRINGS_MEM_ERROR;
 
   /* read the file in one swoop */
   if (fseek(fp, 0, SEEK_SET) != 0)
@@ -241,7 +241,7 @@ ReadStrings(const NS_tchar *path,
     if (keyIndex >= 0 && (unsigned int)keyIndex < numStrings)
     {
       strncpy(results[keyIndex], token, MAX_TEXT_LEN - 1);
-      results[keyIndex][MAX_TEXT_LEN - 1] = 0;
+      results[keyIndex][MAX_TEXT_LEN - 1] = '\0';
       read++;
     }
   }
@@ -261,9 +261,9 @@ ReadStrings(const NS_tchar *path, StringTable *results)
   int result = ReadStrings(path, kUpdaterKeys, kNumStrings, updater_strings);
 
   strncpy(results->title, updater_strings[0], MAX_TEXT_LEN - 1);
-  results->title[MAX_TEXT_LEN - 1] = 0;
+  results->title[MAX_TEXT_LEN - 1] = '\0';
   strncpy(results->info, updater_strings[1], MAX_TEXT_LEN - 1);
-  results->info[MAX_TEXT_LEN - 1] = 0;
+  results->info[MAX_TEXT_LEN - 1] = '\0';
 
   return result;
 }

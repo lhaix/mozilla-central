@@ -43,6 +43,7 @@ mozilla_StartupTimeline_Event(SESSION_RESTORED, "sessionRestored")
 mozilla_StartupTimeline_Event(CREATE_TOP_LEVEL_WINDOW, "createTopLevelWindow")
 mozilla_StartupTimeline_Event(LINKER_INITIALIZED, "linkerInitialized")
 mozilla_StartupTimeline_Event(LIBRARIES_LOADED, "librariesLoaded")
+mozilla_StartupTimeline_Event(FIRST_LOAD_URI, "firstLoadURI")
 #else
 
 #ifndef mozilla_StartupTimeline
@@ -50,6 +51,18 @@ mozilla_StartupTimeline_Event(LIBRARIES_LOADED, "librariesLoaded")
 
 #include "prtime.h"
 #include "nscore.h"
+
+#ifdef MOZ_LINKER
+extern "C" {
+/* This symbol is resolved by the custom linker. The function it resolves
+ * to dumps some statistics about the linker at the key events recorded
+ * by the startup timeline. */
+extern void __moz_linker_stats(const char *str)
+NS_VISIBILITY_DEFAULT __attribute__((weak));
+} /* extern "C" */
+#else
+
+#endif
 
 namespace mozilla {
 
@@ -72,11 +85,19 @@ public:
 
   static void Record(Event ev, PRTime when = PR_Now()) {
     sStartupTimeline[ev] = when;
+#ifdef MOZ_LINKER
+    if (__moz_linker_stats)
+      __moz_linker_stats(Describe(ev));
+#endif
   }
 
-  static void RecordOnce(Event ev, PRTime when = PR_Now()) {
-    if (!sStartupTimeline[ev])
-      sStartupTimeline[ev] = when;
+  static void RecordOnce(Event ev) {
+    if (!HasRecord(ev))
+      Record(ev);
+  }
+
+  static bool HasRecord(Event ev) {
+    return sStartupTimeline[ev];
   }
 
 private:

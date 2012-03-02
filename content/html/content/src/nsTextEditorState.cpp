@@ -159,7 +159,7 @@ SuppressEventHandlers(nsPresContext* aPresContext)
   return suppressHandlers;
 }
 
-class nsAnonDivObserver : public nsStubMutationObserver
+class nsAnonDivObserver MOZ_FINAL : public nsStubMutationObserver
 {
 public:
   nsAnonDivObserver(nsTextEditorState* aTextEditorState)
@@ -174,8 +174,8 @@ private:
   nsTextEditorState* mTextEditorState;
 };
 
-class nsTextInputSelectionImpl : public nsSupportsWeakReference
-                               , public nsISelectionController
+class nsTextInputSelectionImpl MOZ_FINAL : public nsSupportsWeakReference
+                                         , public nsISelectionController
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -217,6 +217,7 @@ public:
   NS_IMETHOD ScrollCharacter(bool aRight);
   NS_IMETHOD SelectAll(void);
   NS_IMETHOD CheckVisibility(nsIDOMNode *node, PRInt16 startOffset, PRInt16 EndOffset, bool *_retval);
+  virtual nsresult CheckVisibilityContent(nsIContent* aNode, PRInt16 aStartOffset, PRInt16 aEndOffset, bool* aRetval);
 
 private:
   nsRefPtr<nsFrameSelection> mFrameSelection;
@@ -606,6 +607,22 @@ nsTextInputSelectionImpl::CheckVisibility(nsIDOMNode *node, PRInt16 startOffset,
 
 }
 
+nsresult
+nsTextInputSelectionImpl::CheckVisibilityContent(nsIContent* aNode,
+                                                 PRInt16 aStartOffset,
+                                                 PRInt16 aEndOffset,
+                                                 bool* aRetval)
+{
+  if (!mPresShellWeak) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  nsCOMPtr<nsISelectionController> shell = do_QueryReferent(mPresShellWeak);
+  NS_ENSURE_TRUE(shell, NS_ERROR_FAILURE);
+
+  return shell->CheckVisibilityContent(aNode, aStartOffset, aEndOffset, aRetval);
+}
+
 class nsTextInputListener : public nsISelectionListener,
                             public nsIDOMEventListener,
                             public nsIEditorObserver,
@@ -832,15 +849,11 @@ nsTextInputListener::EditAction()
   nsCOMPtr<nsIEditor> editor;
   frame->GetEditor(getter_AddRefs(editor));
 
-  nsCOMPtr<nsITransactionManager> manager;
-  editor->GetTransactionManager(getter_AddRefs(manager));
-  NS_ENSURE_TRUE(manager, NS_ERROR_FAILURE);
-
   // Get the number of undo / redo items
   PRInt32 numUndoItems = 0;
   PRInt32 numRedoItems = 0;
-  manager->GetNumberOfUndoItems(&numUndoItems);
-  manager->GetNumberOfRedoItems(&numRedoItems);
+  editor->GetNumberOfUndoItems(&numUndoItems);
+  editor->GetNumberOfRedoItems(&numRedoItems);
   if ((numUndoItems && !mHadUndoItems) || (!numUndoItems && mHadUndoItems) ||
       (numRedoItems && !mHadRedoItems) || (!numRedoItems && mHadRedoItems)) {
     // Modify the menu if undo or redo items are different

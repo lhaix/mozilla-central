@@ -430,9 +430,16 @@ DOMCI_CLASS(GeoPositionError)
 
 DOMCI_CLASS(MozBatteryManager)
 
+DOMCI_CLASS(MozPowerManager)
+
 DOMCI_CLASS(MozSmsManager)
 DOMCI_CLASS(MozSmsMessage)
 DOMCI_CLASS(MozSmsEvent)
+DOMCI_CLASS(MozSmsRequest)
+DOMCI_CLASS(MozSmsFilter)
+DOMCI_CLASS(MozSmsCursor)
+
+DOMCI_CLASS(MozConnection)
 
 // @font-face in CSS
 DOMCI_CLASS(CSSFontFaceRule)
@@ -479,6 +486,7 @@ DOMCI_CLASS(WebGLShaderPrecisionFormat)
 DOMCI_CLASS(WebGLActiveInfo)
 DOMCI_CLASS(WebGLExtension)
 DOMCI_CLASS(WebGLExtensionStandardDerivatives)
+DOMCI_CLASS(WebGLExtensionTextureFilterAnisotropic)
 DOMCI_CLASS(WebGLExtensionLoseContext)
 
 DOMCI_CLASS(PaintRequest)
@@ -532,3 +540,10 @@ DOMCI_CLASS(Telephony)
 DOMCI_CLASS(TelephonyCall)
 DOMCI_CLASS(CallEvent)
 #endif
+
+#ifdef MOZ_B2G_BT
+DOMCI_CLASS(BluetoothAdapter)
+#endif
+
+DOMCI_CLASS(DOMError)
+DOMCI_CLASS(DOMRequest)

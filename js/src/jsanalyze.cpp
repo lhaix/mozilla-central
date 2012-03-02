@@ -57,11 +57,11 @@ void
 PrintBytecode(JSContext *cx, JSScript *script, jsbytecode *pc)
 {
     printf("#%u:", script->id());
-    LifoAlloc lifoAlloc(1024);
-    Sprinter sprinter;
-    INIT_SPRINTER(cx, &sprinter, &lifoAlloc, 0);
+    Sprinter sprinter(cx);
+    if (!sprinter.init())
+        return;
     js_Disassemble1(cx, script, pc, pc - script->code, true, &sprinter);
-    fprintf(stdout, "%s", sprinter.base);
+    fprintf(stdout, "%s", sprinter.string());
 }
 #endif
 
@@ -119,43 +119,20 @@ ScriptAnalysis::checkAliasedName(JSContext *cx, jsbytecode *pc)
 
     JSAtom *atom;
     if (JSOp(*pc) == JSOP_DEFFUN) {
-        JSFunction *fun = script->getFunction(js_GetIndexFromBytecode(script, pc, 0));
+        JSFunction *fun = script->getFunction(GET_UINT32_INDEX(pc));
         atom = fun->atom;
     } else {
         JS_ASSERT(JOF_TYPE(js_CodeSpec[*pc].format) == JOF_ATOM);
-        atom = script->getAtom(js_GetIndexFromBytecode(script, pc, 0));
+        atom = script->getAtom(GET_UINT32_INDEX(pc));
     }
 
-    uintN index;
+    unsigned index;
     BindingKind kind = script->bindings.lookup(cx, atom, &index);
 
     if (kind == ARGUMENT)
         escapedSlots[ArgSlot(index)] = true;
     else if (kind == VARIABLE)
         escapedSlots[LocalSlot(script, index)] = true;
-}
-
-// return whether op bytecodes do not fallthrough (they may do a jump).
-static inline bool
-BytecodeNoFallThrough(JSOp op)
-{
-    switch (op) {
-      case JSOP_GOTO:
-      case JSOP_DEFAULT:
-      case JSOP_RETURN:
-      case JSOP_STOP:
-      case JSOP_RETRVAL:
-      case JSOP_THROW:
-      case JSOP_TABLESWITCH:
-      case JSOP_LOOKUPSWITCH:
-      case JSOP_FILTER:
-        return true;
-      case JSOP_GOSUB:
-        // these fall through indirectly, after executing a 'finally'.
-        return false;
-      default:
-        return false;
-    }
 }
 
 void
@@ -171,7 +148,7 @@ ScriptAnalysis::analyzeBytecode(JSContext *cx)
     numSlots = TotalSlots(script);
 
     codeArray = tla.newArray<Bytecode*>(length);
-    escapedSlots = tla.newArray<JSPackedBool>(numSlots);
+    escapedSlots = tla.newArray<bool>(numSlots);
 
     if (!codeArray || !escapedSlots) {
         setOOM(cx);
@@ -219,6 +196,8 @@ ScriptAnalysis::analyzeBytecode(JSContext *cx)
         usesReturnValue_ = true;
 
     bool heavyweight = script->function() && script->function()->isHeavyweight();
+
+    isCompileable = true;
 
     isInlineable = true;
     if (script->nClosedArgs || script->nClosedVars || heavyweight ||
@@ -353,13 +332,14 @@ ScriptAnalysis::analyzeBytecode(JSContext *cx)
             isInlineable = false;
             break;
 
+          case JSOP_QNAMEPART:
+          case JSOP_QNAMECONST:
+            isCompileable = false;
           case JSOP_NAME:
           case JSOP_CALLNAME:
           case JSOP_BINDNAME:
           case JSOP_SETNAME:
           case JSOP_DELNAME:
-          case JSOP_QNAMEPART:
-          case JSOP_QNAMECONST:
             checkAliasedName(cx, pc);
             usesScopeChain_ = true;
             isInlineable = false;
@@ -381,7 +361,7 @@ ScriptAnalysis::analyzeBytecode(JSContext *cx)
 
           case JSOP_ENTERWITH:
             addsScopeObjects_ = true;
-            isInlineable = canTrackVars = false;
+            isCompileable = isInlineable = canTrackVars = false;
             break;
 
           case JSOP_ENTERLET0:
@@ -442,7 +422,7 @@ ScriptAnalysis::analyzeBytecode(JSContext *cx)
             getCode(defaultOffset).safePoint = true;
 
             while (npairs) {
-                pc2 += INDEX_LEN;
+                pc2 += UINT32_INDEX_LEN;
                 unsigned targetOffset = offset + GET_JUMP_OFFSET(pc2);
                 if (!addJump(cx, targetOffset, &nextOffset, &forwardJump, stackDepth))
                     return;
@@ -506,7 +486,8 @@ ScriptAnalysis::analyzeBytecode(JSContext *cx)
           case JSOP_DECLOCAL:
           case JSOP_LOCALINC:
           case JSOP_LOCALDEC:
-          case JSOP_SETLOCAL: {
+          case JSOP_SETLOCAL:
+          case JSOP_SETLOCALPOP: {
             uint32_t local = GET_SLOTNO(pc);
             if (local >= script->nfixed) {
                 localsAliasStack_ = true;
@@ -540,7 +521,105 @@ ScriptAnalysis::analyzeBytecode(JSContext *cx)
             isInlineable = false;
             break;
 
+          /* Additional opcodes which can be both compiled both normally and inline. */
+          case JSOP_NOP:
+          case JSOP_UNDEFINED:
+          case JSOP_GOTO:
+          case JSOP_DEFAULT:
+          case JSOP_IFEQ:
+          case JSOP_IFNE:
+          case JSOP_ITERNEXT:
+          case JSOP_DUP:
+          case JSOP_DUP2:
+          case JSOP_SWAP:
+          case JSOP_PICK:
+          case JSOP_BITOR:
+          case JSOP_BITXOR:
+          case JSOP_BITAND:
+          case JSOP_LT:
+          case JSOP_LE:
+          case JSOP_GT:
+          case JSOP_GE:
+          case JSOP_EQ:
+          case JSOP_NE:
+          case JSOP_LSH:
+          case JSOP_RSH:
+          case JSOP_URSH:
+          case JSOP_ADD:
+          case JSOP_SUB:
+          case JSOP_MUL:
+          case JSOP_DIV:
+          case JSOP_MOD:
+          case JSOP_NOT:
+          case JSOP_BITNOT:
+          case JSOP_NEG:
+          case JSOP_POS:
+          case JSOP_DELPROP:
+          case JSOP_DELELEM:
+          case JSOP_TYPEOF:
+          case JSOP_TYPEOFEXPR:
+          case JSOP_VOID:
+          case JSOP_GETPROP:
+          case JSOP_CALLPROP:
+          case JSOP_LENGTH:
+          case JSOP_GETELEM:
+          case JSOP_CALLELEM:
+          case JSOP_TOID:
+          case JSOP_SETELEM:
+          case JSOP_IMPLICITTHIS:
+          case JSOP_DOUBLE:
+          case JSOP_STRING:
+          case JSOP_ZERO:
+          case JSOP_ONE:
+          case JSOP_NULL:
+          case JSOP_FALSE:
+          case JSOP_TRUE:
+          case JSOP_OR:
+          case JSOP_AND:
+          case JSOP_CASE:
+          case JSOP_STRICTEQ:
+          case JSOP_STRICTNE:
+          case JSOP_ITER:
+          case JSOP_MOREITER:
+          case JSOP_ENDITER:
+          case JSOP_POP:
+          case JSOP_GETARG:
+          case JSOP_CALLARG:
+          case JSOP_BINDGNAME:
+          case JSOP_UINT16:
+          case JSOP_NEWINIT:
+          case JSOP_NEWARRAY:
+          case JSOP_NEWOBJECT:
+          case JSOP_ENDINIT:
+          case JSOP_INITMETHOD:
+          case JSOP_INITPROP:
+          case JSOP_INITELEM:
+          case JSOP_SETPROP:
+          case JSOP_SETMETHOD:
+          case JSOP_IN:
+          case JSOP_INSTANCEOF:
+          case JSOP_LINENO:
+          case JSOP_ENUMELEM:
+          case JSOP_CONDSWITCH:
+          case JSOP_LABEL:
+          case JSOP_RETRVAL:
+          case JSOP_GETGNAME:
+          case JSOP_CALLGNAME:
+          case JSOP_SETGNAME:
+          case JSOP_REGEXP:
+          case JSOP_OBJECT:
+          case JSOP_UINT24:
+          case JSOP_GETXPROP:
+          case JSOP_INT8:
+          case JSOP_INT32:
+          case JSOP_HOLE:
+          case JSOP_LOOPHEAD:
+          case JSOP_LOOPENTRY:
+            break;
+
           default:
+            if (!(js_CodeSpec[op].format & JOF_DECOMPOSE))
+                isCompileable = isInlineable = false;
             break;
         }
 
@@ -838,7 +917,7 @@ ScriptAnalysis::analyzeLifetimes(JSContext *cx)
 
                     jsbytecode *entrypc = script->code + entry;
 
-                    if (JSOp(*entrypc) == JSOP_GOTO)
+                    if (JSOp(*entrypc) == JSOP_GOTO || JSOp(*entrypc) == JSOP_FILTER)
                         loop->entry = entry + GET_JUMP_OFFSET(entrypc);
                     else
                         loop->entry = targetOffset;
@@ -846,6 +925,8 @@ ScriptAnalysis::analyzeLifetimes(JSContext *cx)
                     /* Do-while loop at the start of the script. */
                     loop->entry = targetOffset;
                 }
+                JS_ASSERT(script->code[loop->entry] == JSOP_LOOPHEAD ||
+                          script->code[loop->entry] == JSOP_LOOPENTRY);
             } else {
                 for (unsigned i = 0; i < savedCount; i++) {
                     LifetimeVariable &var = *saved[i];
@@ -961,12 +1042,15 @@ ScriptAnalysis::killVariable(JSContext *cx, LifetimeVariable &var, unsigned offs
         /*
          * The variable is live even before the write, due to an enclosing try
          * block. We need to split the lifetime to indicate there was a write.
+         * We set the new interval's savedEnd to 0, since it will always be
+         * adjacent to the old interval, so it never needs to be extended.
          */
-        var.lifetime = cx->typeLifoAlloc().new_<Lifetime>(start, offset, var.lifetime);
+        var.lifetime = cx->typeLifoAlloc().new_<Lifetime>(start, 0, var.lifetime);
         if (!var.lifetime) {
             setOOM(cx);
             return;
         }
+        var.lifetime->end = offset;
     } else {
         var.saved = var.lifetime;
         var.savedEnd = 0;
@@ -994,25 +1078,43 @@ ScriptAnalysis::extendVariable(JSContext *cx, LifetimeVariable &var,
     var.lifetime->start = start;
 
     /*
-     * When walking backwards through loop bodies, we don't know which vars
-     * are live at the loop's backedge. We save the endpoints for lifetime
-     * segments which we *would* use if the variables were live at the backedge
-     * and extend the variable with new lifetimes if we find the variable is
-     * indeed live at the head of the loop.
+     * Consider this code:
      *
-     * while (...) {
-     *   if (x #1) { ... }
-     *   ...
-     *   if (... #2) { x = 0; #3}
-     * }
+     *   while (...) { (#1)
+     *       use x;    (#2)
+     *       ...
+     *       x = ...;  (#3)
+     *       ...
+     *   }             (#4)
      *
-     * If x is not live after the loop, we treat it as dead in the walk and
-     * make a point lifetime for the write at #3. At the beginning of that
-     * basic block (#2), we save the loop endpoint; if we knew x was live in
-     * the next iteration then a new lifetime would be made here. At #1 we
-     * mark x live again, make a segment between the head of the loop and #1,
-     * and then extend x with loop tail lifetimes from #1 to #2, and from #3
-     * to the back edge.
+     * Just before analyzing the while statement, there would be a live range
+     * from #1..#2 and a "point range" at #3. The job of extendVariable is to
+     * create a new live range from #3..#4.
+     *
+     * However, more extensions may be required if the definition of x is
+     * conditional. Consider the following.
+     *
+     *   while (...) {     (#1)
+     *       use x;        (#2)
+     *       ...
+     *       if (...)      (#5)
+     *           x = ...;  (#3)
+     *       ...
+     *   }                 (#4)
+     *
+     * Assume that x is not used after the loop. Then, before extendVariable is
+     * run, the live ranges would be the same as before (#1..#2 and #3..#3). We
+     * still need to create a range from #3..#4. But, since the assignment at #3
+     * may never run, we also need to create a range from #2..#3. This is done
+     * as follows.
+     *
+     * Each time we create a Lifetime, we store the start of the most recently
+     * seen sequence of conditional code in the Lifetime's savedEnd field. So,
+     * when creating the Lifetime at #2, we set the Lifetime's savedEnd to
+     * #5. (The start of the most recent conditional is cached in each
+     * variable's savedEnd field.) Consequently, extendVariable is able to
+     * create a new interval from #2..#5 using the savedEnd field of the
+     * existing #1..#2 interval.
      */
 
     Lifetime *segment = var.lifetime;
@@ -1116,38 +1218,39 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
      * Current value of each variable and stack value. Empty for missing or
      * untracked entries, i.e. escaping locals and arguments.
      */
-    SSAValue *values = (SSAValue *)
-        cx->calloc_((numSlots + maxDepth) * sizeof(SSAValue));
+    SSAValueInfo *values = (SSAValueInfo *)
+        cx->calloc_((numSlots + maxDepth) * sizeof(SSAValueInfo));
     if (!values) {
         setOOM(cx);
         return;
     }
     struct FreeSSAValues {
         JSContext *cx;
-        SSAValue *values;
-        FreeSSAValues(JSContext *cx, SSAValue *values) : cx(cx), values(values) {}
+        SSAValueInfo *values;
+        FreeSSAValues(JSContext *cx, SSAValueInfo *values) : cx(cx), values(values) {}
         ~FreeSSAValues() { cx->free_(values); }
     } free(cx, values);
 
-    SSAValue *stack = values + numSlots;
+    SSAValueInfo *stack = values + numSlots;
     uint32_t stackDepth = 0;
 
     for (uint32_t slot = ArgSlot(0); slot < numSlots; slot++) {
         if (trackSlot(slot))
-            values[slot].initInitial(slot);
+            values[slot].v.initInitial(slot);
     }
 
     /*
-     * All target offsets for forward jumps we in the middle of. We lazily add
-     * pending entries at these targets for the original value of variables
-     * modified before the branch rejoins.
+     * All target offsets for forward jumps we have seen (including ones whose
+     * target we have advanced past). We lazily add pending entries at these
+     * targets for the original value of variables modified before the branch
+     * rejoins.
      */
     Vector<uint32_t> branchTargets(cx);
 
     /*
-     * Subset of branchTargets which are also exception handlers. Any value of
-     * a variable modified before the target is reached is a potential value
-     * at that target, along with the lazily added original value.
+     * Subset of branchTargets which are exception handlers at future offsets.
+     * Any new value of a variable modified before the target is reached is a
+     * potential value at that target, along with the lazy original value.
      */
     Vector<uint32_t> exceptionTargets(cx);
 
@@ -1162,6 +1265,17 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
         if (!code) {
             offset = successorOffset;
             continue;
+        }
+
+        if (code->exceptionEntry) {
+            /* Remove from exception targets list, which reflects only future targets. */
+            for (size_t i = 0; i < exceptionTargets.length(); i++) {
+                if (exceptionTargets[i] == offset) {
+                    exceptionTargets[i] = exceptionTargets.back();
+                    exceptionTargets.popBack();
+                    break;
+                }
+            }
         }
 
         if (code->stackDepth > stackDepth)
@@ -1185,9 +1299,7 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
              * loops), but in such cases the original value is pushed back.
              */
             Vector<SlotValue> *&pending = code->pendingValues;
-            if (pending) {
-                removeBranchTarget(branchTargets, exceptionTargets, offset);
-            } else {
+            if (!pending) {
                 pending = cx->new_< Vector<SlotValue> >(cx);
                 if (!pending) {
                     setOOM(cx);
@@ -1203,7 +1315,7 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
             for (unsigned i = 0; i < pending->length(); i++) {
                 SlotValue &v = (*pending)[i];
                 if (v.slot < numSlots && liveness(v.slot).firstWrite(code->loop) != UINT32_MAX) {
-                    if (v.value.kind() != SSAValue::PHI || v.value.phiOffset() < offset) {
+                    if (v.value.kind() != SSAValue::PHI || v.value.phiOffset() != offset) {
                         SSAValue ov = v.value;
                         if (!makePhi(cx, v.slot, offset, &ov))
                             return;
@@ -1212,9 +1324,9 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
                     }
                 }
                 if (code->fallthrough || code->jumpFallthrough)
-                    mergeValue(cx, offset, values[v.slot], &v);
-                mergeBranchTarget(cx, values[v.slot], v.slot, branchTargets);
-                values[v.slot] = v.value;
+                    mergeValue(cx, offset, values[v.slot].v, &v);
+                mergeBranchTarget(cx, values[v.slot], v.slot, branchTargets, offset - 1);
+                values[v.slot].v = v.value;
             }
 
             /*
@@ -1229,7 +1341,7 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
                     continue;
                 if (liveness(slot).firstWrite(code->loop) == UINT32_MAX)
                     continue;
-                if (values[slot].kind() == SSAValue::PHI && values[slot].phiOffset() == offset) {
+                if (values[slot].v.kind() == SSAValue::PHI && values[slot].v.phiOffset() == offset) {
                     /* There is already a pending entry for this slot. */
                     continue;
                 }
@@ -1237,9 +1349,9 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
                 if (!makePhi(cx, slot, offset, &ov))
                     return;
                 if (code->fallthrough || code->jumpFallthrough)
-                    insertPhi(cx, ov, values[slot]);
-                mergeBranchTarget(cx, values[slot], slot, branchTargets);
-                values[slot] = ov;
+                    insertPhi(cx, ov, values[slot].v);
+                mergeBranchTarget(cx, values[slot], slot, branchTargets, offset - 1);
+                values[slot].v = ov;
                 if (!pending->append(SlotValue(slot, ov))) {
                     setOOM(cx);
                     return;
@@ -1256,16 +1368,16 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
              * that values written inside the block but not subsequently
              * overwritten are picked up.
              */
-            bool exception = removeBranchTarget(branchTargets, exceptionTargets, offset);
+            bool exception = getCode(offset).exceptionEntry;
             Vector<SlotValue> *pending = code->pendingValues;
             for (unsigned i = 0; i < pending->length(); i++) {
                 SlotValue &v = (*pending)[i];
                 if (code->fallthrough || code->jumpFallthrough ||
-                    (exception && values[v.slot].kind() != SSAValue::EMPTY)) {
-                    mergeValue(cx, offset, values[v.slot], &v);
+                    (exception && values[v.slot].v.kind() != SSAValue::EMPTY)) {
+                    mergeValue(cx, offset, values[v.slot].v, &v);
                 }
-                mergeBranchTarget(cx, values[v.slot], v.slot, branchTargets);
-                values[v.slot] = v.value;
+                mergeBranchTarget(cx, values[v.slot], v.slot, branchTargets, offset);
+                values[v.slot].v = v.value;
             }
             freezeNewValues(cx, offset);
         }
@@ -1288,7 +1400,7 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
                 return;
             }
             for (unsigned i = 0; i < nuses; i++) {
-                SSAValue &v = stack[stackDepth - 1 - i];
+                SSAValue &v = stack[stackDepth - 1 - i].v;
                 code->poppedValues[i] = v;
                 v.clear();
             }
@@ -1299,7 +1411,7 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
                  */
                 uint32_t slot = GetBytecodeSlot(script, pc);
                 if (trackSlot(slot))
-                    code->poppedValues[nuses] = values[slot];
+                    code->poppedValues[nuses] = values[slot].v;
                 else
                     code->poppedValues[nuses].clear();
             }
@@ -1328,7 +1440,7 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
         stackDepth -= nuses;
 
         for (unsigned i = 0; i < ndefs; i++)
-            stack[stackDepth + i].initPushed(offset, i);
+            stack[stackDepth + i].v.initPushed(offset, i);
 
         unsigned xdefs = ExtendedDef(pc) ? ndefs + 1 : ndefs;
         if (xdefs) {
@@ -1342,29 +1454,16 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
 
         stackDepth += ndefs;
 
-        switch (op) {
-          case JSOP_SETARG:
-          case JSOP_SETLOCAL:
-          case JSOP_SETLOCALPOP:
-          case JSOP_DEFLOCALFUN:
-          case JSOP_DEFLOCALFUN_FC:
-          case JSOP_INCARG:
-          case JSOP_DECARG:
-          case JSOP_ARGINC:
-          case JSOP_ARGDEC:
-          case JSOP_INCLOCAL:
-          case JSOP_DECLOCAL:
-          case JSOP_LOCALINC:
-          case JSOP_LOCALDEC: {
+        if (BytecodeUpdatesSlot(op)) {
             uint32_t slot = GetBytecodeSlot(script, pc);
             if (trackSlot(slot)) {
-                mergeBranchTarget(cx, values[slot], slot, branchTargets);
-                mergeExceptionTarget(cx, values[slot], slot, exceptionTargets);
-                values[slot].initWritten(slot, offset);
+                mergeBranchTarget(cx, values[slot], slot, branchTargets, offset);
+                mergeExceptionTarget(cx, values[slot].v, slot, exceptionTargets);
+                values[slot].v.initWritten(slot, offset);
             }
-            break;
-          }
+        }
 
+        switch (op) {
           case JSOP_GETARG:
           case JSOP_GETLOCAL: {
             uint32_t slot = GetBytecodeSlot(script, pc);
@@ -1373,7 +1472,7 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
                  * Propagate the current value of the local to the pushed value,
                  * and remember it with an extended use on the opcode.
                  */
-                stack[stackDepth - 1] = code->poppedValues[0] = values[slot];
+                stack[stackDepth - 1].v = code->poppedValues[0] = values[slot].v;
             }
             break;
           }
@@ -1381,34 +1480,34 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
           /* Short circuit ops which push back one of their operands. */
 
           case JSOP_MOREITER:
-            stack[stackDepth - 2] = code->poppedValues[0];
+            stack[stackDepth - 2].v = code->poppedValues[0];
             break;
 
           case JSOP_INITPROP:
           case JSOP_INITMETHOD:
-            stack[stackDepth - 1] = code->poppedValues[1];
+            stack[stackDepth - 1].v = code->poppedValues[1];
             break;
 
           case JSOP_INITELEM:
-            stack[stackDepth - 1] = code->poppedValues[2];
+            stack[stackDepth - 1].v = code->poppedValues[2];
             break;
 
           case JSOP_DUP:
-            stack[stackDepth - 1] = stack[stackDepth - 2] = code->poppedValues[0];
+            stack[stackDepth - 1].v = stack[stackDepth - 2].v = code->poppedValues[0];
             break;
 
           case JSOP_DUP2:
-            stack[stackDepth - 1] = stack[stackDepth - 3] = code->poppedValues[0];
-            stack[stackDepth - 2] = stack[stackDepth - 4] = code->poppedValues[1];
+            stack[stackDepth - 1].v = stack[stackDepth - 3].v = code->poppedValues[0];
+            stack[stackDepth - 2].v = stack[stackDepth - 4].v = code->poppedValues[1];
             break;
 
           case JSOP_SWAP:
             /* Swap is like pick 1. */
           case JSOP_PICK: {
             unsigned pickedDepth = (op == JSOP_SWAP ? 1 : pc[1]);
-            stack[stackDepth - 1] = code->poppedValues[pickedDepth];
+            stack[stackDepth - 1].v = code->poppedValues[pickedDepth];
             for (unsigned i = 0; i < pickedDepth; i++)
-                stack[stackDepth - 2 - i] = code->poppedValues[i];
+                stack[stackDepth - 2 - i].v = code->poppedValues[i];
             break;
           }
 
@@ -1425,14 +1524,19 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
             jsint high = GET_JUMP_OFFSET(pc2);
             pc2 += JUMP_OFFSET_LEN;
 
-            checkBranchTarget(cx, defaultOffset, branchTargets, values, stackDepth);
+            Vector<SlotValue> *pending = NULL;
+            uint32_t pendingOffset = 0;
 
             for (jsint i = low; i <= high; i++) {
                 unsigned targetOffset = offset + GET_JUMP_OFFSET(pc2);
                 if (targetOffset != offset)
-                    checkBranchTarget(cx, targetOffset, branchTargets, values, stackDepth);
+                    checkBranchTarget(cx, targetOffset, branchTargets, values, stackDepth,
+                                      &pending, &pendingOffset);
                 pc2 += JUMP_OFFSET_LEN;
             }
+
+            checkBranchTarget(cx, defaultOffset, branchTargets, values, stackDepth,
+                              &pending, &pendingOffset);
             break;
           }
 
@@ -1442,15 +1546,20 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
             unsigned npairs = GET_UINT16(pc2);
             pc2 += UINT16_LEN;
 
-            checkBranchTarget(cx, defaultOffset, branchTargets, values, stackDepth);
+            Vector<SlotValue> *pending = NULL;
+            uint32_t pendingOffset = 0;
 
             while (npairs) {
-                pc2 += INDEX_LEN;
+                pc2 += UINT32_INDEX_LEN;
                 unsigned targetOffset = offset + GET_JUMP_OFFSET(pc2);
-                checkBranchTarget(cx, targetOffset, branchTargets, values, stackDepth);
+                checkBranchTarget(cx, targetOffset, branchTargets, values, stackDepth,
+                                  &pending, &pendingOffset);
                 pc2 += JUMP_OFFSET_LEN;
                 npairs--;
             }
+
+            checkBranchTarget(cx, defaultOffset, branchTargets, values, stackDepth,
+                              &pending, &pendingOffset);
             break;
           }
 
@@ -1470,6 +1579,13 @@ ScriptAnalysis::analyzeSSA(JSContext *cx)
             }
             break;
           }
+
+          case JSOP_THROW:
+          case JSOP_RETURN:
+          case JSOP_STOP:
+          case JSOP_RETRVAL:
+            mergeAllExceptionTargets(cx, values, exceptionTargets);
+            break;
 
           default:;
         }
@@ -1533,7 +1649,7 @@ ScriptAnalysis::insertPhi(JSContext *cx, SSAValue &phi, const SSAValue &v)
      */
     if (node->length <= 8) {
         for (unsigned i = 0; i < node->length; i++) {
-            if (v.equals(node->options[i]))
+            if (v == node->options[i])
                 return;
         }
     }
@@ -1577,10 +1693,10 @@ ScriptAnalysis::mergeValue(JSContext *cx, uint32_t offset, const SSAValue &v, Sl
     /* Make sure that v is accounted for in the pending value or phi value at pv. */
     JS_ASSERT(v.kind() != SSAValue::EMPTY && pv->value.kind() != SSAValue::EMPTY);
 
-    if (v.equals(pv->value))
+    if (v == pv->value)
         return;
 
-    if (pv->value.kind() != SSAValue::PHI || pv->value.phiOffset() < offset) {
+    if (pv->value.kind() != SSAValue::PHI || pv->value.phiOffset() != offset) {
         SSAValue ov = pv->value;
         if (makePhi(cx, pv->slot, offset, &pv->value)) {
             insertPhi(cx, pv->value, v);
@@ -1589,7 +1705,6 @@ ScriptAnalysis::mergeValue(JSContext *cx, uint32_t offset, const SSAValue &v, Sl
         return;
     }
 
-    JS_ASSERT(pv->value.phiOffset() == offset);
     insertPhi(cx, pv->value, v);
 }
 
@@ -1611,7 +1726,8 @@ ScriptAnalysis::checkPendingValue(JSContext *cx, const SSAValue &v, uint32_t slo
 void
 ScriptAnalysis::checkBranchTarget(JSContext *cx, uint32_t targetOffset,
                                   Vector<uint32_t> &branchTargets,
-                                  SSAValue *values, uint32_t stackDepth)
+                                  SSAValueInfo *values, uint32_t stackDepth,
+                                  Vector<SlotValue> **ppending, uint32_t *ppendingOffset)
 {
     unsigned targetDepth = getCode(targetOffset).stackDepth;
     JS_ASSERT(targetDepth <= stackDepth);
@@ -1625,13 +1741,27 @@ ScriptAnalysis::checkBranchTarget(JSContext *cx, uint32_t targetOffset,
     if (pending) {
         for (unsigned i = 0; i < pending->length(); i++) {
             SlotValue &v = (*pending)[i];
-            mergeValue(cx, targetOffset, values[v.slot], &v);
+            mergeValue(cx, targetOffset, values[v.slot].v, &v);
         }
     } else {
-        pending = cx->new_< Vector<SlotValue> >(cx);
-        if (!pending || !branchTargets.append(targetOffset)) {
+        if (ppending && *ppending) {
+            JS_ASSERT(*ppendingOffset != targetOffset);
+            pending = *ppending;
+            getCode(Min(targetOffset, *ppendingOffset)).switchSharesPending = true;
+        } else {
+            pending = cx->new_< Vector<SlotValue> >(cx);
+            if (!pending) {
+                setOOM(cx);
+                return;
+            }
+        }
+        if (!branchTargets.append(targetOffset)) {
             setOOM(cx);
             return;
+        }
+        if (ppending) {
+            *ppending = pending;
+            *ppendingOffset = Max(targetOffset, *ppendingOffset);
         }
     }
 
@@ -1643,7 +1773,7 @@ ScriptAnalysis::checkBranchTarget(JSContext *cx, uint32_t targetOffset,
      */
     for (unsigned i = 0; i < targetDepth; i++) {
         uint32_t slot = StackSlot(script, i);
-        checkPendingValue(cx, values[slot], slot, pending);
+        checkPendingValue(cx, values[slot].v, slot, pending);
     }
 }
 
@@ -1651,6 +1781,8 @@ void
 ScriptAnalysis::checkExceptionTarget(JSContext *cx, uint32_t catchOffset,
                                      Vector<uint32_t> &exceptionTargets)
 {
+    JS_ASSERT(getCode(catchOffset).exceptionEntry);
+
     /*
      * The catch offset will already be in the branch targets, just check
      * whether this is already a known exception target.
@@ -1664,8 +1796,8 @@ ScriptAnalysis::checkExceptionTarget(JSContext *cx, uint32_t catchOffset,
 }
 
 void
-ScriptAnalysis::mergeBranchTarget(JSContext *cx, const SSAValue &value, uint32_t slot,
-                                  const Vector<uint32_t> &branchTargets)
+ScriptAnalysis::mergeBranchTarget(JSContext *cx, SSAValueInfo &value, uint32_t slot,
+                                  const Vector<uint32_t> &branchTargets, uint32_t currentOffset)
 {
     if (slot >= numSlots) {
         /*
@@ -1681,11 +1813,27 @@ ScriptAnalysis::mergeBranchTarget(JSContext *cx, const SSAValue &value, uint32_t
     /*
      * Before changing the value of a variable, make sure the old value is
      * marked at the target of any branches jumping over the current opcode.
+     * Only look at new branch targets which have appeared since the last time
+     * the variable was written.
      */
-    for (unsigned i = 0; i < branchTargets.length(); i++) {
-        Vector<SlotValue> *pending = getCode(branchTargets[i]).pendingValues;
-        checkPendingValue(cx, value, slot, pending);
+    for (int i = branchTargets.length() - 1; i >= value.branchSize; i--) {
+        if (branchTargets[i] <= currentOffset)
+            continue;
+
+        const Bytecode &code = getCode(branchTargets[i]);
+
+        /*
+         * If the pending array for this offset is shared with a later branch
+         * target, it will be updated when that offset is handled.
+         */
+        if (code.switchSharesPending)
+            continue;
+
+        Vector<SlotValue> *pending = code.pendingValues;
+        checkPendingValue(cx, value.v, slot, pending);
     }
+
+    value.branchSize = branchTargets.length();
 }
 
 void
@@ -1703,12 +1851,17 @@ ScriptAnalysis::mergeExceptionTarget(JSContext *cx, const SSAValue &value, uint3
      * seen at exception handlers via exception paths.
      */
     for (unsigned i = 0; i < exceptionTargets.length(); i++) {
-        Vector<SlotValue> *pending = getCode(exceptionTargets[i]).pendingValues;
+        unsigned offset = exceptionTargets[i];
+        Vector<SlotValue> *pending = getCode(offset).pendingValues;
 
         bool duplicate = false;
         for (unsigned i = 0; i < pending->length(); i++) {
-            if ((*pending)[i].slot == slot && (*pending)[i].value.equals(value))
+            if ((*pending)[i].slot == slot) {
                 duplicate = true;
+                SlotValue &v = (*pending)[i];
+                mergeValue(cx, offset, value, &v);
+                break;
+            }
         }
 
         if (!duplicate && !pending->append(SlotValue(slot, value)))
@@ -1716,29 +1869,18 @@ ScriptAnalysis::mergeExceptionTarget(JSContext *cx, const SSAValue &value, uint3
     }
 }
 
-bool
-ScriptAnalysis::removeBranchTarget(Vector<uint32_t> &branchTargets,
-                                   Vector<uint32_t> &exceptionTargets,
-                                   uint32_t offset)
+void
+ScriptAnalysis::mergeAllExceptionTargets(JSContext *cx, SSAValueInfo *values,
+                                         const Vector<uint32_t> &exceptionTargets)
 {
-    bool exception = false;
     for (unsigned i = 0; i < exceptionTargets.length(); i++) {
-        if (exceptionTargets[i] == offset) {
-            exceptionTargets[i] = branchTargets.back();
-            exceptionTargets.popBack();
-            exception = true;
-            break;
+        Vector<SlotValue> *pending = getCode(exceptionTargets[i]).pendingValues;
+        for (unsigned i = 0; i < pending->length(); i++) {
+            const SlotValue &v = (*pending)[i];
+            if (trackSlot(v.slot))
+                mergeExceptionTarget(cx, values[v.slot].v, v.slot, exceptionTargets);
         }
     }
-    for (unsigned i = 0; i < branchTargets.length(); i++) {
-        if (branchTargets[i] == offset) {
-            branchTargets[i] = branchTargets.back();
-            branchTargets.popBack();
-            return exception;
-        }
-    }
-    JS_ASSERT(OOM());
-    return exception;
 }
 
 void
@@ -1751,7 +1893,8 @@ ScriptAnalysis::freezeNewValues(JSContext *cx, uint32_t offset)
 
     unsigned count = pending->length();
     if (count == 0) {
-        cx->delete_(pending);
+        if (!code.switchSharesPending)
+            cx->delete_(pending);
         return;
     }
 
@@ -1766,7 +1909,8 @@ ScriptAnalysis::freezeNewValues(JSContext *cx, uint32_t offset)
     code.newValues[count].slot = 0;
     code.newValues[count].value.clear();
 
-    cx->delete_(pending);
+    if (!code.switchSharesPending)
+        cx->delete_(pending);
 }
 
 CrossSSAValue

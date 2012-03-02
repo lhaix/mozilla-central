@@ -96,7 +96,7 @@
 #include "nsContentUtils.h"
 
 using namespace mozilla;
-using namespace mozilla::imagelib;
+using namespace mozilla::image;
 
 #if defined(DEBUG_pavlov) || defined(DEBUG_timeless)
 #include "nsISimpleEnumerator.h"
@@ -136,7 +136,8 @@ static void PrintImageDecoders()
 }
 #endif
 
-
+NS_MEMORY_REPORTER_MALLOC_SIZEOF_FUN(ImagesMallocSizeOf, "images")
+ 
 class imgMemoryReporter MOZ_FINAL :
   public nsIMemoryReporter
 {
@@ -227,11 +228,11 @@ public:
 
   struct EnumArg {
     EnumArg(ReporterType aType)
-      : rtype(aType), value(0)
+      : rtype(aType), n(0)
     { }
 
     ReporterType rtype;
-    PRInt32 value;
+    size_t n;
   };
 
   static PLDHashOperator EnumEntries(const nsACString&,
@@ -255,11 +256,11 @@ public:
       return PL_DHASH_NEXT;
 
     if (rtype & RAW_BIT) {
-      arg->value += image->GetSourceHeapSize();
+      arg->n += image->HeapSizeOfSourceWithComputedFallback(ImagesMallocSizeOf);
     } else if (rtype & HEAP_BIT) {
-      arg->value += image->GetDecodedHeapSize();
+      arg->n += image->HeapSizeOfDecodedWithComputedFallback(ImagesMallocSizeOf);
     } else {
-      arg->value += image->GetDecodedNonheapSize();
+      arg->n += image->NonHeapSizeOfDecoded();
     }
 
     return PL_DHASH_NEXT;
@@ -274,7 +275,7 @@ public:
       imgLoader::sCache.EnumerateRead(EnumEntries, &arg);
     }
 
-    *amount = arg.value;
+    *amount = arg.n;
     return NS_OK;
   }
 
@@ -1653,7 +1654,7 @@ NS_IMETHODIMP imgLoader::LoadImage(nsIURI *aURI,
       entry->Touch();
 
 #ifdef DEBUG_joe
-      printf("CACHEGET: %d %s %d\n", time(NULL), spec.get(), entry->GetDataSize());
+      printf("CACHEGET: %d %s %d\n", time(NULL), spec.get(), entry->SizeOfData());
 #endif
     }
     else {
@@ -2204,7 +2205,7 @@ NS_IMETHODIMP imgCacheValidator::OnStartRequest(nsIRequest *aRequest, nsISupport
   // We use originalURI here to fulfil the imgIRequest contract on GetURI.
   nsCOMPtr<nsIURI> originalURI;
   channel->GetOriginalURI(getter_AddRefs(originalURI));
-  mNewRequest->Init(originalURI, uri, channel, channel, mNewEntry,
+  mNewRequest->Init(originalURI, uri, aRequest, channel, mNewEntry,
                     mContext, loadingPrincipal,
                     corsmode);
 

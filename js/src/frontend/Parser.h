@@ -101,7 +101,7 @@ struct Parser : private AutoGCRooter
      * tempLifoAlloc and save the pointer beyond the next Parser destructor
      * invocation.
      */
-    bool init(const jschar *base, size_t length, const char *filename, uintN lineno,
+    bool init(const jschar *base, size_t length, const char *filename, unsigned lineno,
               JSVersion version);
 
     void setPrincipals(JSPrincipals *prin, JSPrincipals *originPrin);
@@ -139,7 +139,7 @@ struct Parser : private AutoGCRooter
     /*
      * Report a parse (compile) error.
      */
-    inline bool reportErrorNumber(ParseNode *pn, uintN flags, uintN errorNumber, ...);
+    inline bool reportErrorNumber(ParseNode *pn, unsigned flags, unsigned errorNumber, ...);
 
   private:
     ParseNode *allocParseNode(size_t size) {
@@ -164,7 +164,7 @@ struct Parser : private AutoGCRooter
         ParseNode *node = allocParseNode(sizeof(ParseNode));
         if (!node)
             return NULL;
-        memcpy(node, &other, sizeof(*node));
+        PodAssign(node, &other);
         return node;
     }
 
@@ -234,7 +234,7 @@ struct Parser : private AutoGCRooter
     ParseNode *mulExpr1n();
     ParseNode *unaryExpr();
     ParseNode *memberExpr(JSBool allowCallSyntax);
-    ParseNode *primaryExpr(TokenKind tt, JSBool afterDot);
+    ParseNode *primaryExpr(TokenKind tt, bool afterDoubleDot);
     ParseNode *parenExpr(JSBool *genexp = NULL);
 
     /*
@@ -248,7 +248,7 @@ struct Parser : private AutoGCRooter
     ParseNode *unaryOpExpr(ParseNodeKind kind, JSOp op);
 
     ParseNode *condition();
-    ParseNode *comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
+    ParseNode *comprehensionTail(ParseNode *kid, unsigned blockid, bool isGenexp,
                                  ParseNodeKind kind = PNK_SEMI, JSOp op = JSOP_NOP);
     ParseNode *generatorExpr(ParseNode *kid);
     JSBool argumentList(ParseNode *listNode);
@@ -259,7 +259,7 @@ struct Parser : private AutoGCRooter
 
     bool checkForFunctionNode(PropertyName *name, ParseNode *node);
 
-    ParseNode *identifierName(bool afterDot);
+    ParseNode *identifierName(bool afterDoubleDot);
 
 #if JS_HAS_XML_SUPPORT
     ParseNode *endBracketedExpr();
@@ -280,10 +280,11 @@ struct Parser : private AutoGCRooter
 #endif /* JS_HAS_XML_SUPPORT */
 
     bool setAssignmentLhsOps(ParseNode *pn, JSOp op);
+    bool matchInOrOf(bool *isForOfp);
 };
 
 inline bool
-Parser::reportErrorNumber(ParseNode *pn, uintN flags, uintN errorNumber, ...)
+Parser::reportErrorNumber(ParseNode *pn, unsigned flags, unsigned errorNumber, ...)
 {
     va_list args;
     va_start(args, errorNumber);
@@ -296,7 +297,7 @@ bool
 CheckStrictParameters(JSContext *cx, TreeContext *tc);
 
 bool
-DefineArg(ParseNode *pn, JSAtom *atom, uintN i, TreeContext *tc);
+DefineArg(ParseNode *pn, JSAtom *atom, unsigned i, TreeContext *tc);
 
 } /* namespace js */
 

@@ -132,6 +132,7 @@
 
 using namespace mozilla;
 using namespace mozilla::layers;
+using namespace mozilla::layout;
 
 // Struct containing cached metrics for box-wrapped frames.
 struct nsBoxLayoutMetrics
@@ -424,6 +425,69 @@ NS_QUERYFRAME_TAIL_INHERITANCE_ROOT
 /////////////////////////////////////////////////////////////////////////////
 // nsIFrame
 
+static bool
+IsFontSizeInflationContainer(nsIFrame* aFrame,
+                             const nsStyleDisplay* aStyleDisplay)
+{
+  /*
+   * Font size inflation is built around the idea that we're inflating
+   * the fonts for a pan-and-zoom UI so that when the user scales up a
+   * block or other container to fill the width of the device, the fonts
+   * will be readable.  To do this, we need to pick what counts as a
+   * container.
+   *
+   * From a code perspective, the only hard requirement is that frames
+   * that are line participants
+   * (nsIFrame::IsFrameOfType(nsIFrame::eLineParticipant)) are never
+   * containers, since line layout assumes that the inflation is
+   * consistent within a line.
+   *
+   * This is not an imposition, since we obviously want a bunch of text
+   * (possibly with inline elements) flowing within a block to count the
+   * block (or higher) as its container.
+   *
+   * We also want form controls, including the text in the anonymous
+   * content inside of them, to match each other and the text next to
+   * them, so they and their anonymous content should also not be a
+   * container.
+   *
+   * However, because we can't reliably compute sizes across XUL during
+   * reflow, any XUL frame with a XUL parent is always a container.
+   *
+   * There are contexts where it would be nice if some blocks didn't
+   * count as a container, so that, for example, an indented quotation
+   * didn't end up with a smaller font size.  However, it's hard to
+   * distinguish these situations where we really do want the indented
+   * thing to count as a container, so we don't try, and blocks are
+   * always containers.
+   */
+  nsIContent *content = aFrame->GetContent();
+  bool isInline = (aStyleDisplay->mDisplay == NS_STYLE_DISPLAY_INLINE ||
+                   (aStyleDisplay->IsFloating() &&
+                    aFrame->GetType() == nsGkAtoms::letterFrame) ||
+                   // Given multiple frames for the same node, only the
+                   // outer one should be considered a container.
+                   // (Important, e.g., for nsSelectsAreaFrame.)
+                   (aFrame->GetParent() &&
+                    aFrame->GetParent()->GetContent() == content) ||
+                   (content && (content->IsHTML(nsGkAtoms::option) ||
+                                content->IsHTML(nsGkAtoms::optgroup) ||
+                                content->IsInNativeAnonymousSubtree()))) &&
+                  !(aFrame->IsBoxFrame() && aFrame->GetParent() &&
+                    aFrame->GetParent()->IsBoxFrame());
+  NS_ASSERTION(!aFrame->IsFrameOfType(nsIFrame::eLineParticipant) ||
+               isInline ||
+               // br frames and mathml frames report being line
+               // participants even when their position or display is
+               // set
+               aFrame->GetType() == nsGkAtoms::brFrame ||
+               aFrame->IsFrameOfType(nsIFrame::eMathML),
+               "line participants must not be containers");
+  NS_ASSERTION(aFrame->GetType() != nsGkAtoms::bulletFrame || isInline,
+               "bullets should not be containers");
+  return !isInline;
+}
+
 NS_IMETHODIMP
 nsFrame::Init(nsIContent*      aContent,
               nsIFrame*        aParent,
@@ -457,12 +521,25 @@ nsFrame::Init(nsIContent*      aContent,
     mState |= state & (NS_FRAME_INDEPENDENT_SELECTION |
                        NS_FRAME_GENERATED_CONTENT);
   }
-  if (GetStyleDisplay()->HasTransform()) {
+  const nsStyleDisplay *disp = GetStyleDisplay();
+  if (disp->HasTransform()) {
     // The frame gets reconstructed if we toggle the -moz-transform
     // property, so we can set this bit here and then ignore it.
     mState |= NS_FRAME_MAY_BE_TRANSFORMED;
   }
-  
+
+  if (nsLayoutUtils::FontSizeInflationEnabled(PresContext())
+#ifdef DEBUG
+      // We have assertions that check inflation invariants even when
+      // font size inflation is not enabled.
+      || true
+#endif
+      ) {
+    if (IsFontSizeInflationContainer(this, disp)) {
+      mState |= NS_FRAME_FONT_INFLATION_CONTAINER;
+    }
+  }
+
   DidSetStyleContext(nsnull);
 
   if (IsBoxWrapped())
@@ -896,6 +973,26 @@ nsIFrame::Preserves3D() const
     return false;
   }
   return true;
+}
+
+bool
+nsIFrame::HasPerspective() const
+{
+  if (!IsTransformed()) {
+    return false;
+  }
+  const nsStyleDisplay* parentDisp = nsnull;
+  nsStyleContext* parentStyleContext = GetStyleContext()->GetParent();
+  if (parentStyleContext) {
+    parentDisp = parentStyleContext->GetStyleDisplay();
+  }
+
+  if (parentDisp &&
+      parentDisp->mChildPerspective.GetUnit() == eStyleUnit_Coord &&
+      parentDisp->mChildPerspective.GetCoordValue() > 0.0) {
+    return true;
+  }
+  return false;
 }
 
 nsRect
@@ -1382,31 +1479,9 @@ static bool ApplyAbsPosClipping(nsDisplayListBuilder* aBuilder,
   return true;
 }
 
-/**
- * Returns true if aFrame is overflow:hidden and we should interpret
- * that as -moz-hidden-unscrollable.
- */
-static inline bool ApplyOverflowHiddenClipping(const nsIFrame* aFrame,
-                                                 const nsStyleDisplay* aDisp)
-{
-  if (aDisp->mOverflowX != NS_STYLE_OVERFLOW_HIDDEN)
-    return false;
-    
-  nsIAtom* type = aFrame->GetType();
-  // REVIEW: these are the frame types that call IsTableClip and set up
-  // clipping. Actually there were also table rows and the inner table frame
-  // doing this, but 'overflow' isn't applicable to them according to
-  // CSS 2.1 so I removed them. Also, we used to clip at tableOuterFrame
-  // but we should actually clip at tableFrame (as per discussion with Hixie and
-  // bz).
-  return type == nsGkAtoms::tableFrame ||
-       type == nsGkAtoms::tableCellFrame ||
-       type == nsGkAtoms::bcTableCellFrame;
-}
-
 static bool ApplyOverflowClipping(nsDisplayListBuilder* aBuilder,
-                                    const nsIFrame* aFrame,
-                                    const nsStyleDisplay* aDisp, nsRect* aRect) {
+                                  const nsIFrame* aFrame,
+                                  const nsStyleDisplay* aDisp, nsRect* aRect) {
   // REVIEW: from nsContainerFrame.cpp SyncFrameViewGeometryDependentProperties,
   // except that that function used the border-edge for
   // -moz-hidden-unscrollable which I don't think is correct... Also I've
@@ -1415,16 +1490,12 @@ static bool ApplyOverflowClipping(nsDisplayListBuilder* aBuilder,
   // Only -moz-hidden-unscrollable is handled here (and 'hidden' for table
   // frames, and any non-visible value for blocks in a paginated context).
   // Other overflow clipping is applied by nsHTML/XULScrollFrame.
-  if (!ApplyOverflowHiddenClipping(aFrame, aDisp) &&
-      !nsFrame::ApplyPaginatedOverflowClipping(aFrame)) {
-    bool clip = aDisp->mOverflowX == NS_STYLE_OVERFLOW_CLIP;
-    if (!clip)
-      return false;
-    // We allow -moz-hidden-unscrollable to apply to any kind of frame. This
-    // is required by comboboxes which make their display text (an inline frame)
-    // have clipping.
+  // We allow -moz-hidden-unscrollable to apply to any kind of frame. This
+  // is required by comboboxes which make their display text (an inline frame)
+  // have clipping.
+  if (!nsFrame::ApplyOverflowClipping(aFrame, aDisp)) {
+    return false;
   }
-  
   *aRect = aFrame->GetPaddingRect() - aFrame->GetPosition();
   if (aBuilder) {
     *aRect += aBuilder->ToReferenceFrame(aFrame);
@@ -3809,6 +3880,10 @@ nscoord
 nsFrame::ShrinkWidthToFit(nsRenderingContext *aRenderingContext,
                           nscoord aWidthInCB)
 {
+  // If we're a container for font size inflation, then shrink
+  // wrapping inside of us should not apply font size inflation.
+  AutoMaybeNullInflationContainer an(this);
+
   nscoord result;
   nscoord minWidth = GetMinWidth(aRenderingContext);
   if (minWidth > aWidthInCB) {
@@ -4849,12 +4924,42 @@ nsRect
 nsIFrame::GetVisualOverflowRectRelativeToSelf() const
 {
   if (IsTransformed()) {
-    nsRect* preTransformBBox = static_cast<nsRect*>
-      (Properties().Get(PreTransformBBoxProperty()));
-    if (preTransformBBox)
-      return *preTransformBBox;
+    nsOverflowAreas* preTransformOverflows = static_cast<nsOverflowAreas*>
+      (Properties().Get(PreTransformOverflowAreasProperty()));
+    if (preTransformOverflows)
+      return preTransformOverflows->VisualOverflow();
   }
   return GetVisualOverflowRect();
+}
+
+/* virtual */ bool
+nsFrame::UpdateOverflow()
+{
+  nsRect rect(nsPoint(0, 0), GetSize());
+  nsOverflowAreas overflowAreas(rect, rect);
+
+  bool isBox = IsBoxFrame() || IsBoxWrapped();
+  if (!isBox || (!IsCollapsed() && !DoesClipChildren())) {
+    nsLayoutUtils::UnionChildOverflow(this, overflowAreas);
+  }
+
+  if (FinishAndStoreOverflow(overflowAreas, GetSize())) {
+    nsIView* view = GetView();
+    if (view) {
+      PRUint32 flags = 0;
+      GetLayoutFlags(flags);
+
+      if ((flags & NS_FRAME_NO_SIZE_VIEW) == 0) {
+        // Make sure the frame's view is properly sized.
+        nsIViewManager* vm = view->GetViewManager();
+        vm->ResizeView(view, overflowAreas.VisualOverflow(), true);
+      }
+    }
+
+    return true;
+  }
+
+  return false;
 }
 
 void
@@ -5012,7 +5117,9 @@ GetNearestBlockContainer(nsIFrame* frame)
   // another such pseudo, this shouldn't cause anything bad to happen.
   // Also the anonymous blocks inside table cells are not containing blocks.
   while (frame->IsFrameOfType(nsIFrame::eLineParticipant) ||
-         frame->IsBlockWrapper()) {
+         frame->IsBlockWrapper() ||
+         // Table rows are not containing blocks either
+         frame->GetType() == nsGkAtoms::tableRowFrame) {
     frame = frame->GetParent();
     NS_ASSERTION(frame, "How come we got to the root frame without seeing a containing block?");
   }
@@ -6549,7 +6656,7 @@ nsIFrame::FinishAndStoreOverflow(nsOverflowAreas& aOverflowAreas,
   nsRect bounds(nsPoint(0, 0), aNewSize);
   // Store the passed in overflow area if we are a preserve-3d frame,
   // and it's not just the frame bounds.
-  if (Preserves3D() && (!aOverflowAreas.VisualOverflow().IsEqualEdges(bounds) ||
+  if ((Preserves3D() || HasPerspective()) && (!aOverflowAreas.VisualOverflow().IsEqualEdges(bounds) ||
                         !aOverflowAreas.ScrollableOverflow().IsEqualEdges(bounds))) {
     nsOverflowAreas* initial =
       static_cast<nsOverflowAreas*>(Properties().Get(nsIFrame::InitialOverflowProperty()));
@@ -6579,12 +6686,11 @@ nsIFrame::FinishAndStoreOverflow(nsOverflowAreas& aOverflowAreas,
   // children are actually clipped to the padding-box, but since the
   // overflow area should include the entire border-box, just set it to
   // the border-box here.
-  const nsStyleDisplay *disp = GetStyleDisplay();
+  const nsStyleDisplay* disp = GetStyleDisplay();
   NS_ASSERTION((disp->mOverflowY == NS_STYLE_OVERFLOW_CLIP) ==
                (disp->mOverflowX == NS_STYLE_OVERFLOW_CLIP),
                "If one overflow is clip, the other should be too");
-  if (disp->mOverflowX == NS_STYLE_OVERFLOW_CLIP ||
-      nsFrame::ApplyPaginatedOverflowClipping(this)) {
+  if (nsFrame::ApplyOverflowClipping(this, disp)) {
     // The contents are actually clipped to the padding area 
     aOverflowAreas.SetAllTo(bounds);
   }
@@ -6645,11 +6751,14 @@ nsIFrame::FinishAndStoreOverflow(nsOverflowAreas& aOverflowAreas,
     RemoveStateBits(NS_FRAME_HAS_CLIP);
   }
 
+  bool preTransformVisualOverflowChanged =
+    !GetVisualOverflowRectRelativeToSelf().IsEqualInterior(aOverflowAreas.VisualOverflow());
+
   /* If we're transformed, transform the overflow rect by the current transformation. */
   bool hasTransform = IsTransformed();
   if (hasTransform) {
-    Properties().Set(nsIFrame::PreTransformBBoxProperty(),
-                     new nsRect(aOverflowAreas.VisualOverflow()));
+    Properties().Set(nsIFrame::PreTransformOverflowAreasProperty(),
+                     new nsOverflowAreas(aOverflowAreas));
     /* Since our size might not actually have been computed yet, we need to make sure that we use the
      * correct dimensions by overriding the stored bounding rectangle with the value the caller has
      * ensured us we'll use.
@@ -6662,11 +6771,13 @@ nsIFrame::FinishAndStoreOverflow(nsOverflowAreas& aOverflowAreas,
     }
     if (Preserves3DChildren()) {
       ComputePreserve3DChildrenOverflow(aOverflowAreas, newBounds);
+    } else if (HasPerspective()) {
+      RecomputePerspectiveChildrenOverflow(this, &newBounds);
     }
+  } else {
+    Properties().Delete(nsIFrame::PreTransformOverflowAreasProperty());
   }
 
-  bool visualOverflowChanged =
-    !GetVisualOverflowRect().IsEqualInterior(aOverflowAreas.VisualOverflow());
   bool anyOverflowChanged;
   if (aOverflowAreas != nsOverflowAreas(bounds, bounds)) {
     anyOverflowChanged = SetOverflowAreas(aOverflowAreas);
@@ -6674,7 +6785,7 @@ nsIFrame::FinishAndStoreOverflow(nsOverflowAreas& aOverflowAreas,
     anyOverflowChanged = ClearOverflowRects();
   }
 
-  if (visualOverflowChanged) {
+  if (preTransformVisualOverflowChanged) {
     if (hasOutlineOrEffects) {
       // When there's an outline or box-shadow or SVG effects,
       // changes to those styles might require repainting of the old and new
@@ -6696,28 +6807,62 @@ nsIFrame::FinishAndStoreOverflow(nsOverflowAreas& aOverflowAreas,
       // changed (in particular, if it grows), we have to repaint the
       // new area here.
       Invalidate(aOverflowAreas.VisualOverflow());
-    } else if (hasTransform) {
-      // When there's a transform, changes to that style might require
-      // repainting of the old and new overflow areas in the widget.
-      // Repainting of the frame itself will not be required if there's
-      // a retained layer, so we can call InvalidateLayer here
-      // which will avoid repainting ThebesLayers if possible.
-      // nsCSSFrameConstructor::DoApplyRenderingChangeToTree repaints
-      // the old overflow area in the widget in response to
-      // nsChangeHint_UpdateTransformLayer. But since the new overflow
-      // area is not known at that time, we have to handle it here.
-      // If the overflow area hasn't changed, then it doesn't matter that
-      // we didn't reach here since repainting the old overflow area was enough.
-      // If there is no transform now, then the container layer for
-      // the transform will go away and the frame contents will change
-      // ThebesLayers, forcing it to be invalidated, so it doesn't matter
-      // that we didn't reach here.
-      InvalidateLayer(aOverflowAreas.VisualOverflow(),
-                      nsDisplayItem::TYPE_TRANSFORM);
     }
+  }
+  if (anyOverflowChanged && hasTransform) {
+    // When there's a transform, changes to that style might require
+    // repainting of the old and new overflow areas in the widget.
+    // Repainting of the frame itself will not be required if there's
+    // a retained layer, so we can call InvalidateLayer here
+    // which will avoid repainting ThebesLayers if possible.
+    // nsCSSFrameConstructor::DoApplyRenderingChangeToTree repaints
+    // the old overflow area in the widget in response to
+    // nsChangeHint_UpdateTransformLayer. But since the new overflow
+    // area is not known at that time, we have to handle it here.
+    // If the overflow area hasn't changed, then it doesn't matter that
+    // we didn't reach here since repainting the old overflow area was enough.
+    // If there is no transform now, then the container layer for
+    // the transform will go away and the frame contents will change
+    // ThebesLayers, forcing it to be invalidated, so it doesn't matter
+    // that we didn't reach here.
+    InvalidateLayer(aOverflowAreas.VisualOverflow(),
+                    nsDisplayItem::TYPE_TRANSFORM);
   }
 
   return anyOverflowChanged;
+}
+
+void
+nsIFrame::RecomputePerspectiveChildrenOverflow(const nsIFrame* aStartFrame, const nsRect* aBounds)
+{
+  // Children may check our size when getting our transform, make sure it's valid.
+  nsSize oldSize = GetSize();
+  if (aBounds) {
+    SetSize(aBounds->Size());
+  }
+  nsIFrame::ChildListIterator lists(this);
+  for (; !lists.IsDone(); lists.Next()) {
+    nsFrameList::Enumerator childFrames(lists.CurrentList());
+    for (; !childFrames.AtEnd(); childFrames.Next()) {
+      nsIFrame* child = childFrames.get();
+      if (child->HasPerspective()) {
+        nsOverflowAreas* overflow = 
+          static_cast<nsOverflowAreas*>(child->Properties().Get(nsIFrame::InitialOverflowProperty()));
+        nsRect bounds(nsPoint(0, 0), child->GetSize());
+        if (overflow) {
+          child->FinishAndStoreOverflow(*overflow, bounds.Size());
+        } else {
+          nsOverflowAreas boundsOverflow;
+          boundsOverflow.SetAllTo(bounds);
+          child->FinishAndStoreOverflow(boundsOverflow, bounds.Size());
+        }
+      } else if (child->GetParentStyleContextFrame() != aStartFrame) {
+        child->RecomputePerspectiveChildrenOverflow(aStartFrame, nsnull);
+      }
+    }
+  }
+  // Restore our old size just in case something depends on this elesewhere.
+  SetSize(oldSize);
 }
 
 /* The overflow rects for leaf nodes in a preserve-3d hierarchy depends on
@@ -6823,15 +6968,8 @@ void
 nsFrame::ConsiderChildOverflow(nsOverflowAreas& aOverflowAreas,
                                nsIFrame* aChildFrame)
 {
-  const nsStyleDisplay* disp = GetStyleDisplay();
-  // check here also for hidden as table frames (table, tr and td) currently 
-  // don't wrap their content into a scrollable frame if overflow is specified
-  // FIXME: Why do we check this here rather than in
-  // FinishAndStoreOverflow (where we check NS_STYLE_OVERFLOW_CLIP)?
-  if (!disp->IsTableClip()) {
-    aOverflowAreas.UnionWith(aChildFrame->GetOverflowAreas() +
-                             aChildFrame->GetPosition());
-  }
+  aOverflowAreas.UnionWith(aChildFrame->GetOverflowAreas() +
+                           aChildFrame->GetPosition());
 }
 
 /**
@@ -6843,7 +6981,7 @@ nsFrame::ConsiderChildOverflow(nsOverflowAreas& aOverflowAreas,
  * If aFrame is not an anonymous block, null is returned.
  */
 static nsIFrame*
-GetIBSpecialSiblingForAnonymousBlock(nsIFrame* aFrame)
+GetIBSpecialSiblingForAnonymousBlock(const nsIFrame* aFrame)
 {
   NS_PRECONDITION(aFrame, "Must have a non-null frame!");
   NS_ASSERTION(aFrame->GetStateBits() & NS_FRAME_IS_SPECIAL,
@@ -6961,7 +7099,7 @@ nsFrame::CorrectStyleParentFrame(nsIFrame* aProspectiveParent,
 }
 
 nsIFrame*
-nsFrame::DoGetParentStyleContextFrame()
+nsFrame::DoGetParentStyleContextFrame() const
 {
   if (mContent && !mContent->GetParent() &&
       !GetStyleContext()->GetPseudo()) {
@@ -6990,7 +7128,7 @@ nsFrame::DoGetParentStyleContextFrame()
 
   // For out-of-flow frames, we must resolve underneath the
   // placeholder's parent.
-  nsIFrame* oofFrame = this;
+  const nsIFrame* oofFrame = this;
   if ((oofFrame->GetStateBits() & NS_FRAME_OUT_OF_FLOW) &&
       GetPrevInFlow()) {
     // Out of flows that are continuations do not
@@ -7172,8 +7310,16 @@ nsFrame::RefreshSizeCache(nsBoxLayoutState& aState)
     nsMargin bp(0,0,0,0);
     GetBorderAndPadding(bp);
 
-    metrics->mBlockPrefSize.width = GetPrefWidth(rendContext) + bp.LeftRight();
-    metrics->mBlockMinSize.width = GetMinWidth(rendContext) + bp.LeftRight();
+    {
+      // If we're a container for font size inflation, then shrink
+      // wrapping inside of us should not apply font size inflation.
+      AutoMaybeNullInflationContainer an(this);
+
+      metrics->mBlockPrefSize.width =
+        GetPrefWidth(rendContext) + bp.LeftRight();
+      metrics->mBlockMinSize.width =
+        GetMinWidth(rendContext) + bp.LeftRight();
+    }
 
     // do the nasty.
     nsHTMLReflowMetrics desiredSize;
@@ -7254,7 +7400,7 @@ nsFrame::GetPrefSize(nsBoxLayoutState& aState)
     return metrics->mPrefSize;
   }
 
-  if (IsCollapsed(aState))
+  if (IsCollapsed())
     return size;
 
   // get our size in CSS.
@@ -7290,7 +7436,7 @@ nsFrame::GetMinSize(nsBoxLayoutState& aState)
     return size;
   }
 
-  if (IsCollapsed(aState))
+  if (IsCollapsed())
     return size;
 
   // get our size in CSS.
@@ -7325,7 +7471,7 @@ nsFrame::GetMaxSize(nsBoxLayoutState& aState)
     return size;
   }
 
-  if (IsCollapsed(aState))
+  if (IsCollapsed())
     return size;
 
   size = nsBox::GetMaxSize(aState);
@@ -7353,7 +7499,7 @@ nsFrame::GetBoxAscent(nsBoxLayoutState& aState)
   if (!DoesNeedRecalc(metrics->mAscent))
     return metrics->mAscent;
 
-  if (IsCollapsed(aState)) {
+  if (IsCollapsed()) {
     metrics->mAscent = 0;
   } else {
     // Refresh our caches with new sizes.
@@ -7379,7 +7525,7 @@ nsFrame::DoLayout(nsBoxLayoutState& aState)
     rv = BoxReflow(aState, presContext, desiredSize, rendContext,
                    ourRect.x, ourRect.y, ourRect.width, ourRect.height);
 
-    if (IsCollapsed(aState)) {
+    if (IsCollapsed()) {
       SetSize(nsSize(0, 0));
     } else {
 
@@ -7547,8 +7693,8 @@ nsFrame::BoxReflow(nsBoxLayoutState&        aState,
       // We're a frame (such as a text control frame) that jumps into
       // box reflow and then straight out of it on the child frame.
       // This means we actually have a real parent reflow state.
-      // nsLayoutUtils::InflationMinFontSizeFor needs this to be linked
-      // up correctly for text control frames, so do so here).
+      // nsLayoutUtils::InflationMinFontSizeFor used to need this to be
+      // linked up correctly for text control frames, so do so here).
       reflowState.parentReflowState = outerReflowState;
       reflowState.mCBReflowState = outerReflowState;
     } else {
@@ -7640,7 +7786,7 @@ nsFrame::BoxReflow(nsBoxLayoutState&        aState,
                                         aDesiredSize, aX, aY, layoutFlags | NS_FRAME_NO_MOVE_FRAME);
 
     // Save the ascent.  (bug 103925)
-    if (IsCollapsed(aState)) {
+    if (IsCollapsed()) {
       metrics->mAscent = 0;
     } else {
       if (aDesiredSize.ascent == nsHTMLReflowMetrics::ASK_FOR_BASELINE) {

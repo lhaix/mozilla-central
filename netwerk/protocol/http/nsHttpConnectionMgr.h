@@ -49,7 +49,6 @@
 #include "nsAutoPtr.h"
 #include "mozilla/ReentrantMonitor.h"
 #include "nsISocketTransportService.h"
-#include "nsHashSets.h"
 
 #include "nsIObserver.h"
 #include "nsITimer.h"
@@ -200,12 +199,17 @@ private:
         //
         nsCString mCoalescingKey;
 
-        // To have the UsingSpdy flag means some host with the same hash information
-        // has done NPN=spdy/2 at some point. It does not mean every connection
-        // is currently using spdy.
+        // To have the UsingSpdy flag means some host with the same connection
+        // entry has done NPN=spdy/2 at some point. It does not mean every
+        // connection is currently using spdy.
         bool mUsingSpdy;
 
+        // mTestedSpdy is set after NPN negotiation has occurred and we know
+        // with confidence whether a host speaks spdy or not (which is reflected
+        // in mUsingSpdy). Before mTestedSpdy is set, handshake parallelism is
+        // minimized so that we can multiplex on a single spdy connection.
         bool mTestedSpdy;
+
         bool mSpdyPreferred;
     };
 
@@ -321,9 +325,8 @@ private:
     void     RecvdConnect();
 
     // Manage the preferred spdy connection entry for this address
-    nsConnectionEntry *GetSpdyPreferred(nsConnectionEntry *aOriginalEntry);
-    void               SetSpdyPreferred(nsConnectionEntry *ent);
-    void               RemoveSpdyPreferred(nsACString &aDottedDecimal);
+    nsConnectionEntry *GetSpdyPreferredEnt(nsConnectionEntry *aOriginalEntry);
+    void               RemoveSpdyPreferredEnt(nsACString &aDottedDecimal);
     nsHttpConnection  *GetSpdyPreferredConn(nsConnectionEntry *ent);
     nsDataHashtable<nsCStringHashKey, nsConnectionEntry *>   mSpdyPreferredHash;
     nsConnectionEntry *LookupConnectionEntry(nsHttpConnectionInfo *ci,
@@ -331,7 +334,7 @@ private:
                                              nsHttpTransaction *trans);
 
     void               ProcessSpdyPendingQ(nsConnectionEntry *ent);
-    void               ProcessSpdyPendingQ();
+    void               ProcessAllSpdyPendingQ();
     static PLDHashOperator ProcessSpdyPendingQCB(
         const nsACString &key, nsAutoPtr<nsConnectionEntry> &ent,
         void *closure);
@@ -406,6 +409,12 @@ private:
     // Timer for next pruning of dead connections.
     nsCOMPtr<nsITimer> mTimer;
 
+    // A 1s tick to call nsHttpConnection::ReadTimeoutTick on
+    // active http/1 connections. Disabled when there are no
+    // active connections.
+    nsCOMPtr<nsITimer> mReadTimeoutTick;
+    bool mReadTimeoutTickArmed;
+
     //
     // the connection table
     //
@@ -414,12 +423,17 @@ private:
     //
     nsClassHashtable<nsCStringHashKey, nsConnectionEntry> mCT;
 
-    // this table is protected by the monitor
-    nsCStringHashSet mAlternateProtocolHash;
-    static PLDHashOperator TrimAlternateProtocolHash(PLDHashTable *table,
-                                                     PLDHashEntryHdr *hdr,
-                                                     PRUint32 number,
+    // mAlternateProtocolHash is used only for spdy/2 upgrades for now
+    // protected by the monitor
+    nsTHashtable<nsCStringHashKey> mAlternateProtocolHash;
+    static PLDHashOperator TrimAlternateProtocolHash(nsCStringHashKey *entry,
                                                      void *closure);
+    // Read Timeout Tick handlers
+    void ActivateTimeoutTick();
+    void ReadTimeoutTick();
+    static PLDHashOperator ReadTimeoutTickCB(const nsACString &key,
+                                             nsAutoPtr<nsConnectionEntry> &ent,
+                                             void *closure);
 };
 
 #endif // !nsHttpConnectionMgr_h__

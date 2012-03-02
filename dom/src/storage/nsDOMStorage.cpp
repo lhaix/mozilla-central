@@ -920,6 +920,8 @@ DOMStorageImpl::SetDBValue(const nsAString& aKey,
   offlineAppPermission = GetQuota(mDomain, &quota, &warnQuota,
                                   CanUseChromePersist());
 
+  CacheKeysFromDB();
+
   PRInt32 usage;
   rv = gStorageDB->SetKey(this, aKey, aValue, aSecure, quota,
                          !IS_PERMISSION_ALLOWED(offlineAppPermission),
@@ -1846,8 +1848,7 @@ nsDOMStorage2::InitAsSessionStorage(nsIPrincipal *aPrincipal, const nsSubstring 
   if (!mStorage)
     return NS_ERROR_OUT_OF_MEMORY;
 
-  // Leave security checks only for domain (nsDOMStorage implementation)
-  mStorage->mSecurityChecker = mStorage;
+  mStorage->mSecurityChecker = this;
   mPrincipal = aPrincipal;
   mDocumentURI = aDocumentURI;
 
@@ -1947,7 +1948,7 @@ nsDOMStorage2::CanAccess(nsIPrincipal *aPrincipal)
 
   // Allow more powerful principals (e.g. system) to access the storage
   bool subsumes;
-  nsresult rv = aPrincipal->Subsumes(mPrincipal, &subsumes);
+  nsresult rv = aPrincipal->SubsumesIgnoringDomain(mPrincipal, &subsumes);
   if (NS_FAILED(rv))
     return false;
 

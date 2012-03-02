@@ -8,9 +8,8 @@
 #include <cstring>
 #include <stdint.h>
 #include <vector>
+#include <zlib.h>
 #include "Utils.h"
-/* Until RefPtr.h stops using JS_Assert */
-#undef DEBUG
 #include "mozilla/RefPtr.h"
 
 /**
@@ -61,10 +60,30 @@ public:
     Stream(): compressedBuf(NULL), compressedSize(0), uncompressedSize(0)
             , type(STORE) { }
 
+    /**
+     * Getters
+     */
     const void *GetBuffer() { return compressedBuf; }
     size_t GetSize() { return compressedSize; }
     size_t GetUncompressedSize() { return uncompressedSize; }
     Type GetType() { return type; }
+
+    /**
+     * Returns a z_stream for use with inflate functions using the given
+     * buffer as inflate output. The caller is expected to allocate enough
+     * memory for the Stream uncompressed size.
+     */
+    z_stream GetZStream(void *buf)
+    {
+      z_stream zStream;
+      memset(&zStream, 0, sizeof(zStream));
+      zStream.avail_in = compressedSize;
+      zStream.next_in = reinterpret_cast<Bytef *>(
+                        const_cast<void *>(compressedBuf));
+      zStream.avail_out = uncompressedSize;
+      zStream.next_out = static_cast<Bytef *>(buf);
+      return zStream;
+    }
 
   protected:
     friend class Zip;
@@ -123,6 +142,7 @@ private:
 
 /* All the following types need to be packed */
 #pragma pack(1)
+public:
   /**
    * A Zip archive is an aggregate of entities which all start with a
    * signature giving their type. This template is to be used as a base
@@ -143,10 +163,13 @@ private:
         return ret;
       return NULL;
     }
+
+    SignedEntity(uint32_t magic): signature(magic) { }
   private:
     le_uint32 signature;
   };
 
+private:
   /**
    * Header used to describe a Local File entry. The header is followed by
    * the file name and an extra field, then by the data stream.

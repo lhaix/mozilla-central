@@ -278,6 +278,47 @@ function test_place_guid_annotation_removed()
   run_next_test();
 }
 
+function test_moz_hosts()
+{
+  // This will throw if the column does not exist
+  let stmt = DBConn().createStatement(
+    "SELECT host, frecency, typed "
+  + "FROM moz_hosts "
+  );
+  stmt.finalize();
+
+  // moz_hosts is populated asynchronously, so query asynchronously to serialize
+  // to that.
+  // check the number of entries in moz_hosts equals the number of
+  // unique rev_host in moz_places
+  stmt = DBConn().createAsyncStatement(
+    "SELECT ("
+  + "SELECT COUNT(host) "
+  + "FROM moz_hosts), ("
+  + "SELECT COUNT(DISTINCT rev_host) "
+  + "FROM moz_places "
+  + "WHERE LENGTH(rev_host) > 1)"
+  );
+  try {
+    stmt.executeAsync({
+      handleResult: function (aResultSet) {
+        let row = aResult.getNextRow();
+        let mozPlacesCount = row.getResultByIndex(0);
+        let mozHostsCount = row.getResultByIndex(1);
+        do_check_eq(mozPlacesCount, mozHostsCount);
+      },
+      handleError: function () {},
+      handleCompletion: function (aReason) {
+        do_check_eq(aReason, Ci.mozIStorageStatementCallback.REASON_FINISHED);
+        run_next_test();
+      }
+    });
+  }
+  finally {
+    stmt.finalize();
+  }
+}
+
 function test_final_state()
 {
   // We open a new database mostly so that we can check that the settings were
@@ -316,6 +357,7 @@ function test_final_state()
   test_place_guids_non_null,
   test_place_guid_annotation_imported,
   test_place_guid_annotation_removed,
+  test_moz_hosts,
   test_final_state,
 ].forEach(add_test);
 

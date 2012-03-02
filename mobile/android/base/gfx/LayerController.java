@@ -43,11 +43,16 @@ import org.mozilla.gecko.gfx.Layer;
 import org.mozilla.gecko.gfx.LayerClient;
 import org.mozilla.gecko.gfx.LayerView;
 import org.mozilla.gecko.ui.PanZoomController;
+import org.mozilla.gecko.ui.SimpleScaleGestureDetector;
 import org.mozilla.gecko.GeckoApp;
+import org.mozilla.gecko.GeckoEvent;
+import org.mozilla.gecko.Tabs;
+import org.mozilla.gecko.Tab;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.graphics.Point;
 import android.graphics.PointF;
 import android.graphics.Rect;
@@ -57,7 +62,10 @@ import android.view.MotionEvent;
 import android.view.GestureDetector;
 import android.view.ScaleGestureDetector;
 import android.view.View.OnTouchListener;
+import android.view.ViewConfiguration;
 import java.lang.Math;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * The layer controller manages a tile that represents the visible page. It does panning and
@@ -66,13 +74,14 @@ import java.lang.Math;
  *
  * Many methods require that the monitor be held, with a synchronized (controller) { ... } block.
  */
-public class LayerController {
+public class LayerController implements Tabs.OnTabsChangedListener {
     private static final String LOGTAG = "GeckoLayerController";
 
     private Layer mRootLayer;                   /* The root layer. */
     private LayerView mView;                    /* The main rendering view. */
     private Context mContext;                   /* The current context. */
     private ViewportMetrics mViewportMetrics;   /* The current viewport metrics. */
+    private boolean mWaitForTouchListeners;
 
     private PanZoomController mPanZoomController;
     /*
@@ -80,8 +89,12 @@ public class LayerController {
      * updates our visible rect appropriately.
      */
 
-    private OnTouchListener mOnTouchListener;   /* The touch listener. */
-    private LayerClient mLayerClient;           /* The layer client. */
+    private OnTouchListener mOnTouchListener;       /* The touch listener. */
+    private LayerClient mLayerClient;               /* The layer client. */
+
+    /* The new color for the checkerboard. */
+    private int mCheckerboardColor;
+    private boolean mCheckerboardShouldShowChecks;
 
     private boolean mForceRedraw;
 
@@ -96,6 +109,14 @@ public class LayerController {
     private static final int DANGER_ZONE_X = 75;
     private static final int DANGER_ZONE_Y = 150;
 
+    /* The time limit for pages to respond with preventDefault on touchevents
+     * before we begin panning the page */
+    private int mTimeout = 200;
+
+    private boolean allowDefaultActions = true;
+    private Timer allowDefaultTimer =  null;
+    private PointF initialTouchLocation = null;
+
     public LayerController(Context context) {
         mContext = context;
 
@@ -103,6 +124,15 @@ public class LayerController {
         mViewportMetrics = new ViewportMetrics();
         mPanZoomController = new PanZoomController(this);
         mView = new LayerView(context, this);
+
+        Tabs.getInstance().registerOnTabsChangedListener(this);
+
+        ViewConfiguration vc = ViewConfiguration.get(mContext); 
+        mTimeout = vc.getLongPressTimeout();
+    }
+
+    public void onDestroy() {
+        Tabs.getInstance().unregisterOnTabsChangedListener(this);
     }
 
     public void setRoot(Layer layer) { mRootLayer = layer; }
@@ -142,11 +172,14 @@ public class LayerController {
         return mViewportMetrics.getZoomFactor();
     }
 
-    public Bitmap getCheckerboardPattern()  { return getDrawable("checkerboard"); }
+    public Bitmap getBackgroundPattern()    { return getDrawable("background"); }
     public Bitmap getShadowPattern()        { return getDrawable("shadow"); }
 
+    public PanZoomController getPanZoomController()                                 { return mPanZoomController; }
     public GestureDetector.OnGestureListener getGestureListener()                   { return mPanZoomController; }
-    public ScaleGestureDetector.OnScaleGestureListener getScaleGestureListener()    { return mPanZoomController; }
+    public SimpleScaleGestureDetector.SimpleScaleGestureListener getScaleGestureListener() {
+        return mPanZoomController;
+    }
     public GestureDetector.OnDoubleTapListener getDoubleTapListener()               { return mPanZoomController; }
 
     private Bitmap getDrawable(String name) {
@@ -166,7 +199,30 @@ public class LayerController {
      * result in an infinite loop.
      */
     public void setViewportSize(FloatSize size) {
+        // Resize the viewport, and modify its zoom factor so that the page retains proportionally
+        // zoomed relative to the screen.
+        float oldHeight = mViewportMetrics.getSize().height;
+        float oldWidth = mViewportMetrics.getSize().width;
+        float oldZoomFactor = mViewportMetrics.getZoomFactor();
         mViewportMetrics.setSize(size);
+
+        // if the viewport got larger (presumably because the vkb went away), and the page
+        // is smaller than the new viewport size, increase the page size so that the panzoomcontroller
+        // doesn't zoom in to make it fit (bug 718270). this page size change is in anticipation of
+        // gecko increasing the page size to match the new viewport size, which will happen the next
+        // time we get a draw update.
+        if (size.width >= oldWidth && size.height >= oldHeight) {
+            FloatSize pageSize = mViewportMetrics.getPageSize();
+            if (pageSize.width < size.width || pageSize.height < size.height) {
+                mViewportMetrics.setPageSize(new FloatSize(Math.max(pageSize.width, size.width),
+                                                           Math.max(pageSize.height, size.height)));
+            }
+        }
+
+        PointF newFocus = new PointF(size.width / 2.0f, size.height / 2.0f);
+        float newZoomFactor = size.width * oldZoomFactor / oldWidth;
+        mViewportMetrics.scaleTo(newZoomFactor, newFocus);
+
         Log.d(LOGTAG, "setViewportSize: " + mViewportMetrics);
         setForceRedraw();
 
@@ -200,7 +256,13 @@ public class LayerController {
 
         // Page size is owned by the LayerClient, so no need to notify it of
         // this change.
-        mView.requestRender();
+
+        mView.post(new Runnable() {
+            public void run() {
+                mPanZoomController.pageSizeUpdated();
+                mView.requestRender();
+            }
+        });
     }
 
     /**
@@ -285,11 +347,6 @@ public class LayerController {
         return new RectF(x, y, x + layerSize.width, y + layerSize.height);
     }
 
-    public RectF restrictToPageSize(RectF aRect) {
-        FloatSize pageSize = getPageSize();
-        return RectUtils.restrict(aRect, new RectF(0, 0, pageSize.width, pageSize.height));
-    }
-
     // Returns true if a checkerboard is about to be visible.
     private boolean aboutToCheckerboard() {
         // Increase the size of the viewport (and clamp to page boundaries), and
@@ -332,11 +389,96 @@ public class LayerController {
      * pan/zoom controller to do the dirty work.
      */
     public boolean onTouchEvent(MotionEvent event) {
-        if (mPanZoomController.onTouchEvent(event))
-            return true;
+        int action = event.getAction();
+        PointF point = new PointF(event.getX(), event.getY());
+
+        // this will only match the first touchstart in a series
+        if ((action & MotionEvent.ACTION_MASK) == MotionEvent.ACTION_DOWN) {
+            initialTouchLocation = point;
+            allowDefaultActions = !mWaitForTouchListeners;
+
+            // if we have a timer, this may be a double tap,
+            // cancel the current timer but don't clear the event queue
+            if (allowDefaultTimer != null) {
+              allowDefaultTimer.cancel();
+            } else {
+              // if we don't have a timer, make sure we remove any old events
+              mView.clearEventQueue();
+            }
+            allowDefaultTimer = new Timer();
+            allowDefaultTimer.schedule(new TimerTask() {
+                public void run() {
+                    post(new Runnable() {
+                        public void run() {
+                            preventPanning(false);
+                        }
+                    });
+                }
+            }, mTimeout);
+        }
+
+        // After the initial touch, ignore touch moves until they exceed a minimum distance.
+        if (initialTouchLocation != null && (action & MotionEvent.ACTION_MASK) == MotionEvent.ACTION_MOVE) {
+            if (PointUtils.subtract(point, initialTouchLocation).length() > PanZoomController.PAN_THRESHOLD) {
+                initialTouchLocation = null;
+            } else {
+                return !allowDefaultActions;
+            }
+        }
+
+        // send the event to content
         if (mOnTouchListener != null)
-            return mOnTouchListener.onTouch(mView, event);
-        return false;
+            mOnTouchListener.onTouch(mView, event);
+
+        return !allowDefaultActions;
+    }
+
+    public void preventPanning(boolean aValue) {
+        if (allowDefaultTimer != null) {
+            allowDefaultTimer.cancel();
+            allowDefaultTimer = null;
+        }
+        if (aValue == allowDefaultActions) {
+            allowDefaultActions = !aValue;
+    
+            if (aValue) {
+                mView.clearEventQueue();
+                mPanZoomController.cancelTouch();
+            } else {
+                mView.processEventQueue();
+            }
+        }
+    }
+
+    public void onTabChanged(Tab tab, Tabs.TabEvents msg) {
+        if ((Tabs.getInstance().isSelectedTab(tab) && msg == Tabs.TabEvents.STOP) || msg == Tabs.TabEvents.SELECTED) {
+            mWaitForTouchListeners = tab.getHasTouchListeners();
+        }
+    }
+    public void setWaitForTouchListeners(boolean aValue) {
+        mWaitForTouchListeners = aValue;
+    }
+
+    /** Retrieves whether we should show checkerboard checks or not. */
+    public boolean checkerboardShouldShowChecks() {
+        return mCheckerboardShouldShowChecks;
+    }
+
+    /** Retrieves the color that the checkerboard should be. */
+    public int getCheckerboardColor() {
+        return mCheckerboardColor;
+    }
+
+    /** Sets whether or not the checkerboard should show checkmarks. */
+    public void setCheckerboardShowChecks(boolean showChecks) {
+        mCheckerboardShouldShowChecks = showChecks;
+        mView.requestRender();
+    }
+
+    /** Sets a new color for the checkerboard. */
+    public void setCheckerboardColor(int newColor) {
+        mCheckerboardColor = newColor;
+        mView.requestRender();
     }
 }
 

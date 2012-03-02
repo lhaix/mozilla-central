@@ -49,6 +49,7 @@
 static bool gDisableOptimize = false;
 
 #include "cairo.h"
+#include "sampler.h"
 
 #if defined(XP_WIN)
 
@@ -435,6 +436,7 @@ void imgFrame::Draw(gfxContext *aContext, gfxPattern::GraphicsFilter aFilter,
                     const gfxMatrix &aUserSpaceToImageSpace, const gfxRect& aFill,
                     const nsIntMargin &aPadding, const nsIntRect &aSubimage)
 {
+  SAMPLE_LABEL("image", "imgFrame::Draw");
   NS_ASSERTION(!aFill.IsEmpty(), "zero dest size --- fix caller");
   NS_ASSERTION(!aSubimage.IsEmpty(), "zero source size --- fix caller");
   NS_ASSERTION(!mPalettedImageData, "Directly drawing a paletted image!");
@@ -756,36 +758,44 @@ void imgFrame::SetCompositingFailed(bool val)
   mCompositingFailed = val;
 }
 
-PRUint32
-imgFrame::EstimateMemoryUsed(gfxASurface::MemoryLocation aLocation) const
+size_t
+imgFrame::SizeOfExcludingThisWithComputedFallbackIfHeap(gfxASurface::MemoryLocation aLocation, nsMallocSizeOfFun aMallocSizeOf) const
 {
-  PRUint32 size = 0;
+  // aMallocSizeOf is only used if aLocation==MEMORY_IN_PROCESS_HEAP.  It
+  // should be NULL otherwise.
+  NS_ABORT_IF_FALSE(
+    (aLocation == gfxASurface::MEMORY_IN_PROCESS_HEAP &&  aMallocSizeOf) ||
+    (aLocation != gfxASurface::MEMORY_IN_PROCESS_HEAP && !aMallocSizeOf),
+    "mismatch between aLocation and aMallocSizeOf");
 
-  if (mSinglePixel && aLocation == gfxASurface::MEMORY_IN_PROCESS_HEAP) {
-    size += sizeof(gfxRGBA);
-  }
+  size_t n = 0;
 
   if (mPalettedImageData && aLocation == gfxASurface::MEMORY_IN_PROCESS_HEAP) {
-    size += GetImageDataLength() + PaletteDataLength();
+    size_t usable = aMallocSizeOf(mPalettedImageData);
+    if (!usable) {
+      usable = GetImageDataLength() + PaletteDataLength();
+    }
+    n += usable;
   }
 
+  // XXX: should pass aMallocSizeOf here.  See bug 723827.
 #ifdef USE_WIN_SURFACE
   if (mWinSurface && aLocation == mWinSurface->GetMemoryLocation()) {
-    size += mWinSurface->KnownMemoryUsed();
+    n += mWinSurface->KnownMemoryUsed();
   } else
 #endif
 #ifdef XP_MACOSX
   if (mQuartzSurface && aLocation == gfxASurface::MEMORY_IN_PROCESS_HEAP) {
-    size += mSize.width * mSize.height * 4;
+    n += mSize.width * mSize.height * 4;
   } else
 #endif
   if (mImageSurface && aLocation == mImageSurface->GetMemoryLocation()) {
-    size += mImageSurface->KnownMemoryUsed();
+    n += mImageSurface->KnownMemoryUsed();
   }
 
   if (mOptSurface && aLocation == mOptSurface->GetMemoryLocation()) {
-    size += mOptSurface->KnownMemoryUsed();
+    n += mOptSurface->KnownMemoryUsed();
   }
 
-  return size;
+  return n;
 }

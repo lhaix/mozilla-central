@@ -45,6 +45,10 @@ MODULE		= html5
 LIBRARY_NAME	= html5p_s
 LIBXUL_LIBRARY	= 1
 
+XPIDLSRCS = \
+  nsIParserUtils.idl \
+  nsIScriptableUnescapeHTML.idl \
+  $(NULL)
 
 EXPORTS		= \
 		jArray.h \
@@ -77,6 +81,8 @@ EXPORTS		= \
 		nsHtml5DependentUTF16Buffer.h \
 		nsHtml5OwningUTF16Buffer.h \
 		nsHtml5ViewSourceUtils.h \
+		nsHtml5StringParser.h \
+		nsParserUtils.h \
 		$(NULL)
 
 CPPSRCS		= \
@@ -110,6 +116,8 @@ CPPSRCS		= \
 		nsHtml5SVGLoadDispatcher.cpp \
 		nsHtml5Highlighter.cpp \
 		nsHtml5ViewSourceUtils.cpp \
+		nsHtml5StringParser.cpp \
+		nsParserUtils.cpp \
 		$(NULL)
 
 FORCE_STATIC_LIB = 1

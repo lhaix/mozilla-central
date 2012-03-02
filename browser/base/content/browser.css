@@ -45,7 +45,7 @@ tabbrowser {
   opacity: 0 !important;
   -moz-transition: min-width 200ms ease-out,
                    max-width 250ms ease-out,
-                   opacity 50ms ease-out 100ms /* hide the tab for the last 100ms of the max-width transition */;
+                   opacity 50ms ease-out 180ms /* hide the tab for the last 20ms of the max-width transition */;
 }
 
 .tab-throbber:not([fadein]):not([pinned]),
@@ -329,12 +329,12 @@ window[chromehidden~="toolbar"] toolbar:not(.toolbar-primary):not(.chromeclass-m
 %ifdef MOZ_SERVICES_SYNC
 /* Sync notification UI */
 #sync-notifications {
-  -moz-binding: url("chrome://browser/content/syncNotification.xml#notificationbox");
+  -moz-binding: url("chrome://browser/content/sync/notification.xml#notificationbox");
   overflow-y: visible !important;
 }
 
 #sync-notifications notification {
-  -moz-binding: url("chrome://browser/content/syncNotification.xml#notification");
+  -moz-binding: url("chrome://browser/content/sync/notification.xml#notification");
 }
 %endif
 

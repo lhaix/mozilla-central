@@ -65,6 +65,7 @@
 #include "nsImageLoadingContent.h"
 #include "jsgc.h"
 #include "nsWrapperCacheInlines.h"
+#include "nsObjectLoadingContent.h"
 
 using namespace mozilla::dom;
 
@@ -281,7 +282,8 @@ nsNodeUtils::LastRelease(nsINode* aNode)
   }
   aNode->UnsetFlags(NODE_HAS_PROPERTIES);
 
-  if (aNode->HasFlag(NODE_HAS_LISTENERMANAGER)) {
+  if (aNode->NodeType() != nsIDOMNode::DOCUMENT_NODE &&
+      aNode->HasFlag(NODE_HAS_LISTENERMANAGER)) {
 #ifdef DEBUG
     if (nsContentUtils::IsInitialized()) {
       nsEventListenerManager* manager =
@@ -566,15 +568,20 @@ nsNodeUtils::CloneAndAdopt(nsINode *aNode, bool aClone, bool aDeep,
       }
     }
 
-#ifdef MOZ_MEDIA
     if (wasRegistered && oldDoc != newDoc) {
+#ifdef MOZ_MEDIA
       nsCOMPtr<nsIDOMHTMLMediaElement> domMediaElem(do_QueryInterface(aNode));
       if (domMediaElem) {
         nsHTMLMediaElement* mediaElem = static_cast<nsHTMLMediaElement*>(aNode);
         mediaElem->NotifyOwnerDocumentActivityChanged();
       }
-    }
 #endif
+      nsCOMPtr<nsIObjectLoadingContent> objectLoadingContent(do_QueryInterface(aNode));
+      if (objectLoadingContent) {
+        nsObjectLoadingContent* olc = static_cast<nsObjectLoadingContent*>(objectLoadingContent.get());
+        olc->NotifyOwnerDocumentActivityChanged();
+      }
+    }
 
     // nsImageLoadingContent needs to know when its document changes
     if (oldDoc != newDoc) {

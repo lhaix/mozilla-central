@@ -235,52 +235,6 @@ nsRange::IsNodeSelected(nsINode* aNode, PRUint32 aStartOffset,
 }
 
 /******************************************************
- * non members
- ******************************************************/
-
-nsresult
-NS_NewRangeUtils(nsIRangeUtils** aResult)
-{
-  NS_ENSURE_ARG_POINTER(aResult);
-
-  nsRangeUtils* rangeUtil = new nsRangeUtils();
-  if (!rangeUtil) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  return CallQueryInterface(rangeUtil, aResult);
-}
-
-/******************************************************
- * nsISupports
- ******************************************************/
-NS_IMPL_ISUPPORTS1(nsRangeUtils, nsIRangeUtils)
-
-/******************************************************
- * nsIRangeUtils methods
- ******************************************************/
- 
-NS_IMETHODIMP_(PRInt32) 
-nsRangeUtils::ComparePoints(nsIDOMNode* aParent1, PRInt32 aOffset1,
-                            nsIDOMNode* aParent2, PRInt32 aOffset2)
-{
-  nsCOMPtr<nsINode> parent1 = do_QueryInterface(aParent1);
-  nsCOMPtr<nsINode> parent2 = do_QueryInterface(aParent2);
-
-  NS_ENSURE_TRUE(parent1 && parent2, -1);
-
-  return nsContentUtils::ComparePoints(parent1, aOffset1, parent2, aOffset2);
-}
-
-NS_IMETHODIMP
-nsRangeUtils::CompareNodeToRange(nsIContent* aNode, nsRange* aRange,
-                                 bool *outNodeBefore, bool *outNodeAfter)
-{
-  return nsRange::CompareNodeToRange(aNode, aRange, outNodeBefore,
-                                     outNodeAfter);
-}
-
-/******************************************************
  * constructor/destructor
  ******************************************************/
 
@@ -796,7 +750,8 @@ nsRange::DoSetRange(nsINode* aStartN, PRInt32 aStartOffset,
       if (newCommonAncestor) {
         RegisterCommonAncestor(newCommonAncestor);
       } else {
-        NS_ASSERTION(mIsDetached, "unexpected disconnected nodes");
+        NS_ASSERTION(mIsDetached || !mIsPositioned,
+                     "unexpected disconnected nodes");
         mInSelection = false;
       }
     }
@@ -1641,7 +1596,7 @@ nsresult nsRange::CutContents(nsIDOMDocumentFragment** aFragment)
                                            cutValue);
               NS_ENSURE_SUCCESS(rv, rv);
               nsCOMPtr<nsIDOMNode> clone;
-              rv = charData->CloneNode(false, getter_AddRefs(clone));
+              rv = charData->CloneNode(false, 1, getter_AddRefs(clone));
               NS_ENSURE_SUCCESS(rv, rv);
               clone->SetNodeValue(cutValue);
               nodeToResult = clone;
@@ -1701,7 +1656,7 @@ nsresult nsRange::CutContents(nsIDOMDocumentFragment** aFragment)
       {
         if (retval) {
           nsCOMPtr<nsIDOMNode> clone;
-          rv = node->CloneNode(false, getter_AddRefs(clone));
+          rv = node->CloneNode(false, 1, getter_AddRefs(clone));
           NS_ENSURE_SUCCESS(rv, rv);
           nodeToResult = clone;
         }
@@ -1872,7 +1827,7 @@ nsRange::CloneParentsBetween(nsIDOMNode *aAncestor,
   {
     nsCOMPtr<nsIDOMNode> clone, tmpNode;
 
-    res = parent->CloneNode(false, getter_AddRefs(clone));
+    res = parent->CloneNode(false, 1, getter_AddRefs(clone));
 
     if (NS_FAILED(res)) return res;
     if (!clone)         return NS_ERROR_FAILURE;
@@ -1973,7 +1928,7 @@ nsRange::CloneContents(nsIDOMDocumentFragment** aReturn)
     // Clone the current subtree!
 
     nsCOMPtr<nsIDOMNode> clone;
-    res = node->CloneNode(deepClone, getter_AddRefs(clone));
+    res = node->CloneNode(deepClone, 1, getter_AddRefs(clone));
     if (NS_FAILED(res)) return res;
 
     // If it's CharacterData, make sure we only clone what

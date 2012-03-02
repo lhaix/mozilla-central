@@ -43,7 +43,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "jstypes.h"
-#include "jsstdint.h"
 #include "jsutil.h"
 #include "jshash.h"
 
@@ -84,7 +83,7 @@ DefaultAllocEntry(void *pool, const void *key)
 }
 
 static void
-DefaultFreeEntry(void *pool, JSHashEntry *he, uintN flag)
+DefaultFreeEntry(void *pool, JSHashEntry *he, unsigned flag)
 {
     if (flag == HT_FREE_ENTRY)
         UnwantedForeground::free_(he);

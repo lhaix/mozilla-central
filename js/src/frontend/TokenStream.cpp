@@ -53,7 +53,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "jstypes.h"
-#include "jsstdint.h"
 #include "jsutil.h"
 #include "jsprf.h"
 #include "jsapi.h"
@@ -156,7 +155,7 @@ js::IsIdentifier(JSLinearString *str)
 /* Initialize members that aren't initialized in |init|. */
 TokenStream::TokenStream(JSContext *cx, JSPrincipals *prin, JSPrincipals *originPrin)
   : tokens(), cursor(), lookahead(), flags(), listenerTSData(), tokenbuf(cx),
-    cx(cx), originPrincipals(originPrin ? originPrin : prin)
+    cx(cx), originPrincipals(JSScript::normalizeOriginPrincipals(prin, originPrin))
 {
     if (originPrincipals)
         JSPRINCIPALS_HOLD(cx, originPrincipals);
@@ -167,7 +166,7 @@ TokenStream::TokenStream(JSContext *cx, JSPrincipals *prin, JSPrincipals *origin
 #endif
 
 bool
-TokenStream::init(const jschar *base, size_t length, const char *fn, uintN ln, JSVersion v)
+TokenStream::init(const jschar *base, size_t length, const char *fn, unsigned ln, JSVersion v)
 {
     filename = fn;
     lineno = ln;
@@ -179,8 +178,8 @@ TokenStream::init(const jschar *base, size_t length, const char *fn, uintN ln, J
     prevLinebase = NULL;
     sourceMap = NULL;
 
-    JSSourceHandler listener = cx->debugHooks->sourceHandler;
-    void *listenerData = cx->debugHooks->sourceHandlerData;
+    JSSourceHandler listener = cx->runtime->debugHooks.sourceHandler;
+    void *listenerData = cx->runtime->debugHooks.sourceHandlerData;
 
     if (listener)
         listener(fn, ln, base, length, &listenerTSData, listenerData);
@@ -381,9 +380,9 @@ TokenStream::ungetCharIgnoreEOL(int32_t c)
  * characters had appropriate values.
  */
 bool
-TokenStream::peekChars(intN n, jschar *cp)
+TokenStream::peekChars(int n, jschar *cp)
 {
-    intN i, j;
+    int i, j;
     int32_t c;
 
     for (i = 0; i < n; i++) {
@@ -425,7 +424,7 @@ TokenStream::TokenBuf::findEOL()
 }
 
 bool
-TokenStream::reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorNumber, va_list ap)
+TokenStream::reportCompileErrorNumberVA(ParseNode *pn, unsigned flags, unsigned errorNumber, va_list ap)
 {
     JSErrorReport report;
     char *message;
@@ -434,7 +433,7 @@ TokenStream::reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorN
     bool warning;
     JSBool ok;
     const TokenPos *tp;
-    uintN i;
+    unsigned i;
 
     if (JSREPORT_IS_STRICT(flags) && !cx->hasStrictOption())
         return true;
@@ -485,7 +484,7 @@ TokenStream::reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorN
             warning = false;
             goto out;
         }
-        memcpy(linechars, linebase, linelength * sizeof(jschar));
+        PodCopy(linechars, linebase, linelength);
         linechars[linelength] = 0;
         linebytes = DeflateString(cx, linechars, linelength);
         if (!linebytes) {
@@ -522,8 +521,8 @@ TokenStream::reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorN
          * sending the error on to the regular error reporter.
          */
         bool reportError = true;
-        if (JSDebugErrorHook hook = cx->debugHooks->debugErrorHook)
-            reportError = hook(cx, message, &report, cx->debugHooks->debugErrorHookData);
+        if (JSDebugErrorHook hook = cx->runtime->debugHooks.debugErrorHook)
+            reportError = hook(cx, message, &report, cx->runtime->debugHooks.debugErrorHookData);
 
         /* Report the error */
         if (reportError && cx->errorReporter)
@@ -554,13 +553,13 @@ TokenStream::reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorN
 
 bool
 js::ReportStrictModeError(JSContext *cx, TokenStream *ts, TreeContext *tc, ParseNode *pn,
-                          uintN errorNumber, ...)
+                          unsigned errorNumber, ...)
 {
     JS_ASSERT(ts || tc);
     JS_ASSERT(cx == ts->getContext());
 
     /* In strict mode code, this is an error, not merely a warning. */
-    uintN flags;
+    unsigned flags;
     if ((ts && ts->isStrictMode()) || (tc && (tc->flags & TCF_STRICT_MODE_CODE))) {
         flags = JSREPORT_ERROR;
     } else {
@@ -578,8 +577,8 @@ js::ReportStrictModeError(JSContext *cx, TokenStream *ts, TreeContext *tc, Parse
 }
 
 bool
-js::ReportCompileErrorNumber(JSContext *cx, TokenStream *ts, ParseNode *pn, uintN flags,
-                             uintN errorNumber, ...)
+js::ReportCompileErrorNumber(JSContext *cx, TokenStream *ts, ParseNode *pn, unsigned flags,
+                             unsigned errorNumber, ...)
 {
     va_list ap;
 
@@ -1130,7 +1129,7 @@ TokenStream::getAtLine()
 {
     int c;
     jschar cp[5];
-    uintN i, line, temp;
+    unsigned i, line, temp;
     char filenameBuf[1024];
 
     /*
@@ -1733,7 +1732,7 @@ TokenStream::getTokenInternal()
          * chars, so we don't need to use tokenbuf.  Instead we can just
          * convert the jschars in userbuf directly to the numeric value.
          */
-        jsdouble dval;
+        double dval;
         const jschar *dummy;
         if (!hasFracOrExp) {
             if (!GetPrefixInteger(cx, numStart, userbuf.addressOfNextRawChar(), 10, &dummy, &dval))
@@ -1824,7 +1823,7 @@ TokenStream::getTokenInternal()
             goto error;
         }
 
-        jsdouble dval;
+        double dval;
         const jschar *dummy;
         if (!GetPrefixInteger(cx, numStart, userbuf.addressOfNextRawChar(), radix, &dummy, &dval))
             goto error;
@@ -1988,7 +1987,7 @@ TokenStream::getTokenInternal()
          * Look for a multi-line comment.
          */
         if (matchChar('*')) {
-            uintN linenoBefore = lineno;
+            unsigned linenoBefore = lineno;
             while ((c = getChar()) != EOF &&
                    !(c == '*' && matchChar('/'))) {
                 /* Ignore all characters until comment close. */
@@ -2036,7 +2035,7 @@ TokenStream::getTokenInternal()
             }
 
             RegExpFlag reflags = NoFlags;
-            uintN length = tokenbuf.length() + 1;
+            unsigned length = tokenbuf.length() + 1;
             while (true) {
                 c = peekChar();
                 if (c == 'g' && !(reflags & GlobalFlag))
@@ -2097,46 +2096,6 @@ TokenStream::getTokenInternal()
             tt = TOK_MINUS;
         }
         break;
-
-#if JS_HAS_SHARP_VARS
-      case '#':
-      {
-        uint32_t n;
-
-        c = getCharIgnoreEOL();
-        if (!JS7_ISDEC(c)) {
-            ungetCharIgnoreEOL(c);
-            goto badchar;
-        }
-        n = (uint32_t)JS7_UNDEC(c);
-        for (;;) {
-            c = getChar();
-            if (!JS7_ISDEC(c))
-                break;
-            n = 10 * n + JS7_UNDEC(c);
-            if (n >= UINT16_LIMIT) {
-                ReportCompileErrorNumber(cx, this, NULL, JSREPORT_ERROR, JSMSG_SHARPVAR_TOO_BIG);
-                goto error;
-            }
-        }
-        tp->setSharpNumber(uint16_t(n));
-        if (cx->hasStrictOption() && (c == '=' || c == '#')) {
-            char buf[20];
-            JS_snprintf(buf, sizeof buf, "#%u%c", n, c);
-            if (!ReportCompileErrorNumber(cx, this, NULL, JSREPORT_WARNING | JSREPORT_STRICT,
-                                          JSMSG_DEPRECATED_USAGE, buf)) {
-                goto error;
-            }
-        }
-        if (c == '=')
-            tt = TOK_DEFSHARP;
-        else if (c == '#')
-            tt = TOK_USESHARP;
-        else
-            goto badchar;
-        break;
-      }
-#endif /* JS_HAS_SHARP_VARS */
 
       badchar:
       default:
@@ -2262,8 +2221,6 @@ TokenKindToString(TokenKind tt)
       case TOK_RETURN:          return "TOK_RETURN";
       case TOK_NEW:             return "TOK_NEW";
       case TOK_DELETE:          return "TOK_DELETE";
-      case TOK_DEFSHARP:        return "TOK_DEFSHARP";
-      case TOK_USESHARP:        return "TOK_USESHARP";
       case TOK_TRY:             return "TOK_TRY";
       case TOK_CATCH:           return "TOK_CATCH";
       case TOK_FINALLY:         return "TOK_FINALLY";

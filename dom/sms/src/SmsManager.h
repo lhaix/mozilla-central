@@ -40,7 +40,7 @@
 
 #include "nsIDOMSmsManager.h"
 #include "nsIObserver.h"
-#include "nsDOMEventTargetWrapperCache.h"
+#include "nsDOMEventTargetHelper.h"
 
 class nsIDOMMozSmsMessage;
 
@@ -50,25 +50,38 @@ namespace sms {
 
 class SmsManager : public nsIDOMMozSmsManager
                  , public nsIObserver
-                 , public nsDOMEventTargetWrapperCache
+                 , public nsDOMEventTargetHelper
 {
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
   NS_DECL_NSIDOMMOZSMSMANAGER
 
-  NS_FORWARD_NSIDOMEVENTTARGET(nsDOMEventTargetWrapperCache::)
+  NS_FORWARD_NSIDOMEVENTTARGET(nsDOMEventTargetHelper::)
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(SmsManager,
-                                           nsDOMEventTargetWrapperCache)
+                                           nsDOMEventTargetHelper)
 
   void Init(nsPIDOMWindow *aWindow, nsIScriptContext* aScriptContext);
   void Shutdown();
 
 private:
+  /**
+   * Internal Send() method used to send one message.
+   */
+  nsresult Send(JSContext* aCx, JSObject* aGlobal, JSString* aNumber,
+                const nsAString& aMessage, jsval* aRequest);
+
+  /**
+   * Internal Delete() method used to delete a message.
+   */
+  nsresult Delete(PRInt32 aId, nsIDOMMozSmsRequest** aRequest);
+
   nsresult DispatchTrustedSmsEventToSelf(const nsAString& aEventName,
                                          nsIDOMMozSmsMessage* aMessage);
   NS_DECL_EVENT_HANDLER(received)
+  NS_DECL_EVENT_HANDLER(sent)
+  NS_DECL_EVENT_HANDLER(delivered)
 };
 
 } // namespace sms

@@ -137,9 +137,9 @@ JS_ENUM_HEADER(JSValueType, uint8_t)
     JSVAL_TYPE_NULL                = 0x06,
     JSVAL_TYPE_OBJECT              = 0x07,
 
-    /* This never appears in a jsval; it is only provided as an out-of-band value. */
-    JSVAL_TYPE_UNKNOWN             = 0x20
-
+    /* These never appear in a jsval; they are only provided as an out-of-band value. */
+    JSVAL_TYPE_UNKNOWN             = 0x20,
+    JSVAL_TYPE_MISSING             = 0x21
 } JS_ENUM_FOOTER(JSValueType);
 
 JS_STATIC_ASSERT(sizeof(JSValueType) == 1);
@@ -286,6 +286,7 @@ typedef enum JSWhyMagic
     JS_ARG_POISON,               /* used in debug builds to catch tracing errors */
     JS_SERIALIZE_NO_NODE,        /* an empty subnode in the AST serializer */
     JS_LAZY_ARGUMENTS,           /* lazy arguments value on the stack */
+    JS_UNASSIGNED_ARGUMENTS,     /* the initial value of callobj.arguments */
     JS_IS_CONSTRUCTING,          /* magic value passed to natives to indicate construction */
     JS_GENERIC_MAGIC             /* for local use */
 } JSWhyMagic;

@@ -42,7 +42,6 @@
 #include "mozilla/Util.h"
 
 #include "jstypes.h"
-#include "jsstdint.h"
 #include "jsutil.h"
 #include "jshash.h"
 #include "jsprf.h"
@@ -59,7 +58,6 @@
 #include "jsnum.h"
 #include "jsobj.h"
 #include "jstypedarray.h"
-#include "jsutil.h"
 
 #include "vm/GlobalObject.h"
 
@@ -67,6 +65,8 @@
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
 #include "jstypedarrayinlines.h"
+
+#include "vm/MethodGuard-inl.h"
 
 using namespace mozilla;
 using namespace js;
@@ -92,12 +92,12 @@ ValueIsLength(JSContext *cx, const Value &v, jsuint *len)
     }
 
     if (v.isDouble()) {
-        jsdouble d = v.toDouble();
+        double d = v.toDouble();
         if (JSDOUBLE_IS_NaN(d))
             return false;
 
         jsuint length = jsuint(d);
-        if (d != jsdouble(length))
+        if (d != double(length))
             return false;
 
         *len = length;
@@ -105,6 +105,26 @@ ValueIsLength(JSContext *cx, const Value &v, jsuint *len)
     }
 
     return false;
+}
+
+/*
+ * Convert |v| to an array index for an array of length |length| per
+ * the Typed Array Specification section 7.0, |subarray|. If successful,
+ * the output value is in the range [0, length). 
+ */
+static bool
+ToClampedIndex(JSContext *cx, const Value &v, int32_t length, int32_t *out)
+{
+    if (!ToInt32(cx, v, out))
+        return false;
+    if (*out < 0) {
+        *out += length;
+        if (*out < 0)
+            *out = 0;
+    } else if (*out > length) {
+        *out = length;
+    }
+    return true;
 }
 
 /*
@@ -140,11 +160,49 @@ ArrayBuffer::prop_getByteLength(JSContext *cx, JSObject *obj, jsid id, Value *vp
     return true;
 }
 
+JSBool
+ArrayBuffer::fun_slice(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    bool ok;
+    JSObject *obj = NonGenericMethodGuard(cx, args, fun_slice, &ArrayBufferClass, &ok);
+    if (!obj)
+        return ok;
+
+    JSObject *arrayBuffer = getArrayBuffer(obj);
+    if (!arrayBuffer)
+        return true;
+
+    // these are the default values
+    int32_t length = int32_t(arrayBuffer->arrayBufferByteLength());
+    int32_t begin = 0, end = length;
+
+    if (args.length() > 0) {
+        if (!ToClampedIndex(cx, args[0], length, &begin))
+            return false;
+
+        if (args.length() > 1) {
+            if (!ToClampedIndex(cx, args[1], length, &end))
+                return false;
+        }
+    }
+
+    if (begin > end)
+        begin = end;
+
+    JSObject *nobj = createSlice(cx, arrayBuffer, begin, end);
+    if (!nobj)
+        return false;
+    args.rval().setObject(*nobj);
+    return true;
+}
+
 /*
  * new ArrayBuffer(byteLength)
  */
 JSBool
-ArrayBuffer::class_constructor(JSContext *cx, uintN argc, Value *vp)
+ArrayBuffer::class_constructor(JSContext *cx, unsigned argc, Value *vp)
 {
     int32_t nbytes = 0;
     if (argc > 0 && !ToInt32(cx, vp[2], &nbytes))
@@ -158,7 +216,7 @@ ArrayBuffer::class_constructor(JSContext *cx, uintN argc, Value *vp)
 }
 
 bool
-JSObject::allocateArrayBufferSlots(JSContext *cx, uint32_t size)
+JSObject::allocateArrayBufferSlots(JSContext *cx, uint32_t size, uint8_t *contents)
 {
     /*
      * ArrayBuffer objects delegate added properties to another JSObject, so
@@ -174,18 +232,27 @@ JSObject::allocateArrayBufferSlots(JSContext *cx, uint32_t size)
         if (!newheader)
             return false;
         elements = newheader->elements();
+        if (contents)
+            memcpy(elements, contents, size);
     } else {
         elements = fixedElements();
-        memset(fixedSlots(), 0, size + sizeof(ObjectElements));
+        if (contents)
+            memcpy(elements, contents, size);
+        else
+            memset(elements, 0, size);
     }
-    getElementsHeader()->length = size;
+
+    ObjectElements *header = getElementsHeader();
 
     /*
      * Note that |bytes| may not be a multiple of |sizeof(Value)|, so
      * |capacity * sizeof(Value)| may underestimate the size by up to
      * |sizeof(Value) - 1| bytes.
      */
-    getElementsHeader()->capacity = size / sizeof(Value);
+    header->capacity = size / sizeof(Value);
+    header->initializedLength = 0;
+    header->length = size;
+    header->unused = 0;
 
     return true;
 }
@@ -202,7 +269,7 @@ DelegateObject(JSContext *cx, JSObject *obj)
 }
 
 JSObject *
-ArrayBuffer::create(JSContext *cx, int32_t nbytes)
+ArrayBuffer::create(JSContext *cx, int32_t nbytes, uint8_t *contents)
 {
     JSObject *obj = NewBuiltinClassInstance(cx, &ArrayBuffer::slowClass);
     if (!obj)
@@ -232,10 +299,23 @@ ArrayBuffer::create(JSContext *cx, int32_t nbytes)
      * The first 8 bytes hold the length.
      * The rest of it is a flat data store for the array buffer.
      */
-    if (!obj->allocateArrayBufferSlots(cx, nbytes))
+    if (!obj->allocateArrayBufferSlots(cx, nbytes, contents))
         return NULL;
 
     return obj;
+}
+
+JSObject *
+ArrayBuffer::createSlice(JSContext *cx, JSObject *arrayBuffer, uint32_t begin, uint32_t end)
+{
+    JS_ASSERT(arrayBuffer->isArrayBuffer());
+    JS_ASSERT(begin <= arrayBuffer->arrayBufferByteLength());
+    JS_ASSERT(end <= arrayBuffer->arrayBufferByteLength());
+
+    JS_ASSERT(begin <= end);
+    uint32_t length = end - begin;
+
+    return create(cx, length, arrayBuffer->arrayBufferDataOffset() + begin);
 }
 
 ArrayBuffer::~ArrayBuffer()
@@ -343,7 +423,7 @@ ArrayBuffer::obj_lookupSpecial(JSContext *cx, JSObject *obj, SpecialId sid,
 
 JSBool
 ArrayBuffer::obj_defineGeneric(JSContext *cx, JSObject *obj, jsid id, const Value *v,
-                               PropertyOp getter, StrictPropertyOp setter, uintN attrs)
+                               PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
     if (JSID_IS_ATOM(id, cx->runtime->atomState.byteLengthAtom))
         return true;
@@ -356,14 +436,14 @@ ArrayBuffer::obj_defineGeneric(JSContext *cx, JSObject *obj, jsid id, const Valu
 
 JSBool
 ArrayBuffer::obj_defineProperty(JSContext *cx, JSObject *obj, PropertyName *name, const Value *v,
-                                PropertyOp getter, StrictPropertyOp setter, uintN attrs)
+                                PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
     return obj_defineGeneric(cx, obj, ATOM_TO_JSID(name), v, getter, setter, attrs);
 }
 
 JSBool
 ArrayBuffer::obj_defineElement(JSContext *cx, JSObject *obj, uint32_t index, const Value *v,
-                   PropertyOp getter, StrictPropertyOp setter, uintN attrs)
+                   PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
     JSObject *delegate = DelegateObject(cx, obj);
     if (!delegate)
@@ -373,7 +453,7 @@ ArrayBuffer::obj_defineElement(JSContext *cx, JSObject *obj, uint32_t index, con
 
 JSBool
 ArrayBuffer::obj_defineSpecial(JSContext *cx, JSObject *obj, SpecialId sid, const Value *v,
-                               PropertyOp getter, StrictPropertyOp setter, uintN attrs)
+                               PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
     return obj_defineGeneric(cx, obj, SPECIALID_TO_JSID(sid), v, getter, setter, attrs);
 }
@@ -471,6 +551,10 @@ ArrayBuffer::obj_setGeneric(JSContext *cx, JSObject *obj, jsid id, Value *vp, JS
         if (delegate->getProto() != oldDelegateProto) {
             // actual __proto__ was set and not a plain property called
             // __proto__
+            if (!obj->isExtensible()) {
+                obj->reportNotExtensible(cx);
+                return false;
+            }
             if (!SetProto(cx, obj, vp->toObjectOrNull(), true)) {
                 // this can be caused for example by setting x.__proto__ = x
                 // restore delegate prototype chain
@@ -511,7 +595,7 @@ ArrayBuffer::obj_setSpecial(JSContext *cx, JSObject *obj, SpecialId sid, Value *
 }
 
 JSBool
-ArrayBuffer::obj_getGenericAttributes(JSContext *cx, JSObject *obj, jsid id, uintN *attrsp)
+ArrayBuffer::obj_getGenericAttributes(JSContext *cx, JSObject *obj, jsid id, unsigned *attrsp)
 {
     if (JSID_IS_ATOM(id, cx->runtime->atomState.byteLengthAtom)) {
         *attrsp = JSPROP_PERMANENT | JSPROP_READONLY;
@@ -525,13 +609,13 @@ ArrayBuffer::obj_getGenericAttributes(JSContext *cx, JSObject *obj, jsid id, uin
 }
 
 JSBool
-ArrayBuffer::obj_getPropertyAttributes(JSContext *cx, JSObject *obj, PropertyName *name, uintN *attrsp)
+ArrayBuffer::obj_getPropertyAttributes(JSContext *cx, JSObject *obj, PropertyName *name, unsigned *attrsp)
 {
     return obj_getGenericAttributes(cx, obj, ATOM_TO_JSID(name), attrsp);
 }
 
 JSBool
-ArrayBuffer::obj_getElementAttributes(JSContext *cx, JSObject *obj, uint32_t index, uintN *attrsp)
+ArrayBuffer::obj_getElementAttributes(JSContext *cx, JSObject *obj, uint32_t index, unsigned *attrsp)
 {
     JSObject *delegate = DelegateObject(cx, obj);
     if (!delegate)
@@ -540,13 +624,13 @@ ArrayBuffer::obj_getElementAttributes(JSContext *cx, JSObject *obj, uint32_t ind
 }
 
 JSBool
-ArrayBuffer::obj_getSpecialAttributes(JSContext *cx, JSObject *obj, SpecialId sid, uintN *attrsp)
+ArrayBuffer::obj_getSpecialAttributes(JSContext *cx, JSObject *obj, SpecialId sid, unsigned *attrsp)
 {
     return obj_getGenericAttributes(cx, obj, SPECIALID_TO_JSID(sid), attrsp);
 }
 
 JSBool
-ArrayBuffer::obj_setGenericAttributes(JSContext *cx, JSObject *obj, jsid id, uintN *attrsp)
+ArrayBuffer::obj_setGenericAttributes(JSContext *cx, JSObject *obj, jsid id, unsigned *attrsp)
 {
     if (JSID_IS_ATOM(id, cx->runtime->atomState.byteLengthAtom)) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL,
@@ -561,13 +645,13 @@ ArrayBuffer::obj_setGenericAttributes(JSContext *cx, JSObject *obj, jsid id, uin
 }
 
 JSBool
-ArrayBuffer::obj_setPropertyAttributes(JSContext *cx, JSObject *obj, PropertyName *name, uintN *attrsp)
+ArrayBuffer::obj_setPropertyAttributes(JSContext *cx, JSObject *obj, PropertyName *name, unsigned *attrsp)
 {
     return obj_setGenericAttributes(cx, obj, ATOM_TO_JSID(name), attrsp);
 }
 
 JSBool
-ArrayBuffer::obj_setElementAttributes(JSContext *cx, JSObject *obj, uint32_t index, uintN *attrsp)
+ArrayBuffer::obj_setElementAttributes(JSContext *cx, JSObject *obj, uint32_t index, unsigned *attrsp)
 {
     JSObject *delegate = DelegateObject(cx, obj);
     if (!delegate)
@@ -576,7 +660,7 @@ ArrayBuffer::obj_setElementAttributes(JSContext *cx, JSObject *obj, uint32_t ind
 }
 
 JSBool
-ArrayBuffer::obj_setSpecialAttributes(JSContext *cx, JSObject *obj, SpecialId sid, uintN *attrsp)
+ArrayBuffer::obj_setSpecialAttributes(JSContext *cx, JSObject *obj, SpecialId sid, unsigned *attrsp)
 {
     return obj_setGenericAttributes(cx, obj, SPECIALID_TO_JSID(sid), attrsp);
 }
@@ -786,7 +870,7 @@ TypedArray::obj_lookupSpecial(JSContext *cx, JSObject *obj, SpecialId sid,
 }
 
 JSBool
-TypedArray::obj_getGenericAttributes(JSContext *cx, JSObject *obj, jsid id, uintN *attrsp)
+TypedArray::obj_getGenericAttributes(JSContext *cx, JSObject *obj, jsid id, unsigned *attrsp)
 {
     *attrsp = (JSID_IS_ATOM(id, cx->runtime->atomState.lengthAtom))
               ? JSPROP_PERMANENT | JSPROP_READONLY
@@ -795,48 +879,48 @@ TypedArray::obj_getGenericAttributes(JSContext *cx, JSObject *obj, jsid id, uint
 }
 
 JSBool
-TypedArray::obj_getPropertyAttributes(JSContext *cx, JSObject *obj, PropertyName *name, uintN *attrsp)
+TypedArray::obj_getPropertyAttributes(JSContext *cx, JSObject *obj, PropertyName *name, unsigned *attrsp)
 {
     *attrsp = JSPROP_PERMANENT | JSPROP_ENUMERATE;
     return true;
 }
 
 JSBool
-TypedArray::obj_getElementAttributes(JSContext *cx, JSObject *obj, uint32_t index, uintN *attrsp)
+TypedArray::obj_getElementAttributes(JSContext *cx, JSObject *obj, uint32_t index, unsigned *attrsp)
 {
     *attrsp = JSPROP_PERMANENT | JSPROP_ENUMERATE;
     return true;
 }
 
 JSBool
-TypedArray::obj_getSpecialAttributes(JSContext *cx, JSObject *obj, SpecialId sid, uintN *attrsp)
+TypedArray::obj_getSpecialAttributes(JSContext *cx, JSObject *obj, SpecialId sid, unsigned *attrsp)
 {
     return obj_getGenericAttributes(cx, obj, SPECIALID_TO_JSID(sid), attrsp);
 }
 
 JSBool
-TypedArray::obj_setGenericAttributes(JSContext *cx, JSObject *obj, jsid id, uintN *attrsp)
+TypedArray::obj_setGenericAttributes(JSContext *cx, JSObject *obj, jsid id, unsigned *attrsp)
 {
     JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_CANT_SET_ARRAY_ATTRS);
     return false;
 }
 
 JSBool
-TypedArray::obj_setPropertyAttributes(JSContext *cx, JSObject *obj, PropertyName *name, uintN *attrsp)
+TypedArray::obj_setPropertyAttributes(JSContext *cx, JSObject *obj, PropertyName *name, unsigned *attrsp)
 {
     JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_CANT_SET_ARRAY_ATTRS);
     return false;
 }
 
 JSBool
-TypedArray::obj_setElementAttributes(JSContext *cx, JSObject *obj, uint32_t index, uintN *attrsp)
+TypedArray::obj_setElementAttributes(JSContext *cx, JSObject *obj, uint32_t index, unsigned *attrsp)
 {
     JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_CANT_SET_ARRAY_ATTRS);
     return false;
 }
 
 JSBool
-TypedArray::obj_setSpecialAttributes(JSContext *cx, JSObject *obj, SpecialId sid, uintN *attrsp)
+TypedArray::obj_setSpecialAttributes(JSContext *cx, JSObject *obj, SpecialId sid, unsigned *attrsp)
 {
     JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_CANT_SET_ARRAY_ATTRS);
     return false;
@@ -866,7 +950,7 @@ js_TypedArray_uint8_clamp_double(const double x)
     if (x > 255)
         return 255;
 
-    jsdouble toTruncate = x + 0.5;
+    double toTruncate = x + 0.5;
     uint8_t y = uint8_t(toTruncate);
 
     /*
@@ -902,7 +986,7 @@ struct uint8_clamped {
     uint8_clamped(int8_t x)     { *this = x; }
     uint8_clamped(int16_t x)    { *this = x; }
     uint8_clamped(int32_t x)    { *this = x; }
-    uint8_clamped(jsdouble x) { *this = x; }
+    uint8_clamped(double x)     { *this = x; }
 
     inline uint8_clamped& operator= (const uint8_clamped& x) {
         val = x.val;
@@ -947,7 +1031,7 @@ struct uint8_clamped {
         return *this;
     }
 
-    inline uint8_clamped& operator= (const jsdouble x) {
+    inline uint8_clamped& operator= (const double x) {
         val = uint8_t(js_TypedArray_uint8_clamp_double(x));
         return *this;
     }
@@ -1014,7 +1098,7 @@ class TypedArrayTemplate
     static void
     obj_trace(JSTracer *trc, JSObject *obj)
     {
-        MarkValue(trc, obj->getFixedSlotRef(FIELD_BUFFER), "typedarray.buffer");
+        MarkSlot(trc, &obj->getFixedSlotRef(FIELD_BUFFER), "typedarray.buffer");
     }
 
     static JSBool
@@ -1124,7 +1208,7 @@ class TypedArrayTemplate
             return true;
         }
 
-        jsdouble d;
+        double d;
         if (vp->isDouble()) {
             d = vp->toDouble();
         } else if (vp->isNull()) {
@@ -1226,7 +1310,7 @@ class TypedArrayTemplate
 
     static JSBool
     obj_defineGeneric(JSContext *cx, JSObject *obj, jsid id, const Value *v,
-                      PropertyOp getter, StrictPropertyOp setter, uintN attrs)
+                      PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
     {
         if (JSID_IS_ATOM(id, cx->runtime->atomState.lengthAtom))
             return true;
@@ -1237,14 +1321,14 @@ class TypedArrayTemplate
 
     static JSBool
     obj_defineProperty(JSContext *cx, JSObject *obj, PropertyName *name, const Value *v,
-                       PropertyOp getter, StrictPropertyOp setter, uintN attrs)
+                       PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
     {
         return obj_defineGeneric(cx, obj, ATOM_TO_JSID(name), v, getter, setter, attrs);
     }
 
     static JSBool
     obj_defineElement(JSContext *cx, JSObject *obj, uint32_t index, const Value *v,
-                       PropertyOp getter, StrictPropertyOp setter, uintN attrs)
+                       PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
     {
         Value tmp = *v;
         return obj_setElement(cx, obj, index, &tmp, false);
@@ -1252,7 +1336,7 @@ class TypedArrayTemplate
 
     static JSBool
     obj_defineSpecial(JSContext *cx, JSObject *obj, SpecialId sid, const Value *v,
-                      PropertyOp getter, StrictPropertyOp setter, uintN attrs)
+                      PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
     {
         return obj_defineGeneric(cx, obj, SPECIALID_TO_JSID(sid), v, getter, setter, attrs);
     }
@@ -1407,7 +1491,7 @@ class TypedArrayTemplate
      * new [Type]Array(ArrayBuffer, [optional] byteOffset, [optional] length)
      */
     static JSBool
-    class_constructor(JSContext *cx, uintN argc, Value *vp)
+    class_constructor(JSContext *cx, unsigned argc, Value *vp)
     {
         /* N.B. this is a constructor for slowClass, not fastClass! */
         JSObject *obj = create(cx, argc, JS_ARGV(cx, vp));
@@ -1418,7 +1502,7 @@ class TypedArrayTemplate
     }
 
     static JSObject *
-    create(JSContext *cx, uintN argc, Value *argv)
+    create(JSContext *cx, unsigned argc, Value *argv)
     {
         /* N.B. there may not be an argv[-2]/argv[-1]. */
 
@@ -1462,7 +1546,7 @@ class TypedArrayTemplate
         int32_t length = -1;
 
         if (argc > 1) {
-            if (!NonstandardToInt32(cx, argv[1], &byteOffset))
+            if (!ToInt32(cx, argv[1], &byteOffset))
                 return NULL;
             if (byteOffset < 0) {
                 JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL,
@@ -1471,7 +1555,7 @@ class TypedArrayTemplate
             }
 
             if (argc > 2) {
-                if (!NonstandardToInt32(cx, argv[2], &length))
+                if (!ToInt32(cx, argv[2], &length))
                     return NULL;
                 if (length < 0) {
                     JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL,
@@ -1487,7 +1571,7 @@ class TypedArrayTemplate
 
     /* subarray(start[, end]) */
     static JSBool
-    fun_subarray(JSContext *cx, uintN argc, Value *vp)
+    fun_subarray(JSContext *cx, unsigned argc, Value *vp)
     {
         CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -1505,26 +1589,12 @@ class TypedArrayTemplate
         int32_t length = int32_t(getLength(tarray));
 
         if (args.length() > 0) {
-            if (!NonstandardToInt32(cx, args[0], &begin))
+            if (!ToClampedIndex(cx, args[0], length, &begin))
                 return false;
-            if (begin < 0) {
-                begin += length;
-                if (begin < 0)
-                    begin = 0;
-            } else if (begin > length) {
-                begin = length;
-            }
 
             if (args.length() > 1) {
-                if (!NonstandardToInt32(cx, args[1], &end))
+                if (!ToClampedIndex(cx, args[1], length, &end))
                     return false;
-                if (end < 0) {
-                    end += length;
-                    if (end < 0)
-                        end = 0;
-                } else if (end > length) {
-                    end = length;
-                }
             }
         }
 
@@ -1540,7 +1610,7 @@ class TypedArrayTemplate
 
     /* set(array[, offset]) */
     static JSBool
-    fun_set(JSContext *cx, uintN argc, Value *vp)
+    fun_set(JSContext *cx, unsigned argc, Value *vp)
     {
         CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -1557,7 +1627,7 @@ class TypedArrayTemplate
         int32_t off = 0;
 
         if (args.length() > 1) {
-            if (!NonstandardToInt32(cx, args[1], &off))
+            if (!ToInt32(cx, args[1], &off))
                 return false;
 
             if (off < 0 || uint32_t(off) > getLength(tarray)) {
@@ -1740,7 +1810,7 @@ class TypedArrayTemplate
          * are treated identically.
          */
         if (v.isPrimitive() && !v.isMagic() && !v.isUndefined()) {
-            jsdouble dval;
+            double dval;
             JS_ALWAYS_TRUE(ToNumber(cx, v, &dval));
             return nativeFromDouble(dval);
         }
@@ -1770,12 +1840,12 @@ class TypedArrayTemplate
              * It is valid to skip the hole check here because nativeFromValue
              * treats a hole as undefined.
              */
-            for (uintN i = 0; i < len; ++i)
+            for (unsigned i = 0; i < len; ++i)
                 *dest++ = nativeFromValue(cx, *src++);
         } else {
             Value v;
 
-            for (uintN i = 0; i < len; ++i) {
+            for (unsigned i = 0; i < len; ++i) {
                 if (!ar->getElement(cx, i, &v))
                     return false;
                 *dest++ = nativeFromValue(cx, v);
@@ -1799,58 +1869,58 @@ class TypedArrayTemplate
         NativeType *dest = static_cast<NativeType*>((void*)getDataOffset(thisTypedArrayObj)) + offset;
 
         if (getType(tarray) == getType(thisTypedArrayObj)) {
-            memcpy(dest, getDataOffset(tarray), getByteLength(tarray));
+            js_memcpy(dest, getDataOffset(tarray), getByteLength(tarray));
             return true;
         }
 
-        uintN srclen = getLength(tarray);
+        unsigned srclen = getLength(tarray);
         switch (getType(tarray)) {
           case TypedArray::TYPE_INT8: {
             int8_t *src = static_cast<int8_t*>(getDataOffset(tarray));
-            for (uintN i = 0; i < srclen; ++i)
+            for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_UINT8:
           case TypedArray::TYPE_UINT8_CLAMPED: {
             uint8_t *src = static_cast<uint8_t*>(getDataOffset(tarray));
-            for (uintN i = 0; i < srclen; ++i)
+            for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_INT16: {
             int16_t *src = static_cast<int16_t*>(getDataOffset(tarray));
-            for (uintN i = 0; i < srclen; ++i)
+            for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_UINT16: {
             uint16_t *src = static_cast<uint16_t*>(getDataOffset(tarray));
-            for (uintN i = 0; i < srclen; ++i)
+            for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_INT32: {
             int32_t *src = static_cast<int32_t*>(getDataOffset(tarray));
-            for (uintN i = 0; i < srclen; ++i)
+            for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_UINT32: {
             uint32_t *src = static_cast<uint32_t*>(getDataOffset(tarray));
-            for (uintN i = 0; i < srclen; ++i)
+            for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_FLOAT32: {
             float *src = static_cast<float*>(getDataOffset(tarray));
-            for (uintN i = 0; i < srclen; ++i)
+            for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_FLOAT64: {
             double *src = static_cast<double*>(getDataOffset(tarray));
-            for (uintN i = 0; i < srclen; ++i)
+            for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
@@ -1879,55 +1949,55 @@ class TypedArrayTemplate
         void *srcbuf = cx->malloc_(getLength(tarray));
         if (!srcbuf)
             return false;
-        memcpy(srcbuf, getDataOffset(tarray), getByteLength(tarray));
+        js_memcpy(srcbuf, getDataOffset(tarray), getByteLength(tarray));
 
         switch (getType(tarray)) {
           case TypedArray::TYPE_INT8: {
             int8_t *src = (int8_t*) srcbuf;
-            for (uintN i = 0; i < getLength(tarray); ++i)
+            for (unsigned i = 0; i < getLength(tarray); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_UINT8:
           case TypedArray::TYPE_UINT8_CLAMPED: {
             uint8_t *src = (uint8_t*) srcbuf;
-            for (uintN i = 0; i < getLength(tarray); ++i)
+            for (unsigned i = 0; i < getLength(tarray); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_INT16: {
             int16_t *src = (int16_t*) srcbuf;
-            for (uintN i = 0; i < getLength(tarray); ++i)
+            for (unsigned i = 0; i < getLength(tarray); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_UINT16: {
             uint16_t *src = (uint16_t*) srcbuf;
-            for (uintN i = 0; i < getLength(tarray); ++i)
+            for (unsigned i = 0; i < getLength(tarray); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_INT32: {
             int32_t *src = (int32_t*) srcbuf;
-            for (uintN i = 0; i < getLength(tarray); ++i)
+            for (unsigned i = 0; i < getLength(tarray); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_UINT32: {
             uint32_t *src = (uint32_t*) srcbuf;
-            for (uintN i = 0; i < getLength(tarray); ++i)
+            for (unsigned i = 0; i < getLength(tarray); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_FLOAT32: {
             float *src = (float*) srcbuf;
-            for (uintN i = 0; i < getLength(tarray); ++i)
+            for (unsigned i = 0; i < getLength(tarray); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
           case TypedArray::TYPE_FLOAT64: {
             double *src = (double*) srcbuf;
-            for (uintN i = 0; i < getLength(tarray); ++i)
+            for (unsigned i = 0; i < getLength(tarray); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
@@ -2111,6 +2181,7 @@ Class ArrayBuffer::slowClass = {
 Class js::ArrayBufferClass = {
     "ArrayBuffer",
     JSCLASS_HAS_PRIVATE |
+    JSCLASS_IMPLEMENTS_BARRIERS |
     Class::NON_NATIVE |
     JSCLASS_HAS_RESERVED_SLOTS(ARRAYBUFFER_RESERVED_SLOTS) |
     JSCLASS_HAS_CACHED_PROTO(JSProto_ArrayBuffer),
@@ -2122,11 +2193,9 @@ Class js::ArrayBufferClass = {
     JS_ResolveStub,
     JS_ConvertStub,
     NULL,           /* finalize    */
-    NULL,           /* reserved0   */
     NULL,           /* checkAccess */
     NULL,           /* call        */
     NULL,           /* construct   */
-    NULL,           /* xdrObject   */
     NULL,           /* hasInstance */
     ArrayBuffer::obj_trace,
     JS_NULL_CLASS_EXT,
@@ -2171,6 +2240,11 @@ JSPropertySpec ArrayBuffer::jsprops[] = {
       -1, JSPROP_SHARED | JSPROP_PERMANENT | JSPROP_READONLY,
       ArrayBuffer::prop_getByteLength, JS_StrictPropertyStub },
     {0,0,0,0,0}
+};
+
+JSFunctionSpec ArrayBuffer::jsfuncs[] = {
+    JS_FN("slice", ArrayBuffer::fun_slice, 2, JSFUN_GENERIC_NATIVE),
+    JS_FS_END
 };
 
 /*
@@ -2224,7 +2298,8 @@ JSFunctionSpec _typedArray::jsfuncs[] = {                                      \
 {                                                                              \
     #_typedArray,                                                              \
     JSCLASS_HAS_RESERVED_SLOTS(TypedArray::FIELD_MAX) |                        \
-    JSCLASS_HAS_PRIVATE |                                                      \
+    JSCLASS_HAS_PRIVATE | JSCLASS_IMPLEMENTS_BARRIERS |                        \
+    JSCLASS_FOR_OF_ITERATION |                                                 \
     Class::NON_NATIVE,                                                         \
     JS_PropertyStub,         /* addProperty */                                 \
     JS_PropertyStub,         /* delProperty */                                 \
@@ -2234,14 +2309,19 @@ JSFunctionSpec _typedArray::jsfuncs[] = {                                      \
     JS_ResolveStub,                                                            \
     JS_ConvertStub,                                                            \
     NULL,                    /* finalize    */                                 \
-    NULL,                    /* reserved0   */                                 \
     NULL,                    /* checkAccess */                                 \
     NULL,                    /* call        */                                 \
     NULL,                    /* construct   */                                 \
-    NULL,                    /* xdrObject   */                                 \
     NULL,                    /* hasInstance */                                 \
     _typedArray::obj_trace,  /* trace       */                                 \
-    JS_NULL_CLASS_EXT,                                                         \
+    {                                                                          \
+        NULL,       /* equality    */                                          \
+        NULL,       /* outerObject */                                          \
+        NULL,       /* innerObject */                                          \
+        JS_ElementIteratorStub,                                                \
+        NULL,       /* unused      */                                          \
+        false,      /* isWrappedNative */                                      \
+    },                                                                         \
     {                                                                          \
         _typedArray::obj_lookupGeneric,                                        \
         _typedArray::obj_lookupProperty,                                       \
@@ -2366,7 +2446,7 @@ InitArrayBufferClass(JSContext *cx, GlobalObject *global)
     if (!LinkConstructorAndPrototype(cx, ctor, arrayBufferProto))
         return NULL;
 
-    if (!DefinePropertiesAndBrand(cx, arrayBufferProto, ArrayBuffer::jsprops, NULL))
+    if (!DefinePropertiesAndBrand(cx, arrayBufferProto, ArrayBuffer::jsprops, ArrayBuffer::jsfuncs))
         return NULL;
 
     if (!DefineConstructorAndPrototype(cx, global, JSProto_ArrayBuffer, ctor, arrayBufferProto))
@@ -2462,7 +2542,7 @@ JS_NewArrayBuffer(JSContext *cx, jsuint nbytes)
 }
 
 static inline JSObject *
-TypedArrayConstruct(JSContext *cx, jsint atype, uintN argc, Value *argv)
+TypedArrayConstruct(JSContext *cx, jsint atype, unsigned argc, Value *argv)
 {
     switch (atype) {
       case TypedArray::TYPE_INT8:

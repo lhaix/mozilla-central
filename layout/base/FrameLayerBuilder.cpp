@@ -219,7 +219,7 @@ protected:
      * supports being optimized to an ImageLayer (TYPE_RASTER only) returns
      * an ImageContainer for the image.
      */
-    nsRefPtr<ImageContainer> CanOptimizeImageLayer(LayerManager* aManager);
+    already_AddRefed<ImageContainer> CanOptimizeImageLayer();
 
     /**
      * The region of visible content in the layer, relative to the
@@ -968,14 +968,14 @@ ContainerState::FindOpaqueBackgroundColorFor(PRInt32 aThebesLayerIndex)
   return NS_RGBA(0,0,0,0);
 }
 
-nsRefPtr<ImageContainer>
-ContainerState::ThebesLayerData::CanOptimizeImageLayer(LayerManager* aManager)
+already_AddRefed<ImageContainer>
+ContainerState::ThebesLayerData::CanOptimizeImageLayer()
 {
   if (!mImage || !mImageClip.mRoundedClipRects.IsEmpty()) {
     return nsnull;
   }
 
-  return mImage->GetContainer(aManager);
+  return mImage->GetContainer();
 }
 
 void
@@ -987,9 +987,10 @@ ContainerState::PopThebesLayerData()
   ThebesLayerData* data = mThebesLayerDataStack[lastIndex];
 
   nsRefPtr<Layer> layer;
-  nsRefPtr<ImageContainer> imageContainer = data->CanOptimizeImageLayer(mManager); 
+  nsRefPtr<ImageContainer> imageContainer = data->CanOptimizeImageLayer(); 
 
-  if (data->mIsSolidColorInVisibleRegion || imageContainer) {
+  if ((data->mIsSolidColorInVisibleRegion || imageContainer) &&
+      data->mLayer->GetValidRegion().IsEmpty()) {
     NS_ASSERTION(!(data->mIsSolidColorInVisibleRegion && imageContainer),
                  "Can't be a solid color as well as an image!");
     if (imageContainer) {
@@ -1410,8 +1411,6 @@ ContainerState::ProcessDisplayItems(const nsDisplayList& aList,
         continue;
       }
 
-      aClip.RemoveRoundedCorners();
-
       // Just use its layer.
       nsRefPtr<Layer> ownLayer = item->BuildLayer(mBuilder, mManager, mParameters);
       if (!ownLayer) {
@@ -1435,10 +1434,13 @@ ContainerState::ProcessDisplayItems(const nsDisplayList& aList,
       NS_ASSERTION(ownLayer->Manager() == mManager, "Wrong manager");
       NS_ASSERTION(!ownLayer->HasUserData(&gLayerManagerUserData),
                    "We shouldn't have a FrameLayerBuilder-managed layer here!");
+      NS_ASSERTION(aClip.mHaveClipRect ||
+                     aClip.mRoundedClipRects.IsEmpty(),
+                   "If we have rounded rects, we must have a clip rect");
       // It has its own layer. Update that layer's clip and visible rects.
       if (aClip.mHaveClipRect) {
         ownLayer->IntersectClipRect(
-            aClip.mClipRect.ScaleToNearestPixels(
+            aClip.NonRoundedIntersection().ScaleToNearestPixels(
                 mParameters.mXScale, mParameters.mYScale, appUnitsPerDevPixel));
       }
       ThebesLayerData* data = GetTopThebesLayerData();
@@ -1698,13 +1700,13 @@ ChooseScaleAndSetTransform(FrameLayerBuilder* aLayerBuilder,
   }
 
   gfxMatrix transform2d;
-  bool is2D = transform.Is2D(&transform2d);
+  bool canDraw2D = transform.CanDraw2D(&transform2d);
   gfxSize scale;
   bool isRetained = aLayerBuilder->GetRetainingLayerManager() == aLayer->Manager();
   // Only fiddle with scale factors for the retaining layer manager, since
   // it only matters for retained layers
   // XXX Should we do something for 3D transforms?
-  if (is2D && isRetained) {
+  if (canDraw2D && isRetained) {
     //Scale factors are normalized to a power of 2 to reduce the number of resolution changes
     scale = transform2d.ScaleFactors(true);
     // For frames with a changing transform that's not just a translation,
@@ -1754,7 +1756,7 @@ ChooseScaleAndSetTransform(FrameLayerBuilder* aLayerBuilder,
       result.mInActiveTransformedSubtree = true;
     }
   }
-  if (isRetained && (!is2D || transform2d.HasNonIntegerTranslation())) {
+  if (isRetained && (!canDraw2D || transform2d.HasNonIntegerTranslation())) {
     result.mDisableSubpixelAntialiasingInDescendants = true;
   }
   return result;
@@ -2364,7 +2366,6 @@ FrameLayerBuilder::Clip::IsRectClippedByRoundedCorner(const nsRect& aRect) const
 nsRect
 FrameLayerBuilder::Clip::NonRoundedIntersection() const
 {
-  NS_ASSERTION(!mRoundedClipRects.IsEmpty(), "no rounded clip rects?");
   nsRect result = mClipRect;
   for (PRUint32 i = 0, iEnd = mRoundedClipRects.Length();
        i < iEnd; ++i) {

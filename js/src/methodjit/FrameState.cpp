@@ -94,7 +94,7 @@ FrameState::pushActiveFrame(JSScript *script, uint32_t argc)
         size_t totalBytes = sizeof(FrameEntry) * nentries +       // entries[]
                             sizeof(FrameEntry *) * nentries +     // tracker.entries
                             sizeof(StackEntryExtra) * nentries;   // extraArray
-        uint8_t *cursor = (uint8_t *)cx->calloc_(totalBytes);
+        uint8_t *cursor = (uint8_t *)OffTheBooks::calloc_(totalBytes);
         if (!cursor)
             return false;
 
@@ -120,7 +120,7 @@ FrameState::pushActiveFrame(JSScript *script, uint32_t argc)
     /* We should have already checked that argc == nargs */
     JS_ASSERT_IF(a, argc == script->function()->nargs);
 
-    ActiveFrame *newa = cx->new_<ActiveFrame>();
+    ActiveFrame *newa = OffTheBooks::new_<ActiveFrame>();
     if (!newa)
         return false;
 
@@ -355,8 +355,7 @@ FrameState::bestEvictReg(uint32_t mask, bool includePinned) const
          * Evict variables which are only live in future loop iterations, and are
          * not carried around the loop in a register.
          */
-        JS_ASSERT_IF(lifetime->loopTail, loop);
-        if (lifetime->loopTail && !loop->carriesLoopReg(fe)) {
+        if (lifetime->loopTail && (!loop || !loop->carriesLoopReg(fe))) {
             JaegerSpew(JSpew_Regalloc, "result: %s (%s) only live in later iterations\n",
                        entryName(fe), reg.name());
             return reg;
@@ -579,9 +578,12 @@ FrameState::computeAllocation(jsbytecode *target)
     if (!alloc)
         return NULL;
 
-    if (a->analysis->getCode(target).exceptionEntry || a->analysis->getCode(target).switchTarget ||
-        a->script->hasBreakpointsAt(target)) {
-        /* State must be synced at exception and switch targets, and at traps. */
+    /*
+     * State must be synced at exception and switch targets, at traps and when
+     * crossing between compilation chunks.
+     */
+    if (a->analysis->getCode(target).safePoint ||
+        (!a->parent && !cc.bytecodeInChunk(target))) {
 #ifdef DEBUG
         if (IsJaegerSpewChannelActive(JSpew_Regalloc)) {
             JaegerSpew(JSpew_Regalloc, "allocation at %u:", unsigned(target - a->script->code));
@@ -1530,10 +1532,12 @@ FrameState::merge(Assembler &masm, Changes changes) const
      * do not require stub paths to always generate a double when needed.
      * :FIXME: we check this on OOL stub calls, but not inline stub calls.
      */
-    for (unsigned i = 0; i < changes.nchanges; i++) {
-        FrameEntry *fe = a->sp - 1 - i;
-        if (fe->isTracked() && fe->isType(JSVAL_TYPE_DOUBLE))
-            masm.ensureInMemoryDouble(addressOf(fe));
+    if (cx->typeInferenceEnabled()) {
+        for (unsigned i = 0; i < changes.nchanges; i++) {
+            FrameEntry *fe = a->sp - 1 - i;
+            if (fe->isTracked() && fe->isType(JSVAL_TYPE_DOUBLE))
+                masm.ensureInMemoryDouble(addressOf(fe));
+        }
     }
 
     uint32_t mask = Registers::AvailAnyRegs & ~freeRegs.freeMask;
@@ -2881,7 +2885,7 @@ FrameState::getTemporaryCopies(Uses uses)
                 FrameEntry *nfe = tracker[i];
                 if (!deadEntry(nfe, uses.nuses) && nfe->isCopy() && nfe->copyOf() == fe) {
                     if (!res)
-                        res = cx->new_< Vector<TemporaryCopy> >(cx);
+                        res = OffTheBooks::new_< Vector<TemporaryCopy> >(cx);
                     res->append(TemporaryCopy(addressOf(nfe), addressOf(fe)));
                 }
             }

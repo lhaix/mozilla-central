@@ -41,8 +41,10 @@ package org.mozilla.gecko.sync.repositories.domain;
 import org.json.simple.JSONArray;
 import org.mozilla.gecko.sync.CryptoRecord;
 import org.mozilla.gecko.sync.ExtendedJSONObject;
+import org.mozilla.gecko.sync.Logger;
 import org.mozilla.gecko.sync.NonArrayJSONException;
 import org.mozilla.gecko.sync.Utils;
+import org.mozilla.gecko.sync.repositories.android.AndroidBrowserBookmarksDataAccessor;
 import org.mozilla.gecko.sync.repositories.android.RepoUtils;
 
 import android.util.Log;
@@ -95,6 +97,51 @@ public class BookmarkRecord extends Record {
            parentID + "/" + androidParentID + "/" + parentName + ">";
   }
 
+  // Oh God, this is terribly thread-unsafe. These record objects should be immutable.
+  @SuppressWarnings("unchecked")
+  protected JSONArray copyChildren() {
+    if (this.children == null) {
+      return null;
+    }
+    JSONArray children = new JSONArray();
+    children.addAll(this.children);
+    return children;
+  }
+
+  @SuppressWarnings("unchecked")
+  protected JSONArray copyTags() {
+    if (this.tags == null) {
+      return null;
+    }
+    JSONArray tags = new JSONArray();
+    tags.addAll(this.tags);
+    return tags;
+  }
+
+  @Override
+  public Record copyWithIDs(String guid, long androidID) {
+    BookmarkRecord out = new BookmarkRecord(guid, this.collection, this.lastModified, this.deleted);
+    out.androidID = androidID;
+    out.sortIndex = this.sortIndex;
+
+    // Copy BookmarkRecord fields.
+    out.title           = this.title;
+    out.bookmarkURI     = this.bookmarkURI;
+    out.description     = this.description;
+    out.keyword         = this.keyword;
+    out.parentID        = this.parentID;
+    out.parentName      = this.parentName;
+    out.androidParentID = this.androidParentID;
+    out.type            = this.type;
+    out.pos             = this.pos;
+    out.androidPosition = this.androidPosition;
+
+    out.children        = this.copyChildren();
+    out.tags            = this.copyTags();
+
+    return out;
+  }
+
   @Override
   public void initFromPayload(CryptoRecord payload) {
     ExtendedJSONObject p = payload.payload;
@@ -103,9 +150,13 @@ public class BookmarkRecord extends Record {
     this.guid = payload.guid;
     checkGUIDs(p);
 
+    final Object del = p.get("deleted");
+    if (del instanceof Boolean) {
+      this.deleted = (Boolean) del;
+    }
+
     this.collection    = payload.collection;
     this.lastModified  = payload.lastModified;
-    this.deleted       = payload.deleted;
 
     this.type          = (String) p.get("type");
     this.title         = (String) p.get("title");
@@ -150,11 +201,11 @@ public class BookmarkRecord extends Record {
   }
 
   public boolean isBookmark() {
-    return "bookmark".equals(this.type);
+    return AndroidBrowserBookmarksDataAccessor.TYPE_BOOKMARK.equalsIgnoreCase(this.type);
   }
 
   public boolean isFolder() {
-    return "folder".equals(this.type);
+    return AndroidBrowserBookmarksDataAccessor.TYPE_FOLDER.equalsIgnoreCase(this.type);
   }
 
   @Override
@@ -162,38 +213,40 @@ public class BookmarkRecord extends Record {
     CryptoRecord rec = new CryptoRecord(this);
     rec.payload = new ExtendedJSONObject();
     rec.payload.put("id", this.guid);
-    rec.payload.put("type", this.type);
-    rec.payload.put("title", this.title);
-    rec.payload.put("description", this.description);
-    rec.payload.put("parentid", this.parentID);
-    rec.payload.put("parentName", this.parentName);
-    if (isBookmark()) {
-      rec.payload.put("bmkUri", bookmarkURI);
-      rec.payload.put("keyword", keyword);
-      rec.payload.put("tags", this.tags);
-    }
-    if (isFolder()) {
-      rec.payload.put("children", this.children);
+
+    if (this.deleted) {
+      rec.payload.put("deleted", true);
+    } else {
+      putPayload(rec, "type", this.type);
+      putPayload(rec, "title", this.title);
+      putPayload(rec, "description", this.description);
+      putPayload(rec, "parentid", this.parentID);
+      putPayload(rec, "parentName", this.parentName);
+
+      if (isBookmark()) {
+        rec.payload.put("bmkUri", bookmarkURI);
+        rec.payload.put("keyword", keyword);
+        rec.payload.put("tags", this.tags);
+      } else if (isFolder()) {
+        rec.payload.put("children", this.children);
+      }
     }
     return rec;
   }
 
   private void trace(String s) {
-    if (Utils.ENABLE_TRACE_LOGGING) {
-      Log.d(LOG_TAG, s);
-    }
+    Logger.trace(LOG_TAG, s);
   }
 
   @Override
-  public boolean equals(Object o) {
-    trace("Calling BookmarkRecord.equals.");
-    if (!(o instanceof BookmarkRecord)) {
+  public boolean equalPayloads(Object o) {
+    trace("Calling BookmarkRecord.equalPayloads.");
+    if (o == null || !(o instanceof BookmarkRecord)) {
       return false;
     }
 
     BookmarkRecord other = (BookmarkRecord) o;
-    
-    if (!super.equals(other)) {
+    if (!super.equalPayloads(other)) {
       return false;
     }
 
@@ -236,8 +289,15 @@ public class BookmarkRecord extends Record {
         && RepoUtils.stringsEqual(this.keyword, other.keyword)
         && jsonArrayStringsEqual(this.tags, other.tags);
   }
-  
-  // Converts to JSONArrays to strings and checks if they are the same.
+
+  // TODO: two records can be congruent if their child lists are different.
+  @Override
+  public boolean congruentWith(Object o) {
+    return this.equalPayloads(o) &&
+           super.congruentWith(o);
+  }
+
+  // Converts two JSONArrays to strings and checks if they are the same.
   // This is only useful for stuff like tags where we aren't actually
   // touching the data there (and therefore ordering won't change)
   private boolean jsonArrayStringsEqual(JSONArray a, JSONArray b) {
@@ -247,7 +307,6 @@ public class BookmarkRecord extends Record {
     if (a != null && b == null) return false;
     return RepoUtils.stringsEqual(a.toJSONString(), b.toJSONString());
   }
-
 }
 
 

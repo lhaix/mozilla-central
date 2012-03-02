@@ -38,7 +38,7 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-"use strict"
+"use strict";
 
 const Cc = Components.classes;
 const Ci = Components.interfaces;
@@ -116,7 +116,7 @@ function ElementStyle(aElement, aStore)
   // how their .style attribute reflects them as computed values.
   this.dummyElement = doc.createElementNS(this.element.namespaceURI,
                                           this.element.tagName);
-  this._populate();
+  this.populate();
 }
 // We're exporting _ElementStyle for unit tests.
 var _ElementStyle = ElementStyle;
@@ -147,7 +147,7 @@ ElementStyle.prototype = {
    * Refresh the list of rules to be displayed for the active element.
    * Upon completion, this.rules[] will hold a list of Rule objects.
    */
-  _populate: function ElementStyle_populate()
+  populate: function ElementStyle_populate()
   {
     this.rules = [];
 
@@ -181,8 +181,8 @@ ElementStyle.prototype = {
       let domRule = domRules.GetElementAt(i);
 
       // XXX: Optionally provide access to system sheets.
-      let systemSheet = CssLogic.isSystemStyleSheet(domRule.parentStyleSheet);
-      if (systemSheet) {
+      let contentSheet = CssLogic.isContentStylesheet(domRule.parentStyleSheet);
+      if (!contentSheet) {
         continue;
       }
 
@@ -324,7 +324,7 @@ ElementStyle.prototype = {
     aProp.overridden = overridden;
     return dirty;
   }
-}
+};
 
 /**
  * A single style rule or declaration.
@@ -358,11 +358,9 @@ Rule.prototype = {
     if (this._title) {
       return this._title;
     }
-    let sheet = this.domRule ? this.domRule.parentStyleSheet : null;
-    this._title = CssLogic.shortSource(sheet);
+    this._title = CssLogic.shortSource(this.sheet);
     if (this.domRule) {
-      let line = this.elementStyle.domUtils.getRuleLine(this.domRule);
-      this._title += ":" + line;
+      this._title += ":" + this.ruleLine;
     }
 
     if (this.inherited) {
@@ -376,6 +374,26 @@ Rule.prototype = {
     }
 
     return this._title;
+  },
+
+  /**
+   * The rule's stylesheet.
+   */
+  get sheet()
+  {
+    return this.domRule ? this.domRule.parentStyleSheet : null;
+  },
+
+  /**
+   * The rule's line within a stylesheet
+   */
+  get ruleLine()
+  {
+    if (!this.sheet) {
+      // No stylesheet, no ruleLine
+      return null;
+    }
+    return this.elementStyle.domUtils.getRuleLine(this.domRule);
   },
 
   /**
@@ -530,7 +548,7 @@ Rule.prototype = {
       this.textProps.push(textProp);
     }
   },
-}
+};
 
 /**
  * A single property in a rule's cssText.
@@ -618,7 +636,7 @@ TextProperty.prototype = {
   {
     this.rule.removeProperty(this);
   }
-}
+};
 
 
 /**
@@ -643,7 +661,7 @@ TextProperty.prototype = {
  * apply to a given element.  After construction, the 'element'
  * property will be available with the user interface.
  *
- * @param Document aDocument
+ * @param Document aDoc
  *        The document that will contain the rule view.
  * @param object aStore
  *        The CSS rule view can use this object to store metadata
@@ -655,7 +673,6 @@ function CssRuleView(aDoc, aStore)
 {
   this.doc = aDoc;
   this.store = aStore;
-
   this.element = this.doc.createElementNS(XUL_NS, "vbox");
   this.element.setAttribute("tabindex", "0");
   this.element.classList.add("ruleview");
@@ -696,15 +713,33 @@ CssRuleView.prototype = {
 
     this._createEditors();
   },
+  
+  /**
+   * Update the rules for the currently highlighted element.
+   */
+  nodeChanged: function CssRuleView_nodeChanged()
+  {
+    this._clearRules();
+    this._elementStyle.populate();
+    this._createEditors();
+  },  
+
+  /**
+   * Clear the rules.
+   */
+  _clearRules: function CssRuleView_clearRules()
+  {
+    while (this.element.hasChildNodes()) {
+      this.element.removeChild(this.element.lastChild);
+    }
+  },
 
   /**
    * Clear the rule view.
    */
   clear: function CssRuleView_clear()
   {
-    while (this.element.hasChildNodes()) {
-      this.element.removeChild(this.element.lastChild);
-    }
+    this._clearRules();
     this._viewedElement = null;
     this._elementStyle = null;
   },
@@ -768,6 +803,14 @@ RuleEditor.prototype = {
       class: "ruleview-rule-source",
       textContent: this.rule.title
     });
+    source.addEventListener("click", function() {
+      let rule = this.rule;
+      let evt = this.doc.createEvent("CustomEvent");
+      evt.initCustomEvent("CssRuleViewCSSLinkClicked", true, false, {
+        rule: rule,
+      });
+      this.element.dispatchEvent(evt);
+    }.bind(this));
 
     let code = createChild(this.element, "div", {
       class: "ruleview-code"
@@ -1094,8 +1137,6 @@ TextPropertyEditor.prototype = {
   _parseValue: function TextPropertyEditor_parseValue(aValue)
   {
     let pieces = aValue.split("!", 2);
-    let value = pieces[0];
-    let priority = pieces.length > 1 ? pieces[1] : "";
     return {
       value: pieces[0].trim(),
       priority: (pieces.length > 1 ? pieces[1].trim() : "")
@@ -1271,7 +1312,7 @@ InplaceEditor.prototype = {
     // Replace spaces with non-breaking spaces.  Otherwise setting
     // the span's textContent will collapse spaces and the measurement
     // will be wrong.
-    this._measurement.textContent = this.input.value.replace(' ', '\u00a0', 'g');
+    this._measurement.textContent = this.input.value.replace(/ /g, '\u00a0');
 
     // We add a bit of padding to the end.  Should be enough to fit
     // any letter that could be typed, otherwise we'll scroll before
@@ -1310,6 +1351,7 @@ InplaceEditor.prototype = {
       prevent = true;
       this.cancelled = true;
       this.input.blur();
+      aEvent.stopPropagation();
     } else if (aEvent.keyCode === Ci.nsIDOMKeyEvent.DOM_VK_SPACE) {
       // No need for leading spaces here.  This is particularly
       // noticable when adding a property: it's very natural to type

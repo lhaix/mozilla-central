@@ -1,7 +1,5 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
-
-/*global ok, is, isnot, gBrowser, TiltUtils */
 "use strict";
 
 let someObject = {
@@ -13,7 +11,7 @@ let someObject = {
 };
 
 let anotherObject = {
-  finalize: function()
+  _finalize: function()
   {
     someObject.c = 3;
   }

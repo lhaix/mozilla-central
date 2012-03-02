@@ -46,10 +46,10 @@
 #include "jscntxt.h"
 #include "jsfun.h"
 #include "jsgc.h"
-#include "jsgcstats.h"
 #include "jsobj.h"
 #include "jsscope.h"
 #include "vm/GlobalObject.h"
+#include "vm/RegExpObject.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -162,16 +162,38 @@ typedef HashSet<ScriptFilenameEntry *,
                 ScriptFilenameHasher,
                 SystemAllocPolicy> ScriptFilenameTable;
 
+/* If HashNumber grows, need to change WrapperHasher. */
+JS_STATIC_ASSERT(sizeof(HashNumber) == 4);
+
+struct WrapperHasher
+{
+    typedef Value Lookup;
+
+    static HashNumber hash(Value key) {
+        uint64_t bits = JSVAL_TO_IMPL(key).asBits;
+        return uint32_t(bits) ^ uint32_t(bits >> 32);
+    }
+
+    static bool match(const Value &l, const Value &k) { return l == k; }
+};
+
+typedef HashMap<Value, ReadBarrieredValue, WrapperHasher, SystemAllocPolicy> WrapperMap;
+
 } /* namespace js */
 
-struct JS_FRIEND_API(JSCompartment) {
+namespace JS {
+struct TypeInferenceSizes;
+}
+
+struct JSCompartment
+{
     JSRuntime                    *rt;
     JSPrincipals                 *principals;
 
     js::gc::ArenaLists           arenas;
 
     bool                         needsBarrier_;
-    js::GCMarker                 *gcIncrementalTracer;
+    js::BarrierGCMarker          barrierMarker_;
 
     bool needsBarrier() {
         return needsBarrier_;
@@ -179,14 +201,13 @@ struct JS_FRIEND_API(JSCompartment) {
 
     js::GCMarker *barrierTracer() {
         JS_ASSERT(needsBarrier_);
-        if (gcIncrementalTracer)
-            return gcIncrementalTracer;
-        return createBarrierTracer();
+        return &barrierMarker_;
     }
 
     size_t                       gcBytes;
     size_t                       gcTriggerBytes;
     size_t                       gcLastBytes;
+    size_t                       gcMaxMallocBytes;
 
     bool                         hold;
     bool                         isSystemCompartment;
@@ -238,6 +259,11 @@ struct JS_FRIEND_API(JSCompartment) {
     size_t sizeOfMjitCode() const;
 #endif
 
+    js::RegExpCompartment        regExps;
+
+    size_t sizeOfShapeTable(JSMallocSizeOfFun mallocSizeOf);
+    void sizeOfTypeInferenceData(JS::TypeInferenceSizes *stats, JSMallocSizeOfFun mallocSizeOf);
+
     /*
      * Shared scope property tree, and arena-pool for allocating its nodes.
      */
@@ -277,7 +303,13 @@ struct JS_FRIEND_API(JSCompartment) {
   private:
     enum { DebugFromC = 1, DebugFromJS = 2 };
 
-    uintN                        debugModeBits;  // see debugMode() below
+    unsigned                        debugModeBits;  // see debugMode() below
+    
+    /*
+     * Malloc counter to measure memory pressure for GC scheduling. It runs
+     * from gcMaxMallocBytes down to zero.
+     */
+    volatile ptrdiff_t           gcMallocBytes;
 
   public:
     js::NativeIterCache          nativeIterCache;
@@ -306,11 +338,24 @@ struct JS_FRIEND_API(JSCompartment) {
     bool wrap(JSContext *cx, js::AutoIdVector &props);
 
     void markTypes(JSTracer *trc);
+    void discardJitCode(JSContext *cx);
     void sweep(JSContext *cx, bool releaseTypes);
-    void purge(JSContext *cx);
+    void purge();
 
-    void setGCLastBytes(size_t lastBytes, JSGCInvocationKind gckind);
+    void setGCLastBytes(size_t lastBytes, js::JSGCInvocationKind gckind);
     void reduceGCTriggerBytes(size_t amount);
+    
+    void resetGCMallocBytes();
+    void setGCMaxMallocBytes(size_t value);
+    void updateMallocCounter(size_t nbytes) {
+        ptrdiff_t oldCount = gcMallocBytes;
+        ptrdiff_t newCount = oldCount - ptrdiff_t(nbytes);
+        gcMallocBytes = newCount;
+        if (JS_UNLIKELY(newCount <= 0 && oldCount > 0))
+            onTooMuchMalloc();
+    }
+    
+    void onTooMuchMalloc();
 
     js::DtoaCache dtoaCache;
 
@@ -342,12 +387,8 @@ struct JS_FRIEND_API(JSCompartment) {
      */
     bool debugMode() const { return !!debugModeBits; }
 
-    /*
-     * True if any scripts from this compartment are on the JS stack in the
-     * calling thread. cx is a context in the calling thread, and it is assumed
-     * that no other thread is using this compartment.
-     */
-    bool hasScriptsOnStack(JSContext *cx);
+    /* True if any scripts from this compartment are on the JS stack. */
+    bool hasScriptsOnStack();
 
   private:
     /* This is called only when debugMode() has just toggled. */
@@ -365,8 +406,6 @@ struct JS_FRIEND_API(JSCompartment) {
 
   private:
     void sweepBreakpoints(JSContext *cx);
-
-    js::GCMarker *createBarrierTracer();
 
   public:
     js::WatchpointMap *watchpointMap;

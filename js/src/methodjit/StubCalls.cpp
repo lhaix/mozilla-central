@@ -48,7 +48,6 @@
 #include "jsxml.h"
 #include "jsbool.h"
 #include "assembler/assembler/MacroAssemblerCodeRef.h"
-#include "jsiter.h"
 #include "jstypes.h"
 #include "vm/Debugger.h"
 #include "vm/String.h"
@@ -126,8 +125,10 @@ template void JS_FASTCALL stubs::SetGlobalName<false>(VMFrame &f, PropertyName *
 void JS_FASTCALL
 stubs::Name(VMFrame &f)
 {
-    if (!NameOperation(f.cx, f.pc(), &f.regs.sp[0]))
+    Value rval;
+    if (!NameOperation(f.cx, f.pc(), &rval))
         THROW();
+    f.regs.sp[0] = rval;
 }
 
 void JS_FASTCALL
@@ -208,17 +209,6 @@ stubs::GetElem(VMFrame &f)
 #endif
 }
 
-static inline bool
-FetchElementId(VMFrame &f, JSObject *obj, const Value &idval, jsid &id, Value *vp)
-{
-    int32_t i_;
-    if (ValueFitsInInt32(idval, &i_) && INT_FITS_IN_JSID(i_)) {
-        id = INT_TO_JSID(i_);
-        return true;
-    }
-    return !!js_InternNonIntElementId(f.cx, obj, idval, &id, vp);
-}
-
 template<JSBool strict>
 void JS_FASTCALL
 stubs::SetElem(VMFrame &f)
@@ -237,10 +227,10 @@ stubs::SetElem(VMFrame &f)
     if (!obj)
         THROW();
 
-    if (!FetchElementId(f, obj, idval, id, &regs.sp[-2]))
+    if (!FetchElementId(f.cx, obj, idval, id, &regs.sp[-2]))
         THROW();
 
-    TypeScript::MonitorAssign(cx, f.script(), f.pc(), obj, id, rval);
+    TypeScript::MonitorAssign(cx, obj, id);
 
     do {
         if (obj->isDenseArray() && JSID_IS_INT(id)) {
@@ -285,7 +275,7 @@ stubs::ToId(VMFrame &f)
         THROW();
 
     jsid id;
-    if (!FetchElementId(f, obj, idval, id, &idval))
+    if (!FetchElementId(f.cx, obj, idval, id, &idval))
         THROW();
 
     if (!idval.isInt32())
@@ -297,7 +287,7 @@ stubs::ImplicitThis(VMFrame &f, PropertyName *name)
 {
     JSObject *obj, *obj2;
     JSProperty *prop;
-    if (!FindPropertyHelper(f.cx, name, false, false, &obj, &obj2, &prop))
+    if (!FindPropertyHelper(f.cx, name, false, f.cx->stack.currentScriptedScopeChain(), &obj, &obj2, &prop))
         THROW();
 
     if (!ComputeImplicitThis(f.cx, obj, &f.regs.sp[0]))
@@ -443,7 +433,7 @@ stubs::DefFun(VMFrame &f, JSFunction *fun)
      * ECMA requires functions defined when entering Eval code to be
      * impermanent.
      */
-    uintN attrs = fp->isEvalFrame()
+    unsigned attrs = fp->isEvalFrame()
                   ? JSPROP_ENUMERATE
                   : JSPROP_ENUMERATE | JSPROP_PERMANENT;
 
@@ -534,7 +524,7 @@ template void JS_FASTCALL stubs::DefFun<false>(VMFrame &f, JSFunction *fun);
             double l, r;                                                      \
             if (!ToNumber(cx, lval, &l) || !ToNumber(cx, rval, &r))           \
                 THROWV(JS_FALSE);                                             \
-            cond = JSDOUBLE_COMPARE(l, OP, r, false);                         \
+            cond = (l OP r);                                                  \
         }                                                                     \
         regs.sp[-2].setBoolean(cond);                                         \
         return cond;                                                          \
@@ -577,7 +567,7 @@ stubs::Not(VMFrame &f)
     f.regs.sp[-1].setBoolean(b);
 }
 
-template <JSBool EQ, bool IFNAN>
+template <bool EQ>
 static inline bool
 StubEqualityOp(VMFrame &f)
 {
@@ -587,23 +577,25 @@ StubEqualityOp(VMFrame &f)
     Value rval = regs.sp[-1];
     Value lval = regs.sp[-2];
 
-    JSBool cond;
+    bool cond;
 
     /* The string==string case is easily the hottest;  try it first. */
     if (lval.isString() && rval.isString()) {
         JSString *l = lval.toString();
         JSString *r = rval.toString();
-        JSBool equal;
+        bool equal;
         if (!EqualStrings(cx, l, r, &equal))
             return false;
         cond = equal == EQ;
     } else
 #if JS_HAS_XML_SUPPORT
     if ((lval.isObject() && lval.toObject().isXML()) ||
-        (rval.isObject() && rval.toObject().isXML())) {
-        if (!js_TestXMLEquality(cx, lval, rval, &cond))
+        (rval.isObject() && rval.toObject().isXML()))
+    {
+        JSBool equal;
+        if (!js_TestXMLEquality(cx, lval, rval, &equal))
             return false;
-        cond = cond == EQ;
+        cond = !!equal == EQ;
     } else
 #endif
 
@@ -613,15 +605,16 @@ StubEqualityOp(VMFrame &f)
             double l = lval.toDouble();
             double r = rval.toDouble();
             if (EQ)
-                cond = JSDOUBLE_COMPARE(l, ==, r, IFNAN);
+                cond = (l == r);
             else
-                cond = JSDOUBLE_COMPARE(l, !=, r, IFNAN);
+                cond = (l != r);
         } else if (lval.isObject()) {
             JSObject *l = &lval.toObject(), *r = &rval.toObject();
             if (JSEqualityOp eq = l->getClass()->ext.equality) {
-                if (!eq(cx, l, &rval, &cond))
+                JSBool equal;
+                if (!eq(cx, l, &rval, &equal))
                     return false;
-                cond = cond == EQ;
+                cond = !!equal == EQ;
             } else {
                 cond = (l == r) == EQ;
             }
@@ -648,7 +641,7 @@ StubEqualityOp(VMFrame &f)
             if (lval.isString() && rval.isString()) {
                 JSString *l = lval.toString();
                 JSString *r = rval.toString();
-                JSBool equal;
+                bool equal;
                 if (!EqualStrings(cx, l, r, &equal))
                     return false;
                 cond = equal == EQ;
@@ -658,9 +651,9 @@ StubEqualityOp(VMFrame &f)
                     return false;
 
                 if (EQ)
-                    cond = JSDOUBLE_COMPARE(l, ==, r, false);
+                    cond = (l == r);
                 else
-                    cond = JSDOUBLE_COMPARE(l, !=, r, true);
+                    cond = (l != r);
             }
         }
     }
@@ -672,7 +665,7 @@ StubEqualityOp(VMFrame &f)
 JSBool JS_FASTCALL
 stubs::Equal(VMFrame &f)
 {
-    if (!StubEqualityOp<JS_TRUE, false>(f))
+    if (!StubEqualityOp<true>(f))
         THROWV(JS_FALSE);
     return f.regs.sp[-2].toBoolean();
 }
@@ -680,7 +673,7 @@ stubs::Equal(VMFrame &f)
 JSBool JS_FASTCALL
 stubs::NotEqual(VMFrame &f)
 {
-    if (!StubEqualityOp<JS_FALSE, true>(f))
+    if (!StubEqualityOp<false>(f))
         THROWV(JS_FALSE);
     return f.regs.sp[-2].toBoolean();
 }
@@ -851,12 +844,12 @@ stubs::Mod(VMFrame &f)
 void JS_FASTCALL
 stubs::DebuggerStatement(VMFrame &f, jsbytecode *pc)
 {
-    JSDebuggerHandler handler = f.cx->debugHooks->debuggerHandler;
+    JSDebuggerHandler handler = f.cx->runtime->debugHooks.debuggerHandler;
     if (handler || !f.cx->compartment->getDebuggees().empty()) {
         JSTrapStatus st = JSTRAP_CONTINUE;
         Value rval;
         if (handler)
-            st = handler(f.cx, f.script(), pc, &rval, f.cx->debugHooks->debuggerHandlerData);
+            st = handler(f.cx, f.script(), pc, &rval, f.cx->runtime->debugHooks.debuggerHandlerData);
         if (st == JSTRAP_CONTINUE)
             st = Debugger::onDebuggerStatement(f.cx, &rval);
 
@@ -884,7 +877,7 @@ stubs::DebuggerStatement(VMFrame &f, jsbytecode *pc)
 void JS_FASTCALL
 stubs::Interrupt(VMFrame &f, jsbytecode *pc)
 {
-    gc::VerifyBarriers(f.cx);
+    gc::MaybeVerifyBarriers(f.cx);
 
     if (!js_HandleExecutionInterrupt(f.cx))
         THROW();
@@ -894,8 +887,8 @@ void JS_FASTCALL
 stubs::RecompileForInline(VMFrame &f)
 {
     ExpandInlineFrames(f.cx->compartment);
-    Recompiler recompiler(f.cx, f.script());
-    recompiler.recompile(/* resetUses */ false);
+    Recompiler::clearStackReferencesAndChunk(f.cx, f.script(), f.jit(), f.chunkIndex(),
+                                             /* resetUses = */ false);
 }
 
 void JS_FASTCALL
@@ -914,9 +907,9 @@ stubs::Trap(VMFrame &f, uint32_t trapTypes)
          * single step mode may be paused without recompiling by
          * setting the interruptHook to NULL.
          */
-        JSInterruptHook hook = f.cx->debugHooks->interruptHook;
+        JSInterruptHook hook = f.cx->runtime->debugHooks.interruptHook;
         if (hook)
-            result = hook(f.cx, f.script(), f.pc(), &rval, f.cx->debugHooks->interruptHookData);
+            result = hook(f.cx, f.script(), f.pc(), &rval, f.cx->runtime->debugHooks.interruptHookData);
 
         if (result == JSTRAP_CONTINUE)
             result = Debugger::onSingleStep(f.cx, &rval);
@@ -1030,7 +1023,7 @@ stubs::InitElem(VMFrame &f, uint32_t last)
     /* Fetch id now that we have obj. */
     jsid id;
     const Value &idval = regs.sp[-2];
-    if (!FetchElementId(f, obj, idval, id, &regs.sp[-2]))
+    if (!FetchElementId(f.cx, obj, idval, id, &regs.sp[-2]))
         THROW();
 
     /*
@@ -1110,7 +1103,7 @@ stubs::RegExp(VMFrame &f, JSObject *regex)
     if (!proto)
         THROW();
     JS_ASSERT(proto);
-    JSObject *obj = js_CloneRegExpObject(f.cx, regex, proto);
+    JSObject *obj = CloneRegExpObject(f.cx, regex, proto);
     if (!obj)
         THROW();
     f.regs.sp[0].setObject(*obj);
@@ -1121,7 +1114,7 @@ stubs::LambdaJoinableForInit(VMFrame &f, JSFunction *fun)
 {
     JS_ASSERT(fun->joinable());
     DebugOnly<jsbytecode*> nextpc = f.regs.pc + JSOP_LAMBDA_LENGTH;
-    JS_ASSERT(fun->methodAtom() == f.script()->getAtom(GET_SLOTNO(nextpc)));
+    JS_ASSERT(fun->methodAtom() == f.script()->getAtom(GET_UINT32_INDEX(nextpc)));
     return fun;
 }
 
@@ -1132,7 +1125,7 @@ stubs::LambdaJoinableForSet(VMFrame &f, JSFunction *fun)
     const Value &lref = f.regs.sp[-1];
     if (lref.isObject() && lref.toObject().canHaveMethodBarrier()) {
         DebugOnly<jsbytecode*> nextpc = f.regs.pc + JSOP_LAMBDA_LENGTH;
-        JS_ASSERT(fun->methodAtom() == f.script()->getAtom(GET_SLOTNO(nextpc)));
+        JS_ASSERT(fun->methodAtom() == f.script()->getAtom(GET_UINT32_INDEX(nextpc)));
         return fun;
     }
     return Lambda(f, fun);
@@ -1236,7 +1229,7 @@ stubs::GetPropNoCache(VMFrame &f, PropertyName *name)
 void JS_FASTCALL
 stubs::Iter(VMFrame &f, uint32_t flags)
 {
-    if (!js_ValueToIterator(f.cx, flags, &f.regs.sp[-1]))
+    if (!ValueToIterator(f.cx, flags, &f.regs.sp[-1]))
         THROW();
     JS_ASSERT(!f.regs.sp[-1].isPrimitive());
 }
@@ -1259,7 +1252,7 @@ InitPropOrMethod(VMFrame &f, PropertyName *name, JSOp op)
     /* Get the immediate property name into id. */
     jsid id = ATOM_TO_JSID(name);
 
-    uintN defineHow = (op == JSOP_INITMETHOD) ? DNP_SET_METHOD : 0;
+    unsigned defineHow = (op == JSOP_INITMETHOD) ? DNP_SET_METHOD : 0;
     if (JS_UNLIKELY(name == cx->runtime->atomState.protoAtom)
         ? !js_SetPropertyHelper(cx, obj, id, defineHow, &rval, false)
         : !DefineNativeProperty(cx, obj, id, rval, NULL, NULL,
@@ -1311,7 +1304,7 @@ void JS_FASTCALL
 stubs::EndIter(VMFrame &f)
 {
     JS_ASSERT(f.regs.sp - 1 >= f.fp()->base());
-    if (!js_CloseIterator(f.cx, &f.regs.sp[-1].toObject()))
+    if (!CloseIterator(f.cx, &f.regs.sp[-1].toObject()))
         THROW();
 }
 
@@ -1328,7 +1321,7 @@ stubs::StrictEq(VMFrame &f)
 {
     const Value &rhs = f.regs.sp[-1];
     const Value &lhs = f.regs.sp[-2];
-    JSBool equal;
+    bool equal;
     if (!StrictlyEqual(f.cx, lhs, rhs, &equal))
         THROW();
     f.regs.sp--;
@@ -1340,7 +1333,7 @@ stubs::StrictNe(VMFrame &f)
 {
     const Value &rhs = f.regs.sp[-1];
     const Value &lhs = f.regs.sp[-2];
-    JSBool equal;
+    bool equal;
     if (!StrictlyEqual(f.cx, lhs, rhs, &equal))
         THROW();
     f.regs.sp--;
@@ -1369,9 +1362,10 @@ stubs::FlatLambda(VMFrame &f, JSFunction *fun)
 void JS_FASTCALL
 stubs::Arguments(VMFrame &f)
 {
-    f.regs.sp++;
-    if (!js_GetArgsValue(f.cx, f.fp(), &f.regs.sp[-1]))
+    ArgumentsObject *arguments = js_GetArgsObject(f.cx, f.fp());
+    if (!arguments)
         THROW();
+    f.regs.sp[0] = ObjectValue(*arguments);
 }
 
 JSBool JS_FASTCALL
@@ -1477,21 +1471,38 @@ stubs::LeaveBlock(VMFrame &f)
     fp->setBlockChain(blockObj.enclosingBlock());
 }
 
+inline void *
+FindNativeCode(VMFrame &f, jsbytecode *target)
+{
+    void* native = f.fp()->script()->nativeCodeForPC(f.fp()->isConstructing(), target);
+    if (native)
+        return native;
+
+    uint32_t sourceOffset = f.pc() - f.script()->code;
+    uint32_t targetOffset = target - f.script()->code;
+
+    CrossChunkEdge *edges = f.jit()->edges();
+    for (size_t i = 0; i < f.jit()->nedges; i++) {
+        const CrossChunkEdge &edge = edges[i];
+        if (edge.source == sourceOffset && edge.target == targetOffset)
+            return edge.shimLabel;
+    }
+
+    JS_NOT_REACHED("Missing edge");
+    return NULL;
+}
+
 void * JS_FASTCALL
 stubs::LookupSwitch(VMFrame &f, jsbytecode *pc)
 {
     jsbytecode *jpc = pc;
     JSScript *script = f.fp()->script();
-    bool ctor = f.fp()->isConstructing();
 
     /* This is correct because the compiler adjusts the stack beforehand. */
     Value lval = f.regs.sp[-1];
 
-    if (!lval.isPrimitive()) {
-        void* native = script->nativeCodeForPC(ctor, pc + GET_JUMP_OFFSET(pc));
-        JS_ASSERT(native);
-        return native;
-    }
+    if (!lval.isPrimitive())
+        return FindNativeCode(f, pc + GET_JUMP_OFFSET(pc));
 
     JS_ASSERT(pc[0] == JSOP_LOOKUPSWITCH);
 
@@ -1506,49 +1517,35 @@ stubs::LookupSwitch(VMFrame &f, jsbytecode *pc)
         if (!str)
             THROWV(NULL);
         for (uint32_t i = 1; i <= npairs; i++) {
-            Value rval = script->getConst(GET_INDEX(pc));
-            pc += INDEX_LEN;
+            Value rval = script->getConst(GET_UINT32_INDEX(pc));
+            pc += UINT32_INDEX_LEN;
             if (rval.isString()) {
                 JSLinearString *rhs = &rval.toString()->asLinear();
-                if (rhs == str || EqualStrings(str, rhs)) {
-                    void* native = script->nativeCodeForPC(ctor,
-                                                           jpc + GET_JUMP_OFFSET(pc));
-                    JS_ASSERT(native);
-                    return native;
-                }
+                if (rhs == str || EqualStrings(str, rhs))
+                    return FindNativeCode(f, jpc + GET_JUMP_OFFSET(pc));
             }
             pc += JUMP_OFFSET_LEN;
         }
     } else if (lval.isNumber()) {
         double d = lval.toNumber();
         for (uint32_t i = 1; i <= npairs; i++) {
-            Value rval = script->getConst(GET_INDEX(pc));
-            pc += INDEX_LEN;
-            if (rval.isNumber() && d == rval.toNumber()) {
-                void* native = script->nativeCodeForPC(ctor,
-                                                       jpc + GET_JUMP_OFFSET(pc));
-                JS_ASSERT(native);
-                return native;
-            }
+            Value rval = script->getConst(GET_UINT32_INDEX(pc));
+            pc += UINT32_INDEX_LEN;
+            if (rval.isNumber() && d == rval.toNumber())
+                return FindNativeCode(f, jpc + GET_JUMP_OFFSET(pc));
             pc += JUMP_OFFSET_LEN;
         }
     } else {
         for (uint32_t i = 1; i <= npairs; i++) {
-            Value rval = script->getConst(GET_INDEX(pc));
-            pc += INDEX_LEN;
-            if (lval == rval) {
-                void* native = script->nativeCodeForPC(ctor,
-                                                       jpc + GET_JUMP_OFFSET(pc));
-                JS_ASSERT(native);
-                return native;
-            }
+            Value rval = script->getConst(GET_UINT32_INDEX(pc));
+            pc += UINT32_INDEX_LEN;
+            if (lval == rval)
+                return FindNativeCode(f, jpc + GET_JUMP_OFFSET(pc));
             pc += JUMP_OFFSET_LEN;
         }
     }
 
-    void* native = script->nativeCodeForPC(ctor, jpc + GET_JUMP_OFFSET(jpc));
-    JS_ASSERT(native);
-    return native;
+    return FindNativeCode(f, jpc + GET_JUMP_OFFSET(jpc));
 }
 
 void * JS_FASTCALL
@@ -1556,7 +1553,7 @@ stubs::TableSwitch(VMFrame &f, jsbytecode *origPc)
 {
     jsbytecode * const originalPC = origPc;
 
-    JSOp op = JSOp(*originalPC);
+    DebugOnly<JSOp> op = JSOp(*originalPC);
     JS_ASSERT(op == JSOP_TABLESWITCH);
 
     uint32_t jumpOffset = GET_JUMP_OFFSET(originalPC);
@@ -1565,7 +1562,7 @@ stubs::TableSwitch(VMFrame &f, jsbytecode *origPc)
     /* Note: compiler adjusts the stack beforehand. */
     Value rval = f.regs.sp[-1];
 
-    jsint tableIdx;
+    int32_t tableIdx;
     if (rval.isInt32()) {
         tableIdx = rval.toInt32();
     } else if (rval.isDouble()) {
@@ -1573,7 +1570,7 @@ stubs::TableSwitch(VMFrame &f, jsbytecode *origPc)
         if (d == 0) {
             /* Treat -0 (double) as 0. */
             tableIdx = 0;
-        } else if (!JSDOUBLE_IS_INT32(d, (int32_t *)&tableIdx)) {
+        } else if (!JSDOUBLE_IS_INT32(d, &tableIdx)) {
             goto finally;
         }
     } else {
@@ -1596,11 +1593,7 @@ stubs::TableSwitch(VMFrame &f, jsbytecode *origPc)
 
 finally:
     /* Provide the native address. */
-    JSScript* script = f.fp()->script();
-    void* native = script->nativeCodeForPC(f.fp()->isConstructing(),
-                                           originalPC + jumpOffset);
-    JS_ASSERT(native);
-    return native;
+    return FindNativeCode(f, originalPC + jumpOffset);
 }
 
 void JS_FASTCALL
@@ -1617,7 +1610,7 @@ stubs::DelName(VMFrame &f, PropertyName *name)
 {
     JSObject *obj, *obj2;
     JSProperty *prop;
-    if (!FindProperty(f.cx, name, false, &obj, &obj2, &prop))
+    if (!FindProperty(f.cx, name, f.cx->stack.currentScriptedScopeChain(), &obj, &obj2, &prop))
         THROW();
 
     /* Strict mode code should never contain JSOP_DELNAME opcodes. */
@@ -1670,49 +1663,18 @@ stubs::DelElem(VMFrame &f)
 }
 
 void JS_FASTCALL
-stubs::DefVarOrConst(VMFrame &f, PropertyName *name)
+stubs::DefVarOrConst(VMFrame &f, PropertyName *dn)
 {
-    JSContext *cx = f.cx;
-    StackFrame *fp = f.fp();
-
-    JSObject *obj = &fp->varObj();
-    JS_ASSERT(!obj->getOps()->defineProperty);
-    uintN attrs = JSPROP_ENUMERATE;
-    if (!fp->isEvalFrame())
+    unsigned attrs = JSPROP_ENUMERATE;
+    if (!f.fp()->isEvalFrame())
         attrs |= JSPROP_PERMANENT;
-
-    /* Lookup id in order to check for redeclaration problems. */
-    bool shouldDefine;
-    if (JSOp(*f.pc()) == JSOP_DEFVAR) {
-        /*
-         * Redundant declaration of a |var|, even one for a non-writable
-         * property like |undefined| in ES5, does nothing.
-         */
-        JSProperty *prop;
-        JSObject *obj2;
-        if (!obj->lookupProperty(cx, name, &obj2, &prop))
-            THROW();
-        shouldDefine = (!prop || obj2 != obj);
-    } else {
-        JS_ASSERT(JSOp(*f.pc()) == JSOP_DEFCONST);
+    if (JSOp(*f.regs.pc) == JSOP_DEFCONST)
         attrs |= JSPROP_READONLY;
-        if (!CheckRedeclaration(cx, obj, name, attrs))
-            THROW();
 
-        /*
-         * As attrs includes readonly, CheckRedeclaration can succeed only
-         * if prop does not exist.
-         */
-        shouldDefine = true;
-    }
+    JSObject &obj = f.fp()->varObj();
 
-    /* Bind a variable only if it's not yet defined. */
-    if (shouldDefine && 
-        !DefineNativeProperty(cx, obj, name, UndefinedValue(),
-                              JS_PropertyStub, JS_StrictPropertyStub, attrs, 0, 0))
-    {
+    if (!DefVarOrConstOperation(f.cx, obj, dn, attrs))
         THROW();
-    }
 }
 
 void JS_FASTCALL
@@ -1743,7 +1705,7 @@ stubs::In(VMFrame &f)
 
     JSObject *obj = &rref.toObject();
     jsid id;
-    if (!FetchElementId(f, obj, f.regs.sp[-2], id, &f.regs.sp[-2]))
+    if (!FetchElementId(f.cx, obj, f.regs.sp[-2], id, &f.regs.sp[-2]))
         THROWV(JS_FALSE);
 
     JSObject *obj2;
@@ -1892,8 +1854,8 @@ stubs::InvariantFailure(VMFrame &f, void *rval)
 
     ExpandInlineFrames(f.cx->compartment);
 
-    Recompiler recompiler(f.cx, script);
-    recompiler.recompile();
+    mjit::Recompiler::clearStackReferences(f.cx, script);
+    mjit::ReleaseScriptCode(f.cx, script);
 
     /* Return the same value (if any) as the call triggering the invariant failure. */
     return rval;
@@ -1904,7 +1866,7 @@ stubs::Exception(VMFrame &f)
 {
     // Check the interrupt flag to allow interrupting deeply nested exception
     // handling.
-    if (JS_THREAD_DATA(f.cx)->interruptFlags && !js_HandleExecutionInterrupt(f.cx))
+    if (f.cx->runtime->interrupt && !js_HandleExecutionInterrupt(f.cx))
         THROW();
 
     f.regs.sp[0] = f.cx->getPendingException();
@@ -2001,7 +1963,7 @@ stubs::ConvertToTypedFloat(JSContext *cx, Value *vp)
 void JS_FASTCALL
 stubs::WriteBarrier(VMFrame &f, Value *addr)
 {
-    js::gc::MarkValueUnbarriered(f.cx->compartment->barrierTracer(), *addr, "write barrier");
+    gc::MarkValueUnbarriered(f.cx->compartment->barrierTracer(), addr, "write barrier");
 }
 
 void JS_FASTCALL
@@ -2009,5 +1971,5 @@ stubs::GCThingWriteBarrier(VMFrame &f, Value *addr)
 {
     gc::Cell *cell = (gc::Cell *)addr->toGCThing();
     if (cell && !cell->isMarked())
-        gc::MarkValueUnbarriered(f.cx->compartment->barrierTracer(), *addr, "write barrier");
+        gc::MarkValueUnbarriered(f.cx->compartment->barrierTracer(), addr, "write barrier");
 }

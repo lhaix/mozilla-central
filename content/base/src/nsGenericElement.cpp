@@ -86,6 +86,7 @@
 #include "nsMutationEvent.h"
 #include "nsNodeUtils.h"
 #include "nsDocument.h"
+#include "nsAttrValueOrString.h"
 #ifdef MOZ_XUL
 #include "nsXULElement.h"
 #endif /* MOZ_XUL */
@@ -153,9 +154,11 @@
 #include "nsSVGFeatures.h"
 #include "nsDOMMemoryReporter.h"
 #include "nsWrapperCacheInlines.h"
-
+#include "nsCycleCollector.h"
 #include "xpcpublic.h"
 #include "xpcprivate.h"
+#include "nsLayoutStatics.h"
+#include "mozilla/Telemetry.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -175,7 +178,7 @@ nsWrapperCache::RemoveExpandoObject()
   if (expando) {
     JSCompartment *compartment = js::GetObjectCompartment(expando);
     xpc::CompartmentPrivate *priv =
-      static_cast<xpc::CompartmentPrivate *>(js_GetCompartmentPrivate(compartment));
+      static_cast<xpc::CompartmentPrivate *>(JS_GetCompartmentPrivate(compartment));
     priv->RemoveDOMExpandoObject(expando);
   }
 }
@@ -1208,11 +1211,20 @@ nsINode::Trace(nsINode *tmp, TraceCallback cb, void *closure)
   nsContentUtils::TraceWrapper(tmp, cb, closure);
 }
 
-static bool
-IsXBL(nsINode* aNode)
+
+static
+bool UnoptimizableCCNode(nsINode* aNode)
 {
-  return aNode->IsElement() &&
-         aNode->AsElement()->IsInNamespace(kNameSpaceID_XBL);
+  const PtrBits problematicFlags = (NODE_IS_ANONYMOUS |
+                                    NODE_IS_IN_ANONYMOUS_SUBTREE |
+                                    NODE_IS_NATIVE_ANONYMOUS_ROOT |
+                                    NODE_MAY_BE_IN_BINDING_MNGR |
+                                    NODE_IS_INSERTION_PARENT);
+  return aNode->HasFlag(problematicFlags) ||
+         aNode->NodeType() == nsIDOMNode::ATTRIBUTE_NODE ||
+         // For strange cases like xbl:content/xbl:children
+         (aNode->IsElement() &&
+          aNode->AsElement()->IsInNamespace(kNameSpaceID_XBL));
 }
 
 /* static */
@@ -1227,18 +1239,11 @@ nsINode::Traverse(nsINode *tmp, nsCycleCollectionTraversalCallback &cb)
 
   if (nsCCUncollectableMarker::sGeneration) {
     // If we're black no need to traverse.
-    if (tmp->IsBlack()) {
+    if (tmp->IsBlack() || tmp->InCCBlackTree()) {
       return false;
     }
 
-    const PtrBits problematicFlags =
-      (NODE_IS_ANONYMOUS |
-       NODE_IS_IN_ANONYMOUS_SUBTREE |
-       NODE_IS_NATIVE_ANONYMOUS_ROOT |
-       NODE_MAY_BE_IN_BINDING_MNGR |
-       NODE_IS_INSERTION_PARENT);
-
-    if (!tmp->HasFlag(problematicFlags) && !IsXBL(tmp)) {
+    if (!UnoptimizableCCNode(tmp)) {
       // If we're in a black document, return early.
       if ((currentDoc && currentDoc->IsBlack())) {
         return false;
@@ -1246,7 +1251,7 @@ nsINode::Traverse(nsINode *tmp, nsCycleCollectionTraversalCallback &cb)
       // If we're not in anonymous content and we have a black parent,
       // return early.
       nsIContent* parent = tmp->GetParent();
-      if (parent && !IsXBL(parent) && parent->IsBlack()) {
+      if (parent && !UnoptimizableCCNode(parent) && parent->IsBlack()) {
         NS_ABORT_IF_FALSE(parent->IndexOf(tmp) >= 0, "Parent doesn't own us?");
         return false;
       }
@@ -1265,7 +1270,8 @@ nsINode::Traverse(nsINode *tmp, nsCycleCollectionTraversalCallback &cb)
     nsNodeUtils::TraverseUserData(tmp, cb);
   }
 
-  if (tmp->HasFlag(NODE_HAS_LISTENERMANAGER)) {
+  if (tmp->NodeType() != nsIDOMNode::DOCUMENT_NODE &&
+      tmp->HasFlag(NODE_HAS_LISTENERMANAGER)) {
     nsContentUtils::TraverseListenerManager(tmp, cb);
   }
 
@@ -1283,7 +1289,8 @@ nsINode::Unlink(nsINode *tmp)
     slots->Unlink();
   }
 
-  if (tmp->HasFlag(NODE_HAS_LISTENERMANAGER)) {
+  if (tmp->NodeType() != nsIDOMNode::DOCUMENT_NODE &&
+      tmp->HasFlag(NODE_HAS_LISTENERMANAGER)) {
     nsContentUtils::RemoveListenerManager(tmp);
     tmp->UnsetFlags(NODE_HAS_LISTENERMANAGER);
   }
@@ -1371,6 +1378,103 @@ nsGenericElement::UpdateEditableState(bool aNotify)
       AddStatesSilently(NS_EVENT_STATE_MOZ_READONLY);
     }
   }
+}
+
+nsEventStates
+Element::StyleStateFromLocks() const
+{
+  nsEventStates locks = LockedStyleStates();
+  nsEventStates state = mState | locks;
+
+  if (locks.HasState(NS_EVENT_STATE_VISITED)) {
+    return state & ~NS_EVENT_STATE_UNVISITED;
+  }
+  if (locks.HasState(NS_EVENT_STATE_UNVISITED)) {
+    return state & ~NS_EVENT_STATE_VISITED;
+  }
+  return state;
+}
+
+nsEventStates
+Element::LockedStyleStates() const
+{
+  nsEventStates *locks =
+    static_cast<nsEventStates*> (GetProperty(nsGkAtoms::lockedStyleStates));
+  if (locks) {
+    return *locks;
+  }
+  return nsEventStates();
+}
+
+static void
+nsEventStatesPropertyDtor(void *aObject, nsIAtom *aProperty,
+                          void *aPropertyValue, void *aData)
+{
+  nsEventStates *states = static_cast<nsEventStates*>(aPropertyValue);
+  delete states;
+}
+
+void
+Element::NotifyStyleStateChange(nsEventStates aStates)
+{
+  nsIDocument* doc = GetCurrentDoc();
+  if (doc) {
+    nsIPresShell *presShell = doc->GetShell();
+    if (presShell) {
+      nsAutoScriptBlocker scriptBlocker;
+      presShell->ContentStateChanged(doc, this, aStates);
+    }
+  }
+}
+
+void
+Element::LockStyleStates(nsEventStates aStates)
+{
+  nsEventStates *locks = new nsEventStates(LockedStyleStates());
+
+  *locks |= aStates;
+
+  if (aStates.HasState(NS_EVENT_STATE_VISITED)) {
+    *locks &= ~NS_EVENT_STATE_UNVISITED;
+  }
+  if (aStates.HasState(NS_EVENT_STATE_UNVISITED)) {
+    *locks &= ~NS_EVENT_STATE_VISITED;
+  }
+
+  SetProperty(nsGkAtoms::lockedStyleStates, locks, nsEventStatesPropertyDtor);
+  SetHasLockedStyleStates();
+
+  NotifyStyleStateChange(aStates);
+}
+
+void
+Element::UnlockStyleStates(nsEventStates aStates)
+{
+  nsEventStates *locks = new nsEventStates(LockedStyleStates());
+
+  *locks &= ~aStates;
+
+  if (locks->IsEmpty()) {
+    DeleteProperty(nsGkAtoms::lockedStyleStates);
+    ClearHasLockedStyleStates();
+    delete locks;
+  }
+  else {
+    SetProperty(nsGkAtoms::lockedStyleStates, locks, nsEventStatesPropertyDtor);
+  }
+
+  NotifyStyleStateChange(aStates);
+}
+
+void
+Element::ClearStyleStateLocks()
+{
+  nsEventStates locks = LockedStyleStates();
+
+  DeleteProperty(nsGkAtoms::lockedStyleStates);
+  ClearHasLockedStyleStates();
+
+  NotifyStyleStateChange(locks);
 }
 
 nsIContent*
@@ -1535,6 +1639,12 @@ nsIContent::GetBaseURI() const
         }
       }
     }
+
+    nsIURI* explicitBaseURI = elem->GetExplicitBaseURI();
+    if (explicitBaseURI) {
+      base = explicitBaseURI;
+      break;
+    }
     
     // Otherwise check for xml:base attribute
     elem->GetAttr(kNameSpaceID_XML, nsGkAtoms::base, attr);
@@ -1564,11 +1674,52 @@ nsIContent::GetBaseURI() const
   return base.forget();
 }
 
+static void
+ReleaseURI(void*, /* aObject*/
+           nsIAtom*, /* aPropertyName */
+           void* aPropertyValue,
+           void* /* aData */)
+{
+  nsIURI* uri = static_cast<nsIURI*>(aPropertyValue);
+  NS_RELEASE(uri);
+}
+
+nsresult
+nsINode::SetExplicitBaseURI(nsIURI* aURI)
+{
+  nsresult rv = SetProperty(nsGkAtoms::baseURIProperty, aURI, ReleaseURI);
+  if (NS_SUCCEEDED(rv)) {
+    SetHasExplicitBaseURI();
+    NS_ADDREF(aURI);
+  }
+  return rv;
+}
+
+//----------------------------------------------------------------------
+
+static JSObject*
+GetJSObjectChild(nsWrapperCache* aCache)
+{
+  if (aCache->PreservingWrapper()) {
+    return aCache->GetWrapperPreserveColor();
+  }
+  return aCache->GetExpandoObjectPreserveColor();
+}
+
+static bool
+NeedsScriptTraverse(nsWrapperCache* aCache)
+{
+  JSObject* o = GetJSObjectChild(aCache);
+  return o && xpc_IsGrayGCThing(o);
+}
+
 //----------------------------------------------------------------------
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsChildContentList)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsChildContentList)
 
+// If nsChildContentList is changed so that any additional fields are
+// traversed by the cycle collector, then CAN_SKIP must be updated.
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsChildContentList)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsChildContentList)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
@@ -1579,6 +1730,20 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(nsChildContentList)
   NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
+// nsChildContentList only ever has a single child, its wrapper, so if
+// the wrapper is black, the list can't be part of a garbage cycle.
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(nsChildContentList)
+  return !NeedsScriptTraverse(tmp);
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_END
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_BEGIN(nsChildContentList)
+  return !NeedsScriptTraverse(tmp);
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_END
+
+// CanSkipThis returns false to avoid problems with incomplete unlinking.
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_BEGIN(nsChildContentList)
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 
 NS_INTERFACE_TABLE_HEAD(nsChildContentList)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
@@ -2738,6 +2903,14 @@ nsGenericElement::GetAttributeNodeNS(const nsAString& aNamespaceURI,
 
   OwnerDoc()->WarnOnceAbout(nsIDocument::eGetAttributeNodeNS);
 
+  return GetAttributeNodeNSInternal(aNamespaceURI, aLocalName, aReturn);
+}
+
+nsresult
+nsGenericElement::GetAttributeNodeNSInternal(const nsAString& aNamespaceURI,
+                                             const nsAString& aLocalName,
+                                             nsIDOMAttr** aReturn)
+{
   nsCOMPtr<nsIDOMNamedNodeMap> map;
   nsresult rv = GetAttributes(getter_AddRefs(map));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -3214,7 +3387,7 @@ nsIContent::PreHandleEvent(nsEventChainPreVisitor& aVisitor)
 {
   //FIXME! Document how this event retargeting works, Bug 329124.
   aVisitor.mCanHandle = true;
-  aVisitor.mMayHaveListenerManager = HasFlag(NODE_HAS_LISTENERMANAGER);
+  aVisitor.mMayHaveListenerManager = HasListenerManager();
 
   // Don't propagate mouseover and mouseout events when mouse is moving
   // inside native anonymous content.
@@ -4203,6 +4376,102 @@ nsINode::IsEqualNode(nsIDOMNode* aOther, bool* aReturn)
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsGenericElement)
 
+#define SUBTREE_UNBINDINGS_PER_RUNNABLE 500
+
+class ContentUnbinder : public nsRunnable
+{
+public:
+  ContentUnbinder()
+  {
+    nsLayoutStatics::AddRef();
+    mLast = this;
+  }
+
+  ~ContentUnbinder()
+  {
+    Run();
+    nsLayoutStatics::Release();
+  }
+
+  void UnbindSubtree(nsIContent* aNode)
+  {
+    if (aNode->NodeType() != nsIDOMNode::ELEMENT_NODE &&
+        aNode->NodeType() != nsIDOMNode::DOCUMENT_FRAGMENT_NODE) {
+      return;  
+    }
+    nsGenericElement* container = static_cast<nsGenericElement*>(aNode);
+    PRUint32 childCount = container->mAttrsAndChildren.ChildCount();
+    if (childCount) {
+      while (childCount-- > 0) {
+        // Hold a strong ref to the node when we remove it, because we may be
+        // the last reference to it.  We need to call TakeChildAt() and
+        // update mFirstChild before calling UnbindFromTree, since this last
+        // can notify various observers and they should really see consistent
+        // tree state.
+        nsCOMPtr<nsIContent> child =
+          container->mAttrsAndChildren.TakeChildAt(childCount);
+        if (childCount == 0) {
+          container->mFirstChild = nsnull;
+        }
+        UnbindSubtree(child);
+        child->UnbindFromTree();
+      }
+    }
+  }
+
+  NS_IMETHOD Run()
+  {
+    nsAutoScriptBlocker scriptBlocker;
+    PRUint32 len = mSubtreeRoots.Length();
+    if (len) {
+      PRTime start = PR_Now();
+      for (PRUint32 i = 0; i < len; ++i) {
+        UnbindSubtree(mSubtreeRoots[i]);
+      }
+      mSubtreeRoots.Clear();
+      Telemetry::Accumulate(Telemetry::CYCLE_COLLECTOR_CONTENT_UNBIND,
+                            PRUint32(PR_Now() - start) / PR_USEC_PER_MSEC);
+    }
+    if (this == sContentUnbinder) {
+      sContentUnbinder = nsnull;
+      if (mNext) {
+        nsRefPtr<ContentUnbinder> next;
+        next.swap(mNext);
+        sContentUnbinder = next;
+        next->mLast = mLast;
+        mLast = nsnull;
+        NS_DispatchToMainThread(next);
+      }
+    }
+    return NS_OK;
+  }
+
+  static void Append(nsIContent* aSubtreeRoot)
+  {
+    if (!sContentUnbinder) {
+      sContentUnbinder = new ContentUnbinder();
+      nsCOMPtr<nsIRunnable> e = sContentUnbinder;
+      NS_DispatchToMainThread(e);
+    }
+
+    if (sContentUnbinder->mLast->mSubtreeRoots.Length() >=
+        SUBTREE_UNBINDINGS_PER_RUNNABLE) {
+      sContentUnbinder->mLast->mNext = new ContentUnbinder();
+      sContentUnbinder->mLast = sContentUnbinder->mLast->mNext;
+    }
+    sContentUnbinder->mLast->mSubtreeRoots.AppendElement(aSubtreeRoot);
+  }
+
+private:
+  nsAutoTArray<nsCOMPtr<nsIContent>,
+               SUBTREE_UNBINDINGS_PER_RUNNABLE> mSubtreeRoots;
+  nsRefPtr<ContentUnbinder>                     mNext;
+  ContentUnbinder*                              mLast;
+  static ContentUnbinder*                       sContentUnbinder;
+};
+
+ContentUnbinder* ContentUnbinder::sContentUnbinder = nsnull;
+
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGenericElement)
   nsINode::Unlink(tmp);
 
@@ -4212,16 +4481,12 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGenericElement)
   }
 
   // Unlink child content (and unbind our subtree).
-  {
+  if (UnoptimizableCCNode(tmp) || !nsCCUncollectableMarker::sGeneration) {
     PRUint32 childCount = tmp->mAttrsAndChildren.ChildCount();
     if (childCount) {
       // Don't allow script to run while we're unbinding everything.
       nsAutoScriptBlocker scriptBlocker;
       while (childCount-- > 0) {
-        // Once we have XPCOMGC we shouldn't need to call UnbindFromTree.
-        // We could probably do a non-deep unbind here when IsInDoc is false
-        // for better performance.
-
         // Hold a strong ref to the node when we remove it, because we may be
         // the last reference to it.  We need to call TakeChildAt() and
         // update mFirstChild before calling UnbindFromTree, since this last
@@ -4234,7 +4499,12 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGenericElement)
         child->UnbindFromTree();
       }
     }
-  }  
+  } else if (!tmp->GetParent() && tmp->mAttrsAndChildren.ChildCount()) {
+    ContentUnbinder::Append(tmp);
+  } /* else {
+    The subtree root will end up to a ContentUnbinder, and that will
+    unbind the child nodes.
+  } */
 
   // Unlink any DOM slots of interest.
   {
@@ -4255,6 +4525,380 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(nsGenericElement)
   nsINode::Trace(tmp, aCallback, aClosure);
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
+void
+nsGenericElement::MarkUserData(void* aObject, nsIAtom* aKey, void* aChild,
+                               void* aData)
+{
+  PRUint32* gen = static_cast<PRUint32*>(aData);
+  xpc_MarkInCCGeneration(static_cast<nsISupports*>(aChild), *gen);
+}
+
+void
+nsGenericElement::MarkUserDataHandler(void* aObject, nsIAtom* aKey,
+                                      void* aChild, void* aData)
+{
+  nsCOMPtr<nsIXPConnectWrappedJS> wjs =
+    do_QueryInterface(static_cast<nsISupports*>(aChild));
+  xpc_UnmarkGrayObject(wjs);
+}
+
+void
+nsGenericElement::MarkNodeChildren(nsINode* aNode)
+{
+  JSObject* o = GetJSObjectChild(aNode);
+  xpc_UnmarkGrayObject(o);
+
+  nsEventListenerManager* elm = aNode->GetListenerManager(false);
+  if (elm) {
+    elm->UnmarkGrayJSListeners();
+  }
+
+  if (aNode->HasProperties()) {
+    nsIDocument* ownerDoc = aNode->OwnerDoc();
+    ownerDoc->PropertyTable(DOM_USER_DATA)->
+      Enumerate(aNode, nsGenericElement::MarkUserData,
+                &nsCCUncollectableMarker::sGeneration);
+    ownerDoc->PropertyTable(DOM_USER_DATA_HANDLER)->
+      Enumerate(aNode, nsGenericElement::MarkUserDataHandler,
+                &nsCCUncollectableMarker::sGeneration);
+  }
+}
+
+nsINode*
+FindOptimizableSubtreeRoot(nsINode* aNode)
+{
+  nsINode* p;
+  while ((p = aNode->GetNodeParent())) {
+    if (UnoptimizableCCNode(aNode)) {
+      return nsnull;
+    }
+    aNode = p;
+  }
+  
+  if (UnoptimizableCCNode(aNode)) {
+    return nsnull;
+  }
+  return aNode;
+}
+
+nsAutoTArray<nsINode*, 1020>* gCCBlackMarkedNodes = nsnull;
+
+void
+ClearBlackMarkedNodes()
+{
+  if (!gCCBlackMarkedNodes) {
+    return;
+  }
+  PRUint32 len = gCCBlackMarkedNodes->Length();
+  for (PRUint32 i = 0; i < len; ++i) {
+    nsINode* n = gCCBlackMarkedNodes->ElementAt(i);
+    n->SetCCMarkedRoot(false);
+    n->SetInCCBlackTree(false);
+  }
+  delete gCCBlackMarkedNodes;
+  gCCBlackMarkedNodes = nsnull;
+}
+
+// static
+bool
+nsGenericElement::CanSkipInCC(nsINode* aNode)
+{
+  // Don't try to optimize anything during shutdown.
+  if (nsCCUncollectableMarker::sGeneration == 0) {
+    return false;
+  }
+
+  // Bail out early if aNode is somewhere in anonymous content,
+  // or otherwise unusual.
+  if (UnoptimizableCCNode(aNode)) {
+    return false;
+  }
+
+  nsIDocument* currentDoc = aNode->GetCurrentDoc();
+  if (currentDoc &&
+      nsCCUncollectableMarker::InGeneration(currentDoc->GetMarkedCCGeneration())) {
+    return !NeedsScriptTraverse(aNode);
+  }
+
+  nsINode* root =
+    currentDoc ? static_cast<nsINode*>(currentDoc) :
+                 FindOptimizableSubtreeRoot(aNode);
+  if (!root) {
+    return false;
+  }
+  
+  // Subtree has been traversed already.
+  if (root->CCMarkedRoot()) {
+    return root->InCCBlackTree() && !NeedsScriptTraverse(aNode);
+  }
+
+  if (!gCCBlackMarkedNodes) {
+    gCCBlackMarkedNodes = new nsAutoTArray<nsINode*, 1020>;
+  }
+
+  // nodesToUnpurple contains nodes which will be removed
+  // from the purple buffer if the DOM tree is black.
+  nsAutoTArray<nsIContent*, 1020> nodesToUnpurple;
+  // grayNodes need script traverse, so they aren't removed from
+  // the purple buffer, but are marked to be in black subtree so that
+  // traverse is faster.
+  nsAutoTArray<nsINode*, 1020> grayNodes;
+
+  bool foundBlack = root->IsBlack();
+  if (root != currentDoc) {
+    currentDoc = nsnull;
+    if (NeedsScriptTraverse(root)) {
+      grayNodes.AppendElement(root);
+    } else if (static_cast<nsIContent*>(root)->IsPurple()) {
+      nodesToUnpurple.AppendElement(static_cast<nsIContent*>(root));
+    }
+  }
+
+  // Traverse the subtree and check if we could know without CC
+  // that it is black.
+  // Note, this traverse is non-virtual and inline, so it should be a lot faster
+  // than CC's generic traverse.
+  for (nsIContent* node = root->GetFirstChild(); node;
+       node = node->GetNextNode(root)) {
+    foundBlack = foundBlack || node->IsBlack();
+    if (foundBlack && currentDoc) {
+      // If we can mark the whole document black, no need to optimize
+      // so much, since when the next purple node in the document will be
+      // handled, it is fast to check that currentDoc is in CCGeneration.
+      break;
+    }
+    if (NeedsScriptTraverse(node)) {
+      // Gray nodes need real CC traverse.
+      grayNodes.AppendElement(node);
+    } else if (node->IsPurple()) {
+      nodesToUnpurple.AppendElement(node);
+    }
+  }
+
+  root->SetCCMarkedRoot(true);
+  root->SetInCCBlackTree(foundBlack);
+  gCCBlackMarkedNodes->AppendElement(root);
+
+  if (!foundBlack) {
+    return false;
+  }
+
+  if (currentDoc) {
+    // Special case documents. If we know the document is black,
+    // we can mark the document to be in CCGeneration.
+    currentDoc->
+      MarkUncollectableForCCGeneration(nsCCUncollectableMarker::sGeneration);
+  } else {
+    for (PRUint32 i = 0; i < grayNodes.Length(); ++i) {
+      nsINode* node = grayNodes[i];
+      node->SetInCCBlackTree(true);
+    }
+    gCCBlackMarkedNodes->AppendElements(grayNodes);
+  }
+
+  // Subtree is black, we can remove non-gray purple nodes from
+  // purple buffer.
+  for (PRUint32 i = 0; i < nodesToUnpurple.Length(); ++i) {
+    nsIContent* purple = nodesToUnpurple[i];
+    // Can't remove currently handled purple node.
+    if (purple != aNode) {
+      purple->RemovePurple();
+    }
+  }
+  return !NeedsScriptTraverse(aNode);
+}
+
+nsAutoTArray<nsINode*, 1020>* gPurpleRoots = nsnull;
+
+void ClearPurpleRoots()
+{
+  if (!gPurpleRoots) {
+    return;
+  }
+  PRUint32 len = gPurpleRoots->Length();
+  for (PRUint32 i = 0; i < len; ++i) {
+    nsINode* n = gPurpleRoots->ElementAt(i);
+    n->SetIsPurpleRoot(false);
+  }
+  delete gPurpleRoots;
+  gPurpleRoots = nsnull;
+}
+
+static bool
+ShouldClearPurple(nsIContent* aContent)
+{
+  if (aContent && aContent->IsPurple()) {
+    return true;
+  }
+
+  JSObject* o = GetJSObjectChild(aContent);
+  if (o && xpc_IsGrayGCThing(o)) {
+    return true;
+  }
+
+  if (aContent->HasListenerManager()) {
+    return true;
+  }
+
+  return aContent->HasProperties();
+}
+
+// If aNode is not optimizable, but is an element
+// with a frame in a document which has currently active presshell,
+// we can act as if it was optimizable. When the primary frame dies, aNode
+// will end up to the purple buffer because of the refcount change.
+bool
+NodeHasActiveFrame(nsIDocument* aCurrentDoc, nsINode* aNode)
+{
+  return aCurrentDoc->GetShell() && aNode->IsElement() &&
+         aNode->AsElement()->GetPrimaryFrame();
+}
+
+// CanSkip checks if aNode is black, and if it is, returns
+// true. If aNode is in a black DOM tree, CanSkip may also remove other objects
+// from purple buffer and unmark event listeners and user data.
+// If the root of the DOM tree is a document, less optimizations are done
+// since checking the blackness of the current document is usually fast and we
+// don't want slow down such common cases.
+bool
+nsGenericElement::CanSkip(nsINode* aNode, bool aRemovingAllowed)
+{
+  // Don't try to optimize anything during shutdown.
+  if (nsCCUncollectableMarker::sGeneration == 0) {
+    return false;
+  }
+
+  bool unoptimizable = UnoptimizableCCNode(aNode);
+  nsIDocument* currentDoc = aNode->GetCurrentDoc();
+  if (currentDoc &&
+      nsCCUncollectableMarker::InGeneration(currentDoc->GetMarkedCCGeneration()) &&
+      (!unoptimizable || NodeHasActiveFrame(currentDoc, aNode))) {
+    MarkNodeChildren(aNode);
+    return true;
+  }
+  if (unoptimizable) {
+    return false;
+  }
+
+  nsINode* root = currentDoc ? static_cast<nsINode*>(currentDoc) :
+                               FindOptimizableSubtreeRoot(aNode);
+  if (!root) {
+    return false;
+  }
+ 
+  // Subtree has been traversed already, and aNode
+  // wasn't removed from purple buffer. No need to do more here.
+  if (root->IsPurpleRoot()) {
+    return false;
+  }
+
+  // nodesToClear contains nodes which are either purple or
+  // gray.
+  nsAutoTArray<nsIContent*, 1020> nodesToClear;
+
+  bool foundBlack = root->IsBlack();
+  if (root != currentDoc) {
+    currentDoc = nsnull;
+    if (ShouldClearPurple(static_cast<nsIContent*>(root))) {
+      nodesToClear.AppendElement(static_cast<nsIContent*>(root));
+    }
+  }
+
+  // Traverse the subtree and check if we could know without CC
+  // that it is black.
+  // Note, this traverse is non-virtual and inline, so it should be a lot faster
+  // than CC's generic traverse.
+  for (nsIContent* node = root->GetFirstChild(); node;
+       node = node->GetNextNode(root)) {
+    foundBlack = foundBlack || node->IsBlack();
+    if (foundBlack) {
+      if (currentDoc) {
+        // If we can mark the whole document black, no need to optimize
+        // so much, since when the next purple node in the document will be
+        // handled, it is fast to check that the currentDoc is in CCGeneration.
+        break;
+      }
+      // No need to put stuff to the nodesToClear array, if we can clear it
+      // already here.
+      if (node->IsPurple() && (node != aNode || aRemovingAllowed)) {
+        node->RemovePurple();
+      }
+      MarkNodeChildren(node);
+    } else if (ShouldClearPurple(node)) {
+      // Collect interesting nodes which we can clear if we find that
+      // they are kept alive in a black tree.
+      nodesToClear.AppendElement(node);
+    }
+  }
+
+  if (!currentDoc || !foundBlack) { 
+    if (!gPurpleRoots) {
+      gPurpleRoots = new nsAutoTArray<nsINode*, 1020>();
+    }
+    root->SetIsPurpleRoot(true);
+    gPurpleRoots->AppendElement(root);
+  }
+
+  if (!foundBlack) {
+    return false;
+  }
+
+  if (currentDoc) {
+    // Special case documents. If we know the document is black,
+    // we can mark the document to be in CCGeneration.
+    currentDoc->
+      MarkUncollectableForCCGeneration(nsCCUncollectableMarker::sGeneration);
+    MarkNodeChildren(currentDoc);
+  }
+
+  // Subtree is black, so we can remove purple nodes from
+  // purple buffer and mark stuff that to be certainly alive.
+  for (PRUint32 i = 0; i < nodesToClear.Length(); ++i) {
+    nsIContent* n = nodesToClear[i];
+    MarkNodeChildren(n);
+    // Can't remove currently handled purple node,
+    // unless aRemovingAllowed is true. 
+    if ((n != aNode || aRemovingAllowed) && n->IsPurple()) {
+      n->RemovePurple();
+    }
+  }
+  return true;
+}
+
+bool
+nsGenericElement::CanSkipThis(nsINode* aNode)
+{
+  if (nsCCUncollectableMarker::sGeneration == 0) {
+    return false;
+  }
+  if (aNode->IsBlack()) {
+    return true;
+  }
+  nsIDocument* c = aNode->GetCurrentDoc();
+  return 
+    ((c && nsCCUncollectableMarker::InGeneration(c->GetMarkedCCGeneration())) ||
+     aNode->InCCBlackTree()) && !NeedsScriptTraverse(aNode);
+}
+
+void
+nsGenericElement::InitCCCallbacks()
+{
+  nsCycleCollector_setForgetSkippableCallback(ClearPurpleRoots);
+  nsCycleCollector_setBeforeUnlinkCallback(ClearBlackMarkedNodes);
+}
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(nsGenericElement)
+  return nsGenericElement::CanSkip(tmp, aRemovingAllowed);
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_END
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_BEGIN(nsGenericElement)
+  return nsGenericElement::CanSkipInCC(tmp);
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_END
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_BEGIN(nsGenericElement)
+  return nsGenericElement::CanSkipThis(tmp);
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 
 static const char* kNSURIs[] = {
   " ([none])",
@@ -4281,14 +4925,31 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsGenericElement)
       tmp->OwnerDoc()->GetDocumentURI()->GetSpec(uri);
     }
 
-    if (nsid < ArrayLength(kNSURIs)) {
-      PR_snprintf(name, sizeof(name), "nsGenericElement%s %s %s", kNSURIs[nsid],
-                  localName.get(), uri.get());
+    nsAutoString id;
+    nsIAtom* idAtom = tmp->GetID();
+    if (idAtom) {
+      id.AppendLiteral(" id='");
+      id.Append(nsDependentAtomString(idAtom));
+      id.AppendLiteral("'");
     }
-    else {
-      PR_snprintf(name, sizeof(name), "nsGenericElement %s %s",
-                  localName.get(), uri.get());
+
+    nsAutoString classes;
+    const nsAttrValue* classAttrValue = tmp->GetClasses();
+    if (classAttrValue) {
+      classes.AppendLiteral(" class='");
+      nsAutoString classString;
+      classAttrValue->ToString(classString);
+      classes.Append(classString);
+      classes.AppendLiteral("'");
     }
+
+    const char* nsuri = nsid < ArrayLength(kNSURIs) ? kNSURIs[nsid] : "";
+    PR_snprintf(name, sizeof(name), "nsGenericElement%s %s%s%s %s",
+                nsuri,
+                localName.get(),
+                NS_ConvertUTF16toUTF8(id).get(),
+                NS_ConvertUTF16toUTF8(classes).get(),
+                uri.get());
     cb.DescribeRefCountedNode(tmp->mRefCnt.get(), sizeof(nsGenericElement),
                               name);
   }
@@ -4447,10 +5108,14 @@ nsGenericElement::CopyInnerTo(nsGenericElement* aDst) const
 }
 
 bool
-nsGenericElement::MaybeCheckSameAttrVal(PRInt32 aNamespaceID, nsIAtom* aName,
-                                        nsIAtom* aPrefix, const nsAString& aValue,
-                                        bool aNotify, nsAutoString* aOldValue,
-                                        PRUint8* aModType, bool* aHasListeners)
+nsGenericElement::MaybeCheckSameAttrVal(PRInt32 aNamespaceID,
+                                        nsIAtom* aName,
+                                        nsIAtom* aPrefix,
+                                        const nsAttrValueOrString& aValue,
+                                        bool aNotify,
+                                        nsAttrValue& aOldValue,
+                                        PRUint8* aModType,
+                                        bool* aHasListeners)
 {
   bool modification = false;
   *aHasListeners = aNotify &&
@@ -4468,16 +5133,19 @@ nsGenericElement::MaybeCheckSameAttrVal(PRInt32 aNamespaceID, nsIAtom* aName,
     if (info.mValue) {
       // Check whether the old value is the same as the new one.  Note that we
       // only need to actually _get_ the old value if we have listeners.
-      bool valueMatches;
       if (*aHasListeners) {
-        // Need to store the old value
-        info.mValue->ToString(*aOldValue);
-        valueMatches = aValue.Equals(*aOldValue);
-      } else {
-        NS_ABORT_IF_FALSE(aNotify,
-                          "Either hasListeners or aNotify should be true.");
-        valueMatches = info.mValue->Equals(aValue, eCaseMatters);
+        // Need to store the old value.
+        //
+        // If the current attribute value contains a pointer to some other data
+        // structure that gets updated in the process of setting the attribute
+        // we'll no longer have the old value of the attribute. Therefore, we
+        // should serialize the attribute value now to keep a snapshot.
+        //
+        // We have to serialize the value anyway in order to create the
+        // mutation event so there's no cost in doing it now.
+        aOldValue.SetToSerialized(*info.mValue);
       }
+      bool valueMatches = aValue.EqualsAsStrings(*info.mValue);
       if (valueMatches && aPrefix == info.mName->GetPrefix()) {
         return true;
       }
@@ -4507,14 +5175,15 @@ nsGenericElement::SetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
 
   PRUint8 modType;
   bool hasListeners;
-  nsAutoString oldValue;
+  nsAttrValueOrString value(aValue);
+  nsAttrValue oldValue;
 
-  if (MaybeCheckSameAttrVal(aNamespaceID, aName, aPrefix, aValue, aNotify,
-                            &oldValue, &modType, &hasListeners)) {
+  if (MaybeCheckSameAttrVal(aNamespaceID, aName, aPrefix, value, aNotify,
+                            oldValue, &modType, &hasListeners)) {
     return NS_OK;
   }
 
-  nsresult rv = BeforeSetAttr(aNamespaceID, aName, &aValue, aNotify);
+  nsresult rv = BeforeSetAttr(aNamespaceID, aName, &value, aNotify);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (aNotify) {
@@ -4532,7 +5201,7 @@ nsGenericElement::SetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
 
   return SetAttrAndNotify(aNamespaceID, aName, aPrefix, oldValue,
                           attrValue, modType, hasListeners, aNotify,
-                          &aValue);
+                          kCallAfterSetAttr);
 }
 
 nsresult
@@ -4550,15 +5219,14 @@ nsGenericElement::SetParsedAttr(PRInt32 aNamespaceID, nsIAtom* aName,
     return NS_ERROR_FAILURE;
   }
 
-  nsAutoString value;
-  aParsedValue.ToString(value);
 
   PRUint8 modType;
   bool hasListeners;
-  nsAutoString oldValue;
+  nsAttrValueOrString value(aParsedValue);
+  nsAttrValue oldValue;
 
   if (MaybeCheckSameAttrVal(aNamespaceID, aName, aPrefix, value, aNotify,
-                            &oldValue, &modType, &hasListeners)) {
+                            oldValue, &modType, &hasListeners)) {
     return NS_OK;
   }
 
@@ -4571,19 +5239,19 @@ nsGenericElement::SetParsedAttr(PRInt32 aNamespaceID, nsIAtom* aName,
 
   return SetAttrAndNotify(aNamespaceID, aName, aPrefix, oldValue,
                           aParsedValue, modType, hasListeners, aNotify,
-                          &value);
+                          kCallAfterSetAttr);
 }
 
 nsresult
 nsGenericElement::SetAttrAndNotify(PRInt32 aNamespaceID,
                                    nsIAtom* aName,
                                    nsIAtom* aPrefix,
-                                   const nsAString& aOldValue,
+                                   const nsAttrValue& aOldValue,
                                    nsAttrValue& aParsedValue,
                                    PRUint8 aModType,
                                    bool aFireMutation,
                                    bool aNotify,
-                                   const nsAString* aValueForAfterSetAttr)
+                                   bool aCallAfterSetAttr)
 {
   nsresult rv;
 
@@ -4591,6 +5259,13 @@ nsGenericElement::SetAttrAndNotify(PRInt32 aNamespaceID,
   mozAutoDocUpdate updateBatch(document, UPDATE_CONTENT_MODEL, aNotify);
 
   nsMutationGuard::DidMutate();
+
+  // Copy aParsedValue for later use since it will be lost when we call
+  // SetAndTakeMappedAttr below
+  nsAttrValue aValueForAfterSetAttr;
+  if (aCallAfterSetAttr) {
+    aValueForAfterSetAttr.SetTo(aParsedValue);
+  }
 
   if (aNamespaceID == kNameSpaceID_None) {
     // XXXbz Perhaps we should push up the attribute mapping function
@@ -4629,8 +5304,8 @@ nsGenericElement::SetAttrAndNotify(PRInt32 aNamespaceID,
       aName == nsGkAtoms::event && mNodeInfo->GetDocument()) {
     mNodeInfo->GetDocument()->AddXMLEventsContent(this);
   }
-  if (aValueForAfterSetAttr) {
-    rv = AfterSetAttr(aNamespaceID, aName, aValueForAfterSetAttr, aNotify);
+  if (aCallAfterSetAttr) {
+    rv = AfterSetAttr(aNamespaceID, aName, &aValueForAfterSetAttr, aNotify);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -4640,8 +5315,8 @@ nsGenericElement::SetAttrAndNotify(PRInt32 aNamespaceID,
     nsCOMPtr<nsIDOMAttr> attrNode;
     nsAutoString ns;
     nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNamespaceID, ns);
-    GetAttributeNodeNS(ns, nsDependentAtomString(aName),
-                       getter_AddRefs(attrNode));
+    GetAttributeNodeNSInternal(ns, nsDependentAtomString(aName),
+                               getter_AddRefs(attrNode));
     mutation.mRelatedNode = attrNode;
 
     mutation.mAttrName = aName;
@@ -4650,8 +5325,8 @@ nsGenericElement::SetAttrAndNotify(PRInt32 aNamespaceID,
     if (!newValue.IsEmpty()) {
       mutation.mNewAttrValue = do_GetAtom(newValue);
     }
-    if (!aOldValue.IsEmpty()) {
-      mutation.mPrevAttrValue = do_GetAtom(aOldValue);
+    if (!aOldValue.IsEmptyString()) {
+      mutation.mPrevAttrValue = aOldValue.GetAsAtom();
     }
     mutation.mAttrChange = aModType;
 
@@ -4801,8 +5476,8 @@ nsGenericElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 
   nsresult rv = BeforeSetAttr(aNameSpaceID, aName, nsnull, aNotify);
   NS_ENSURE_SUCCESS(rv, rv);
-  
-  nsIDocument *document = GetCurrentDoc();    
+
+  nsIDocument *document = GetCurrentDoc();
   mozAutoDocUpdate updateBatch(document, UPDATE_CONTENT_MODEL, aNotify);
 
   if (aNotify) {
@@ -4820,8 +5495,8 @@ nsGenericElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
   if (hasMutationListeners) {
     nsAutoString ns;
     nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNameSpaceID, ns);
-    GetAttributeNodeNS(ns, nsDependentAtomString(aName),
-                       getter_AddRefs(attrNode));
+    GetAttributeNodeNSInternal(ns, nsDependentAtomString(aName),
+                               getter_AddRefs(attrNode));
   }
 
   // Clear binding to nsIDOMNamedNodeMap

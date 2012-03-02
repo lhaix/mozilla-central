@@ -1436,7 +1436,7 @@ LoopState::restoreInvariants(jsbytecode *pc, Assembler &masm,
 
           case InvariantEntry::INVARIANT_ARGS_LENGTH: {
             Address address = frame.addressOf(frame.getTemporary(entry.u.array.temporary));
-            masm.load32(Address(JSFrameReg, StackFrame::offsetOfArgs()), T0);
+            masm.load32(Address(JSFrameReg, StackFrame::offsetOfNumActual()), T0);
             masm.storeValueFromComponents(ImmType(JSVAL_TYPE_INT32), T0, address);
             break;
           }
@@ -1869,7 +1869,7 @@ LoopState::analyzeLoopBody(unsigned frame)
 
           case JSOP_SETPROP:
           case JSOP_SETMETHOD: {
-            JSAtom *atom = script->getAtom(js_GetIndexFromBytecode(script, pc, 0));
+            JSAtom *atom = script->getAtom(GET_UINT32_INDEX(pc));
             jsid id = MakeTypeId(cx, ATOM_TO_JSID(atom));
 
             TypeSet *objTypes = analysis->poppedTypes(pc, 1);
@@ -1897,6 +1897,7 @@ LoopState::analyzeLoopBody(unsigned frame)
             break;
 
           case JSOP_LOOPHEAD:
+          case JSOP_LOOPENTRY:
           case JSOP_POP:
           case JSOP_ZERO:
           case JSOP_ONE:
@@ -2180,7 +2181,7 @@ LoopState::getEntryValue(const CrossSSAValue &iv, uint32_t *pslot, int32_t *pcon
       }
 
       case JSOP_GETPROP: {
-        JSAtom *atom = script->getAtom(js_GetIndexFromBytecode(script, pc, 0));
+        JSAtom *atom = script->getAtom(GET_UINT32_INDEX(pc));
         jsid id = ATOM_TO_JSID(atom);
         CrossSSAValue objcv(cv.frame, analysis->poppedValue(v.pushedOffset(), 0));
         FrameEntry *tmp = invariantProperty(objcv, id);

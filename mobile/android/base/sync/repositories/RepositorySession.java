@@ -38,9 +38,12 @@
 
 package org.mozilla.gecko.sync.repositories;
 
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.mozilla.gecko.sync.Logger;
 import org.mozilla.gecko.sync.repositories.delegates.RepositorySessionBeginDelegate;
 import org.mozilla.gecko.sync.repositories.delegates.RepositorySessionFetchRecordsDelegate;
 import org.mozilla.gecko.sync.repositories.delegates.RepositorySessionFinishDelegate;
@@ -48,8 +51,6 @@ import org.mozilla.gecko.sync.repositories.delegates.RepositorySessionGuidsSince
 import org.mozilla.gecko.sync.repositories.delegates.RepositorySessionStoreDelegate;
 import org.mozilla.gecko.sync.repositories.delegates.RepositorySessionWipeDelegate;
 import org.mozilla.gecko.sync.repositories.domain.Record;
-
-import android.util.Log;
 
 /**
  * A RepositorySession is created and used thusly:
@@ -74,6 +75,11 @@ public abstract class RepositorySession {
   }
 
   private static final String LOG_TAG = "RepositorySession";
+
+  protected static void trace(String message) {
+    Logger.trace(LOG_TAG, message);
+  }
+
   protected SessionStatus status = SessionStatus.UNSTARTED;
   protected Repository repository;
   protected RepositorySessionStoreDelegate delegate;
@@ -131,17 +137,24 @@ public abstract class RepositorySession {
    * Store success calls are not guaranteed.
    */
   public void setStoreDelegate(RepositorySessionStoreDelegate delegate) {
-    Log.d(LOG_TAG, "Setting store delegate to " + delegate);
+    Logger.debug(LOG_TAG, "Setting store delegate to " + delegate);
     this.delegate = delegate;
   }
   public abstract void store(Record record) throws NoStoreDelegateException;
 
   public void storeDone() {
-    Log.d(LOG_TAG, "Scheduling onStoreCompleted for after storing is done.");
+    // Our default behavior will be to assume that the Runnable is
+    // executed as soon as all the stores synchronously finish, so
+    // our end timestamp can just be… now.
+    storeDone(now());
+  }
+
+  public void storeDone(final long end) {
+    Logger.debug(LOG_TAG, "Scheduling onStoreCompleted for after storing is done.");
     Runnable command = new Runnable() {
       @Override
       public void run() {
-        delegate.onStoreCompleted();
+        delegate.onStoreCompleted(end);
       }
     };
     storeWorkQueue.execute(command);
@@ -163,11 +176,6 @@ public abstract class RepositorySession {
     }
   }
 
-  private static void error(String msg) {
-    System.err.println("ERROR: " + msg);
-    Log.e(LOG_TAG, msg);
-  }
-
   /**
    * Synchronously perform the shared work of beginning. Throws on failure.
    * @throws InvalidSessionTransitionException
@@ -177,7 +185,7 @@ public abstract class RepositorySession {
     if (this.status == SessionStatus.UNSTARTED) {
       this.status = SessionStatus.ACTIVE;
     } else {
-      error("Tried to begin() an already active or finished session");
+      Logger.error(LOG_TAG, "Tried to begin() an already active or finished session");
       throw new InvalidSessionTransitionException(null);
     }
   }
@@ -208,11 +216,11 @@ public abstract class RepositorySession {
    * @return
    */
   protected RepositorySessionBundle getBundle(RepositorySessionBundle optional) {
-    System.out.println("RepositorySession.getBundle(optional).");
+    Logger.debug(LOG_TAG, "RepositorySession.getBundle(optional).");
     // Why don't we just persist the old bundle?
     RepositorySessionBundle bundle = (optional == null) ? new RepositorySessionBundle() : optional;
     bundle.put("timestamp", this.lastSyncTimestamp);
-    System.out.println("Setting bundle timestamp to " + this.lastSyncTimestamp);
+    Logger.debug(LOG_TAG, "Setting bundle timestamp to " + this.lastSyncTimestamp);
     return bundle;
   }
 
@@ -232,11 +240,11 @@ public abstract class RepositorySession {
       this.status = SessionStatus.DONE;
       delegate.deferredFinishDelegate(delegateQueue).onFinishSucceeded(this, this.getBundle(null));
     } else {
-      Log.e(LOG_TAG, "Tried to finish() an unstarted or already finished session");
+      Logger.error(LOG_TAG, "Tried to finish() an unstarted or already finished session");
       Exception e = new InvalidSessionTransitionException(null);
       delegate.deferredFinishDelegate(delegateQueue).onFinishFailed(e);
     }
-    Log.i(LOG_TAG, "Shutting down work queues.");
+    Logger.info(LOG_TAG, "Shutting down work queues.");
  //   storeWorkQueue.shutdown();
  //   delegateQueue.shutdown();
   }
@@ -245,10 +253,113 @@ public abstract class RepositorySession {
     return status == SessionStatus.ACTIVE;
   }
 
+  public SessionStatus getStatus() {
+    return status;
+  }
+
+  public void setStatus(SessionStatus status) {
+    this.status = status;
+  }
+
   public void abort() {
     // TODO: do something here.
     status = SessionStatus.ABORTED;
     storeWorkQueue.shutdown();
     delegateQueue.shutdown();
+  }
+
+  /**
+   * Produce a record that is some combination of the remote and local records
+   * provided.
+   *
+   * The returned record must be produced without mutating either remoteRecord
+   * or localRecord. It is acceptable to return either remoteRecord or localRecord
+   * if no modifications are to be propagated.
+   *
+   * The returned record *should* have the local androidID and the remote GUID,
+   * and some optional merge of data from the two records.
+   *
+   * This method can be called with records that are identical, or differ in
+   * any regard.
+   *
+   * This method will not be called if:
+   *
+   * * either record is marked as deleted, or
+   * * there is no local mapping for a new remote record.
+   *
+   * Otherwise, it will be called precisely once.
+   *
+   * Side-effects (e.g., for transactional storage) can be hooked in here.
+   *
+   * @param remoteRecord
+   *        The record retrieved from upstream, already adjusted for clock skew.
+   * @param localRecord
+   *        The record retrieved from local storage.
+   * @param lastRemoteRetrieval
+   *        The timestamp of the last retrieved set of remote records, adjusted for
+   *        clock skew.
+   * @param lastLocalRetrieval
+   *        The timestamp of the last retrieved set of local records.
+   * @return
+   *        A Record instance to apply, or null to apply nothing.
+   */
+  protected Record reconcileRecords(final Record remoteRecord,
+                                    final Record localRecord,
+                                    final long lastRemoteRetrieval,
+                                    final long lastLocalRetrieval) {
+    Logger.debug(LOG_TAG, "Reconciling remote " + remoteRecord.guid + " against local " + localRecord.guid);
+
+    if (localRecord.equalPayloads(remoteRecord)) {
+      if (remoteRecord.lastModified > localRecord.lastModified) {
+        Logger.debug(LOG_TAG, "Records are equal. No record application needed.");
+        return null;
+      }
+
+      // Local wins.
+      return null;
+    }
+
+    // TODO: Decide what to do based on:
+    // * Which of the two records is modified;
+    // * Whether they are equal or congruent;
+    // * The modified times of each record (interpreted through the lens of clock skew);
+    // * ...
+    boolean localIsMoreRecent = localRecord.lastModified > remoteRecord.lastModified;
+    Logger.debug(LOG_TAG, "Local record is more recent? " + localIsMoreRecent);
+    Record donor = localIsMoreRecent ? localRecord : remoteRecord;
+
+    // Modify the local record to match the remote record's GUID and values.
+    // Preserve the local Android ID, and merge data where possible.
+    // It sure would be nice if copyWithIDs didn't give a shit about androidID, mm?
+    Record out = donor.copyWithIDs(remoteRecord.guid, localRecord.androidID);
+
+    // We don't want to upload the record if the remote record was
+    // applied without changes.
+    // This logic will become more complicated as reconciling becomes smarter.
+    if (!localIsMoreRecent) {
+      trackRecord(out);
+    }
+    return out;
+  }
+
+  /**
+   * Depending on the RepositorySession implementation, track
+   * that a record — most likely a brand-new record that has been
+   * applied unmodified — should be tracked so as to not be uploaded
+   * redundantly.
+   *
+   * The default implementation does nothing.
+   *
+   * @param record
+   */
+  protected synchronized void trackRecord(Record record) {
+  }
+
+  protected synchronized void untrackRecord(Record record) {
+  }
+
+  // Ah, Java. You wretched creature.
+  public Iterator<String> getTrackedRecordIDs() {
+    return new ArrayList<String>().iterator();
   }
 }

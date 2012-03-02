@@ -70,6 +70,7 @@
 #ifdef XP_WIN
 #include "mozilla/widget/AudioSession.h"
 #endif
+#include "sampler.h"
 
 using base::KillProcess;
 
@@ -205,7 +206,7 @@ PluginModuleParent::TimeoutChanged(const char* aPref, void* aModule)
     } else if (!strcmp(aPref, kParentTimeoutPref)) {
       // The timeout value used by the child for its parent
       PRInt32 timeoutSecs = Preferences::GetInt(kParentTimeoutPref, 0);
-      static_cast<PluginModuleParent*>(aModule)->SendSetParentHangTimeout(timeoutSecs);
+      unused << static_cast<PluginModuleParent*>(aModule)->SendSetParentHangTimeout(timeoutSecs);
     }
     return 0;
 }
@@ -434,6 +435,7 @@ PluginModuleParent::NPP_NewStream(NPP instance, NPMIMEType type,
                                   NPStream* stream, NPBool seekable,
                                   uint16_t* stype)
 {
+    SAMPLE_LABEL("PluginModuleParent", "NPP_NewStream");
     PluginInstanceParent* i = InstCast(instance);
     if (!i)
         return NPERR_GENERIC_ERROR;
@@ -685,12 +687,11 @@ PluginModuleParent::HandleGUIEvent(NPP instance,
 #endif
 
 nsresult
-PluginModuleParent::GetImage(NPP instance,
-                             mozilla::layers::ImageContainer* aContainer,
-                             mozilla::layers::Image** aImage)
+PluginModuleParent::GetImageContainer(NPP instance,
+                             mozilla::layers::ImageContainer** aContainer)
 {
     PluginInstanceParent* i = InstCast(instance);
-    return !i ? NS_ERROR_FAILURE : i->GetImage(aContainer, aImage);
+    return !i ? NS_ERROR_FAILURE : i->GetImageContainer(aContainer);
 }
 
 nsresult
@@ -775,7 +776,7 @@ PluginModuleParent::NP_Initialize(NPNetscapeFuncs* bFuncs, NPError* error)
     if (!CallNP_Initialize(error))
         return NS_ERROR_FAILURE;
 
-#if defined XP_WIN && MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
+#if defined XP_WIN
     // Send the info needed to join the chrome process's audio session to the
     // plugin process
     nsID id;

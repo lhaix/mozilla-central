@@ -96,7 +96,8 @@ pref("offline-apps.quota.warn",        51200);
 // 0 => disable compression
 // 1 => best speed
 // 9 => best compression
-pref("browser.cache.compression_level", 5);
+// cache compression turned off for now - see bug #715198
+pref("browser.cache.compression_level", 0);
 
 // Whether or not indexedDB is enabled.
 pref("dom.indexedDB.enabled", true);
@@ -169,10 +170,6 @@ pref("browser.chrome.image_icons.max_size", 1024);
 
 pref("browser.triple_click_selects_paragraph", true);
 
-// When loading <video> or <audio>, check for Access-Control-Allow-Origin
-// header, and disallow the connection if not present or permitted.
-pref("media.enforce_same_site_origin", false);
-
 // Media cache size in kilobytes
 pref("media.cache_size", 512000);
 
@@ -218,8 +215,8 @@ pref("gfx.font_rendering.harfbuzz.scripts", 71);
 #ifdef ANDROID
 pref("gfx.font_rendering.harfbuzz.scripts", 71);
 #else
-// use harfbuzz for default (0x01) + arabic (0x02)
-pref("gfx.font_rendering.harfbuzz.scripts", 3);
+// use harfbuzz for default (0x01) + arabic (0x02) + hebrew (0x04)
+pref("gfx.font_rendering.harfbuzz.scripts", 7);
 #endif
 #endif
 
@@ -230,6 +227,10 @@ pref("gfx.font_rendering.directwrite.use_gdi_table_loading", true);
 
 #ifdef XP_WIN
 pref("gfx.canvas.azure.enabled", true);
+#else
+#ifdef XP_MACOSX
+pref("gfx.canvas.azure.enabled", true);
+#endif
 #endif
 
 pref("accessibility.browsewithcaret", false);
@@ -285,6 +286,9 @@ pref("accessibility.typeaheadfind.prefillwithselection", true);
 // use Mac OS X Appearance panel text smoothing setting when rendering text, disabled by default
 pref("gfx.use_text_smoothing_setting", false);
 
+// show checkerboard pattern on android, enabled by default (option exists for image analysis testing)
+pref("gfx.show_checkerboard_pattern", true);
+
 // loading and rendering of framesets and iframes
 pref("browser.frames.enabled", true);
 
@@ -293,6 +297,8 @@ pref("toolkit.autocomplete.richBoundaryCutoff", 200);
 
 pref("toolkit.scrollbox.smoothScroll", true);
 pref("toolkit.scrollbox.scrollIncrement", 20);
+// Make sure to update NS_DEFAULT_VERTICAL_SCROLL_DISTANCE if changing this default.
+pref("toolkit.scrollbox.verticalScrollDistance", 3);
 pref("toolkit.scrollbox.clickToScroll.scrollDelay", 150);
 
 // Telemetry
@@ -317,6 +323,9 @@ pref("nglayout.events.dispatchLeftClickOnly", true);
 
 // whether or not to draw images while dragging
 pref("nglayout.enable_drag_images", true);
+
+// enable/disable paint flashing --- useful for debugging
+pref("nglayout.debug.paint_flashing", false);
 
 // scrollbar snapping region
 // 0 - off
@@ -627,6 +636,7 @@ pref("privacy.popups.disable_from_plugins", 2);
 pref("privacy.donottrackheader.enabled",    false);
 
 pref("dom.event.contextmenu.enabled",       true);
+pref("dom.event.clipboardevents.enabled",   true);
 
 pref("javascript.enabled",                  true);
 pref("javascript.options.strict",           false);
@@ -648,6 +658,8 @@ pref("javascript.options.typeinference", true);
 pref("javascript.options.mem.high_water_mark", 128);
 pref("javascript.options.mem.max", -1);
 pref("javascript.options.mem.gc_per_compartment", true);
+pref("javascript.options.mem.gc_incremental", true);
+pref("javascript.options.mem.gc_incremental_slice_ms", 10);
 pref("javascript.options.mem.log", false);
 pref("javascript.options.gc_on_memory_pressure", true);
 
@@ -665,6 +677,11 @@ pref("security.fileuri.strict_origin_policy", true);
 //   pref("network.security.ports.banned", "1,2,3,4,5");
 // prevents necko connecting to ports 1-5 unless the protocol
 // overrides.
+
+// Allow necko to do A/B testing. Will generally only happen if
+// telemetry is also enabled as otherwise there is no way to report
+// the results
+pref("network.allow-experiments", true);
 
 // Default action for unlisted external protocol handlers
 pref("network.protocol-handler.external-default", true);      // OK to load
@@ -800,11 +817,13 @@ pref("network.http.connection-retry-timeout", 250);
 pref("network.http.fast-fallback-to-IPv4", true);
 
 // Try and use SPDY when using SSL
-pref("network.http.spdy.enabled", false);
+pref("network.http.spdy.enabled", true);
 pref("network.http.spdy.chunk-size", 4096);
 pref("network.http.spdy.timeout", 180);
 pref("network.http.spdy.coalesce-hostnames", true);
 pref("network.http.spdy.use-alternate-protocol", true);
+pref("network.http.spdy.ping-threshold", 44);
+pref("network.http.spdy.ping-timeout", 8);
 
 // default values for FTP
 // in a DSCP environment this should be 40 (0x28, or AF11), per RFC-4594,
@@ -894,6 +913,7 @@ pref("network.IDN.whitelist.cl", true);
 pref("network.IDN.whitelist.cn", true);
 pref("network.IDN.whitelist.de", true);
 pref("network.IDN.whitelist.dk", true);
+pref("network.IDN.whitelist.ee", true);
 pref("network.IDN.whitelist.es", true);
 pref("network.IDN.whitelist.fi", true);
 pref("network.IDN.whitelist.gr", true);
@@ -915,6 +935,7 @@ pref("network.IDN.whitelist.pl", true);
 pref("network.IDN.whitelist.pr", true);
 pref("network.IDN.whitelist.se", true);
 pref("network.IDN.whitelist.sh", true);
+pref("network.IDN.whitelist.si", true);
 pref("network.IDN.whitelist.th", true);
 pref("network.IDN.whitelist.tm", true);
 pref("network.IDN.whitelist.tw", true);
@@ -941,6 +962,8 @@ pref("network.IDN.whitelist.xn--fzc2c9e2c", true);
 pref("network.IDN.whitelist.xn--xkc2al3hye2a", true);
 // qa, Qatar, .<Qatar>
 pref("network.IDN.whitelist.xn--wgbl6a", true);
+// rs, Serbia, .<Srb>
+pref("network.IDN.whitelist.xn--90a3ac", true);
 // ru, Russian Federation, .<RF>
 pref("network.IDN.whitelist.xn--p1ai", true);
 // sa, Saudi Arabia, .<al-Saudiah> with variants
@@ -950,6 +973,8 @@ pref("network.IDN.whitelist.xn--mgbqly7c0a67fbc", true);
 pref("network.IDN.whitelist.xn--mgbqly7cvafr", true);
 // sy, Syria, .<Souria>
 pref("network.IDN.whitelist.xn--ogbpf8fl", true);
+// th, Thailand, .<Thai>
+pref("network.IDN.whitelist.xn--o3cw4h", true);
 // tw, Taiwan, <.Taiwan> with variants
 pref("network.IDN.whitelist.xn--kpry57d", true);  // Traditional
 pref("network.IDN.whitelist.xn--kprw13d", true);  // Simplified
@@ -1028,6 +1053,9 @@ pref("network.negotiate-auth.trusted-uris", "");
 // This list controls which URIs can support delegation.
 pref("network.negotiate-auth.delegation-uris", "");
 
+// Do not allow SPNEGO by default when challenged by a local server.
+pref("network.negotiate-auth.allow-non-fqdn", false);
+
 // Allow SPNEGO by default when challenged by a proxy server.
 pref("network.negotiate-auth.allow-proxies", true);
 
@@ -1058,6 +1086,7 @@ pref("network.auth.force-generic-ntlm", false);
 // Window's domain logon.  The trusted-uris pref follows the format of the
 // trusted-uris pref for negotiate authentication.
 pref("network.automatic-ntlm-auth.allow-proxies", true);
+pref("network.automatic-ntlm-auth.allow-non-fqdn", false);
 pref("network.automatic-ntlm-auth.trusted-uris", "");
 
 // This preference controls whether or not the LM hash will be included in
@@ -1191,7 +1220,7 @@ pref("intl.hyphenation-alias.no-*", "nb");
 pref("intl.hyphenation-alias.nb-*", "nb");
 pref("intl.hyphenation-alias.nn-*", "nn");
 
-pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, Asana Math, Standard Symbols L, DejaVu Sans, Cambria Math");
+pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, MathJax_Main, Asana Math, Standard Symbols L, DejaVu Sans, Cambria Math");
 
 // Some CJK fonts have bad underline offset, their CJK character glyphs are overlapped (or adjoined)  to its underline.
 // These fonts are ignored the underline offset, instead of it, the underline is lowered to bottom of its em descent.
@@ -1905,7 +1934,7 @@ pref("font.size.variable.zh-HK", 16);
 pref("font.size.fixed.zh-HK", 16);
 
 // We have special support for Monotype Symbol on Windows.
-pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, Asana Math, Symbol, DejaVu Sans, Cambria Math");
+pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, MathJax_Main, Asana Math, Symbol, DejaVu Sans, Cambria Math");
 
 // cleartype settings - false implies default system settings 
 
@@ -2433,7 +2462,7 @@ pref("font.size.variable.zh-HK", 15);
 pref("font.size.fixed.zh-HK", 16);
 
 // Apple's Symbol is Unicode so use it
-pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, Asana Math, Symbol, DejaVu Sans, Cambria Math");
+pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, MathJax_Main, Asana Math, Symbol, DejaVu Sans, Cambria Math");
 
 // individual font faces to be treated as independent families
 // names are Postscript names of each face
@@ -2482,7 +2511,7 @@ pref("ui.key.menuAccessKeyFocuses", true);
 
 pref("font.alias-list", "sans,sans-serif,serif,monospace,Tms Rmn,Helv,Courier,Times New Roman");
 
-pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, Asana Math, DejaVu Sans");
+pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, MathJax_Main, Asana Math, DejaVu Sans");
 
 // Languages only need lists if we have a default that might not be available.
 // Tms Rmn and Helv cannot be used by Thebes but the OS/2 version of FontConfig
@@ -2732,7 +2761,9 @@ pref("font.name.monospace.he", "Droid Sans Mono");
 
 pref("font.name.serif.ja", "Droid Serif");
 pref("font.name.sans-serif.ja", "Droid Sans Japanese");
-pref("font.name.monospace.ja", "Droid Sans Mono");
+pref("font.name.monospace.ja", "MotoyaLMaru");
+pref("font.name-list.sans-serif.ja", "MotoyaLMaru, MotoyaLCedar, Droid Sans Japanese");
+pref("font.name-list.monospace.ja", "MotoyaLMaru, MotoyaLCedar");
 
 pref("font.name.serif.ko", "Droid Serif");
 pref("font.name.sans-serif.ko", "Droid Sans");
@@ -2749,38 +2780,44 @@ pref("font.name.monospace.tr", "Droid Sans Mono");
 pref("font.name.serif.x-baltic", "Droid Serif");
 pref("font.name.sans-serif.x-baltic", "Droid Sans");
 pref("font.name.monospace.x-baltic", "Droid Sans Mono");
+pref("font.name-list.sans-serif.x-baltic", "Roboto, Droid Sans");
 
 pref("font.name.serif.x-central-euro", "Droid Serif");
 pref("font.name.sans-serif.x-central-euro", "Droid Sans");
 pref("font.name.monospace.x-central-euro", "Droid Sans Mono");
+pref("font.name-list.sans-serif.x-central-euro", "Roboto, Droid Sans");
 
 pref("font.name.serif.x-cyrillic", "Droid Serif");
 pref("font.name.sans-serif.x-cyrillic", "Droid Sans");
 pref("font.name.monospace.x-cyrillic", "Droid Sans Mono");
+pref("font.name-list.sans-serif.x-cyrillic", "Roboto, Droid Sans");
 
 pref("font.name.serif.x-unicode", "Droid Serif");
 pref("font.name.sans-serif.x-unicode", "Droid Sans");
 pref("font.name.monospace.x-unicode", "Droid Sans Mono");
+pref("font.name-list.sans-serif.x-unicode", "Roboto, Droid Sans");
 
 pref("font.name.serif.x-user-def", "Droid Serif");
 pref("font.name.sans-serif.x-user-def", "Droid Sans");
 pref("font.name.monospace.x-user-def", "Droid Sans Mono");
+pref("font.name-list.sans-serif.x-user-def", "Roboto, Droid Sans");
 
 pref("font.name.serif.x-western", "Droid Serif");
 pref("font.name.sans-serif.x-western", "Droid Sans");
 pref("font.name.monospace.x-western", "Droid Sans Mono");
+pref("font.name-list.sans-serif.x-western", "Roboto, Droid Sans");
 
 pref("font.name.serif.zh-CN", "Droid Serif");
 pref("font.name.sans-serif.zh-CN", "Droid Sans");
 pref("font.name.monospace.zh-CN", "Droid Sans Mono");
 
-// ming_uni.ttf (HKSCS-2001) 
-// http://www.info.gov.hk/digital21/eng/hkscs/download/uime.exe
 pref("font.name.serif.zh-HK", "Droid Serif");
 pref("font.name.sans-serif.zh-HK", "Droid Sans");
 pref("font.name.monospace.zh-HK", "Droid Sans Mono");
 
-// zh-TW
+pref("font.name.serif.zh-TW", "Droid Serif");
+pref("font.name.sans-serif.zh-TW", "Droid Sans");
+pref("font.name.monospace.zh-TW", "Droid Sans Mono");
 
 pref("font.default.ar", "sans-serif");
 pref("font.size.variable.ar", 16);
@@ -3382,6 +3419,7 @@ pref("full-screen-api.enabled", false);
 pref("full-screen-api.allow-trusted-requests-only", true);
 pref("full-screen-api.key-input-restricted", true);
 pref("full-screen-api.warning.enabled", true);
+pref("full-screen-api.exit-on-deactivate", true);
 
 // Time limit, in milliseconds, for nsEventStateManager::IsHandlingUserInput().
 // Used to detect long running handlers of user-generated events.
@@ -3401,6 +3439,10 @@ pref("dom.battery.enabled", true);
 pref("dom.sms.enabled", false);
 pref("dom.sms.whitelist", "");
 
+// WebContacts
+pref("dom.mozContacts.enabled", false);
+pref("dom.mozContacts.whitelist", "");
+
 // enable JS dump() function.
 pref("browser.dom.window.dump.enabled", false);
 
@@ -3409,6 +3451,9 @@ pref("profiler.enabled", false);
 pref("profiler.interval", 10);
 pref("profiler.entries", 100000);
 
+// Network API
+pref("dom.network.enabled", true);
+pref("dom.network.metered", false);
 #ifdef XP_WIN
 // On 32-bit Windows, fire a low-memory notification if we have less than this
 // many mb of virtual address space available.

@@ -69,9 +69,9 @@
 #include "imgIContainer.h"
 #include "prlog.h"
 
-// Make sure we have enough bits in NS_STYLE_INHERIT_MASK.
-PR_STATIC_ASSERT((((1 << nsStyleStructID_Length) - 1) &
-                  ~(NS_STYLE_INHERIT_MASK)) == 0);
+MOZ_STATIC_ASSERT((((1 << nsStyleStructID_Length) - 1) &
+                   ~(NS_STYLE_INHERIT_MASK)) == 0,
+                  "Not enough bits in NS_STYLE_INHERIT_MASK");
 
 inline bool IsFixedUnit(const nsStyleCoord& aCoord, bool aEnumOK)
 {
@@ -130,12 +130,7 @@ nsStyleFont::nsStyleFont(const nsFont& aFont, nsPresContext *aPresContext)
     mGenericID(kGenericFont_NONE)
 {
   MOZ_COUNT_CTOR(nsStyleFont);
-  mSize = mFont.size = nsStyleFont::ZoomText(aPresContext, mFont.size);
-  mScriptUnconstrainedSize = mSize;
-  mScriptMinSize = aPresContext->CSSTwipsToAppUnits(
-      NS_POINTS_TO_TWIPS(NS_MATHML_DEFAULT_SCRIPT_MIN_SIZE_PT));
-  mScriptLevel = 0;
-  mScriptSizeMultiplier = NS_MATHML_DEFAULT_SCRIPT_SIZE_MULTIPLIER;
+  Init(aPresContext);
 }
 
 nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
@@ -146,21 +141,44 @@ nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
   , mScriptUnconstrainedSize(aSrc.mScriptUnconstrainedSize)
   , mScriptMinSize(aSrc.mScriptMinSize)
   , mScriptSizeMultiplier(aSrc.mScriptSizeMultiplier)
+  , mLanguage(aSrc.mLanguage)
 {
   MOZ_COUNT_CTOR(nsStyleFont);
 }
 
 nsStyleFont::nsStyleFont(nsPresContext* aPresContext)
-  : mFont(*(aPresContext->GetDefaultFont(kPresContext_DefaultVariableFont_ID))),
+  // passing nsnull to GetDefaultFont make it use the doc language
+  : mFont(*(aPresContext->GetDefaultFont(kPresContext_DefaultVariableFont_ID, nsnull))),
     mGenericID(kGenericFont_NONE)
 {
   MOZ_COUNT_CTOR(nsStyleFont);
+  Init(aPresContext);
+}
+
+void
+nsStyleFont::Init(nsPresContext* aPresContext)
+{
   mSize = mFont.size = nsStyleFont::ZoomText(aPresContext, mFont.size);
   mScriptUnconstrainedSize = mSize;
   mScriptMinSize = aPresContext->CSSTwipsToAppUnits(
       NS_POINTS_TO_TWIPS(NS_MATHML_DEFAULT_SCRIPT_MIN_SIZE_PT));
   mScriptLevel = 0;
   mScriptSizeMultiplier = NS_MATHML_DEFAULT_SCRIPT_SIZE_MULTIPLIER;
+
+  nsAutoString language;
+  aPresContext->Document()->GetContentLanguage(language);
+  language.StripWhitespace();
+
+  // Content-Language may be a comma-separated list of language codes,
+  // in which case the HTML5 spec says to treat it as unknown
+  if (!language.IsEmpty() &&
+      language.FindChar(PRUnichar(',')) == kNotFound) {
+    mLanguage = do_GetAtom(language);
+  } else {
+    // we didn't find a (usable) Content-Language, so we fall back
+    // to whatever the presContext guessed from the charset
+    mLanguage = aPresContext->GetLanguageFromCharset();
+  }
 }
 
 void* 
@@ -179,10 +197,11 @@ nsStyleFont::Destroy(nsPresContext* aContext) {
 
 nsChangeHint nsStyleFont::CalcDifference(const nsStyleFont& aOther) const
 {
-  if (mSize == aOther.mSize) {
-    return CalcFontDifference(mFont, aOther.mFont);
+  if (mSize != aOther.mSize ||
+      mLanguage != aOther.mLanguage) {
+    return NS_STYLE_HINT_REFLOW;
   }
-  return NS_STYLE_HINT_REFLOW;
+  return CalcFontDifference(mFont, aOther.mFont);
 }
 
 #ifdef DEBUG
@@ -1958,6 +1977,13 @@ nsStyleBackground::Size::operator==(const Size& aOther) const
          (mHeightType != eLengthPercentage || mHeight == aOther.mHeight);
 }
 
+void
+nsStyleBackground::Repeat::SetInitialValues() 
+{
+  mXRepeat = NS_STYLE_BG_REPEAT_REPEAT;
+  mYRepeat = NS_STYLE_BG_REPEAT_REPEAT;
+}
+
 nsStyleBackground::Layer::Layer()
 {
 }
@@ -1972,7 +1998,7 @@ nsStyleBackground::Layer::SetInitialValues()
   mAttachment = NS_STYLE_BG_ATTACHMENT_SCROLL;
   mClip = NS_STYLE_BG_CLIP_BORDER;
   mOrigin = NS_STYLE_BG_ORIGIN_PADDING;
-  mRepeat = NS_STYLE_BG_REPEAT_XY;
+  mRepeat.SetInitialValues();
   mPosition.SetInitialValues();
   mSize.SetInitialValues();
   mImage.SetNull();
@@ -2020,11 +2046,12 @@ void nsTimingFunction::AssignFromKeyword(PRInt32 aTimingFunctionType)
       break;
   }
 
-  PR_STATIC_ASSERT(NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE == 0);
-  PR_STATIC_ASSERT(NS_STYLE_TRANSITION_TIMING_FUNCTION_LINEAR == 1);
-  PR_STATIC_ASSERT(NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE_IN == 2);
-  PR_STATIC_ASSERT(NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE_OUT == 3);
-  PR_STATIC_ASSERT(NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE_IN_OUT == 4);
+  MOZ_STATIC_ASSERT(NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE == 0 &&
+                    NS_STYLE_TRANSITION_TIMING_FUNCTION_LINEAR == 1 &&
+                    NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE_IN == 2 &&
+                    NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE_OUT == 3 &&
+                    NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE_IN_OUT == 4,
+                    "transition timing function constants not as expected");
 
   static const float timingFunctionValues[5][4] = {
     { 0.25, 0.10, 0.25, 1.00 }, // ease
@@ -2238,39 +2265,37 @@ nsChangeHint nsStyleDisplay::CalcDifference(const nsStyleDisplay& aOther) const
   else if (HasTransform()) {
     /* Otherwise, if we've kept the property lying around and we already had a
      * transform, we need to see whether or not we've changed the transform.
-     * If so, we need to do a reflow and a repaint. The reflow is to recompute
-     * the overflow rect (which probably changed if the transform changed)
-     * and to redraw within the bounds of that new overflow rect.
+     * If so, we need to recompute its overflow rect (which probably changed
+     * if the transform changed) and to redraw within the bounds of that new
+     * overflow rect.
      */
     if (!mSpecifiedTransform != !aOther.mSpecifiedTransform ||
-        (mSpecifiedTransform && *mSpecifiedTransform != *aOther.mSpecifiedTransform))
-      NS_UpdateHint(hint, NS_CombineHint(nsChangeHint_NeedReflow,
+        (mSpecifiedTransform &&
+         *mSpecifiedTransform != *aOther.mSpecifiedTransform)) {
+      NS_UpdateHint(hint, NS_CombineHint(nsChangeHint_UpdateOverflow,
                                          nsChangeHint_UpdateTransformLayer));
-    
+    }
+
+    const nsChangeHint kUpdateOverflowAndRepaintHint =
+      NS_CombineHint(nsChangeHint_UpdateOverflow, nsChangeHint_RepaintFrame);
     for (PRUint8 index = 0; index < 3; ++index)
       if (mTransformOrigin[index] != aOther.mTransformOrigin[index]) {
-        NS_UpdateHint(hint, NS_CombineHint(nsChangeHint_NeedReflow,
-                                           nsChangeHint_RepaintFrame));
+        NS_UpdateHint(hint, kUpdateOverflowAndRepaintHint);
         break;
       }
     
     for (PRUint8 index = 0; index < 2; ++index)
       if (mPerspectiveOrigin[index] != aOther.mPerspectiveOrigin[index]) {
-        NS_UpdateHint(hint, NS_CombineHint(nsChangeHint_NeedReflow,
-                                           nsChangeHint_RepaintFrame));
+        NS_UpdateHint(hint, kUpdateOverflowAndRepaintHint);
         break;
       }
 
-    if (mChildPerspective != aOther.mChildPerspective)
-      NS_UpdateHint(hint, NS_CombineHint(nsChangeHint_NeedReflow,
-                                         nsChangeHint_RepaintFrame));
+    if (mChildPerspective != aOther.mChildPerspective ||
+        mTransformStyle != aOther.mTransformStyle)
+      NS_UpdateHint(hint, kUpdateOverflowAndRepaintHint);
 
     if (mBackfaceVisibility != aOther.mBackfaceVisibility)
       NS_UpdateHint(hint, nsChangeHint_RepaintFrame);
-
-    if (mTransformStyle != aOther.mTransformStyle)
-      NS_UpdateHint(hint, NS_CombineHint(nsChangeHint_NeedReflow,
-                                         nsChangeHint_RepaintFrame));
   }
 
   // Note:  Our current behavior for handling changes to the
@@ -2295,8 +2320,10 @@ nsChangeHint nsStyleDisplay::CalcDifference(const nsStyleDisplay& aOther) const
 nsChangeHint nsStyleDisplay::MaxDifference()
 {
   // All the parts of FRAMECHANGE are present above in CalcDifference.
-  return nsChangeHint(NS_STYLE_HINT_FRAMECHANGE | nsChangeHint_UpdateOpacityLayer |
-                      nsChangeHint_UpdateTransformLayer);
+  return nsChangeHint(NS_STYLE_HINT_FRAMECHANGE |
+                      nsChangeHint_UpdateOpacityLayer |
+                      nsChangeHint_UpdateTransformLayer |
+                      nsChangeHint_UpdateOverflow);
 }
 #endif
 
@@ -2313,21 +2340,6 @@ nsStyleVisibility::nsStyleVisibility(nsPresContext* aPresContext)
   else
     mDirection = NS_STYLE_DIRECTION_LTR;
 
-  nsAutoString language;
-  aPresContext->Document()->GetContentLanguage(language);
-  language.StripWhitespace();
-
-  // Content-Language may be a comma-separated list of language codes,
-  // in which case the HTML5 spec says to treat it as unknown
-  if (!language.IsEmpty() &&
-      language.FindChar(PRUnichar(',')) == kNotFound) {
-    mLanguage = do_GetAtom(language);
-  } else {
-    // we didn't find a (usable) Content-Language, so we fall back
-    // to whatever the presContext guessed from the charset
-    mLanguage = aPresContext->GetLanguageFromCharset();
-  }
-
   mVisible = NS_STYLE_VISIBILITY_VISIBLE;
   mPointerEvents = NS_STYLE_POINTER_EVENTS_AUTO;
 }
@@ -2337,7 +2349,6 @@ nsStyleVisibility::nsStyleVisibility(const nsStyleVisibility& aSource)
   MOZ_COUNT_CTOR(nsStyleVisibility);
   mDirection = aSource.mDirection;
   mVisible = aSource.mVisible;
-  mLanguage = aSource.mLanguage;
   mPointerEvents = aSource.mPointerEvents;
 } 
 
@@ -2347,17 +2358,13 @@ nsChangeHint nsStyleVisibility::CalcDifference(const nsStyleVisibility& aOther) 
 
   if (mDirection != aOther.mDirection) {
     NS_UpdateHint(hint, nsChangeHint_ReconstructFrame);
-  } else if (mLanguage == aOther.mLanguage) {
-    if (mVisible != aOther.mVisible) {
-      if ((NS_STYLE_VISIBILITY_COLLAPSE == mVisible) ||
-          (NS_STYLE_VISIBILITY_COLLAPSE == aOther.mVisible)) {
-        NS_UpdateHint(hint, NS_STYLE_HINT_REFLOW);
-      } else {
-        NS_UpdateHint(hint, NS_STYLE_HINT_VISUAL);
-      }
+  } else if (mVisible != aOther.mVisible) {
+    if ((NS_STYLE_VISIBILITY_COLLAPSE == mVisible) ||
+        (NS_STYLE_VISIBILITY_COLLAPSE == aOther.mVisible)) {
+      NS_UpdateHint(hint, NS_STYLE_HINT_REFLOW);
+    } else {
+      NS_UpdateHint(hint, NS_STYLE_HINT_VISUAL);
     }
-  } else {
-    NS_UpdateHint(hint, NS_STYLE_HINT_REFLOW);
   }
   return hint;
 }

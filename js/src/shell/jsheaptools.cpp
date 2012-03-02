@@ -232,7 +232,7 @@ class HeapReverser : public JSTracer {
      * A stack of work items. We represent the stack explicitly to avoid
      * overflowing the C++ stack when traversing long chains of objects.
      */
-    Vector<Child> work; 
+    Vector<Child> work;
 
     /* When traverseEdge is called, the Cell and kind at which the edge originated. */
     void *parent;
@@ -249,19 +249,17 @@ class HeapReverser : public JSTracer {
     bool traversalStatus;
 
     /* Static member function wrapping 'traverseEdge'. */
-    static void traverseEdgeWithThis(JSTracer *tracer, void *cell, JSGCTraceKind kind) {
+    static void traverseEdgeWithThis(JSTracer *tracer, void **thingp, JSGCTraceKind kind) {
         HeapReverser *reverser = static_cast<HeapReverser *>(tracer);
-        reverser->traversalStatus = reverser->traverseEdge(cell, kind);
+        reverser->traversalStatus = reverser->traverseEdge(*thingp, kind);
     }
 
     /* Return a jsval representing a node, if possible; otherwise, return JSVAL_VOID. */
     jsval nodeToValue(void *cell, int kind) {
-        if (kind == JSTRACE_OBJECT) {
-            JSObject *object = static_cast<JSObject *>(cell);
-            return OBJECT_TO_JSVAL(object);
-        } else {
+        if (kind != JSTRACE_OBJECT)
             return JSVAL_VOID;
-        }
+        JSObject *object = static_cast<JSObject *>(cell);
+        return OBJECT_TO_JSVAL(object);
     }
 };
 
@@ -553,7 +551,7 @@ ReferenceFinder::findReferences(JSObject *target)
 
 /* See help(findReferences). */
 JSBool
-FindReferences(JSContext *cx, uintN argc, jsval *vp)
+FindReferences(JSContext *cx, unsigned argc, jsval *vp)
 {
     if (argc < 1) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_MORE_ARGS_NEEDED,

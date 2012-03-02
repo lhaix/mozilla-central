@@ -125,9 +125,9 @@ LayerManagerD3D10::~LayerManagerD3D10()
 }
 
 bool
-LayerManagerD3D10::Initialize()
+LayerManagerD3D10::Initialize(bool force)
 {
-  ScopedGfxFeatureReporter reporter("D3D10 Layers");
+  ScopedGfxFeatureReporter reporter("D3D10 Layers", force);
 
   HRESULT hr;
 
@@ -418,13 +418,6 @@ already_AddRefed<ReadbackLayer>
 LayerManagerD3D10::CreateReadbackLayer()
 {
   nsRefPtr<ReadbackLayer> layer = new ReadbackLayerD3D10(this);
-  return layer.forget();
-}
-
-already_AddRefed<ImageContainer>
-LayerManagerD3D10::CreateImageContainer()
-{
-  nsRefPtr<ImageContainer> layer = new ImageContainerD3D10(mDevice);
   return layer.forget();
 }
 

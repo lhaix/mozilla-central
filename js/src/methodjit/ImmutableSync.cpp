@@ -48,7 +48,7 @@ using namespace js;
 using namespace js::mjit;
 
 ImmutableSync::ImmutableSync()
-  : cx(NULL), entries(NULL), frame(NULL), avail(Registers::TempRegs), generation(0)
+  : cx(NULL), entries(NULL), frame(NULL), avail(Registers::AvailRegs), generation(0)
 {
 }
 
@@ -64,14 +64,14 @@ ImmutableSync::init(JSContext *cx, const FrameState &frame, uint32_t nentries)
     this->cx = cx;
     this->frame = &frame;
 
-    entries = (SyncEntry *)cx->calloc_(sizeof(SyncEntry) * nentries);
+    entries = (SyncEntry *)OffTheBooks::calloc_(sizeof(SyncEntry) * nentries);
     return !!entries;
 }
 
 void
 ImmutableSync::reset(Assembler *masm, Registers avail, FrameEntry *top, FrameEntry *bottom)
 {
-    this->avail = avail & Registers::TempRegs;
+    this->avail = avail;
     this->masm = masm;
     this->top = top;
     this->bottom = bottom;
@@ -91,7 +91,7 @@ ImmutableSync::doAllocReg()
     /* Find something to evict. */
     for (uint32_t i = 0; i < Registers::TotalRegisters; i++) {
         RegisterID reg = RegisterID(i);
-        if (!(Registers::maskReg(reg) & Registers::TempRegs))
+        if (!(Registers::maskReg(reg) & Registers::AvailRegs))
             continue;
 
         if (frame->regstate(reg).isPinned())
@@ -151,14 +151,13 @@ ImmutableSync::allocReg()
 {
     RegisterID reg = doAllocReg();
     JS_ASSERT(!frame->regstate(reg).isPinned());
-    JS_ASSERT(!Registers::isSaved(reg));
     return reg;
 }
 
 void
 ImmutableSync::freeReg(JSC::MacroAssembler::RegisterID reg)
 {
-    if (!frame->regstate(reg).isPinned() && !Registers::isSaved(reg))
+    if (!frame->regstate(reg).isPinned())
         avail.putReg(reg);
 }
 

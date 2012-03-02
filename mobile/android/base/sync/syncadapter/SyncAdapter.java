@@ -39,7 +39,6 @@
 package org.mozilla.gecko.sync.syncadapter;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.TimeUnit;
 
@@ -51,7 +50,6 @@ import org.mozilla.gecko.sync.SyncConfiguration;
 import org.mozilla.gecko.sync.SyncConfigurationException;
 import org.mozilla.gecko.sync.SyncException;
 import org.mozilla.gecko.sync.Utils;
-import org.mozilla.gecko.sync.crypto.Cryptographer;
 import org.mozilla.gecko.sync.crypto.KeyBundle;
 import org.mozilla.gecko.sync.delegates.GlobalSessionCallback;
 import org.mozilla.gecko.sync.setup.Constants;
@@ -83,6 +81,7 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter implements GlobalSe
 
   private static final int     SHARED_PREFERENCES_MODE = 0;
   private static final int     BACKOFF_PAD_SECONDS = 5;
+  private static final int     MINIMUM_SYNC_INTERVAL_MILLISECONDS = 5 * 60 * 1000;   // 5 minutes.
 
   private final AccountManager mAccountManager;
   private final Context        mContext;
@@ -222,18 +221,23 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter implements GlobalSe
                             final String authority,
                             final ContentProviderClient provider,
                             final SyncResult syncResult) {
+    Utils.reseedSharedRandom(); // Make sure we don't work with the same random seed for too long.
 
+    boolean force = (extras != null) && (extras.getBoolean("force", false));
     long delay = delayMilliseconds();
     if (delay > 0) {
-      Log.i(LOG_TAG, "Not syncing: must wait another " + delay + "ms.");
-      long remainingSeconds = delay / 1000;
-      syncResult.delayUntil = remainingSeconds + BACKOFF_PAD_SECONDS;
-      return;
+      if (force) {
+        Log.i(LOG_TAG, "Forced sync: overruling remaining backoff of " + delay + "ms.");
+      } else {
+        Log.i(LOG_TAG, "Not syncing: must wait another " + delay + "ms.");
+        long remainingSeconds = delay / 1000;
+        syncResult.delayUntil = remainingSeconds + BACKOFF_PAD_SECONDS;
+        return;
+      }
     }
 
     // TODO: don't clear the auth token unless we have a sync error.
     Log.i(LOG_TAG, "Got onPerformSync. Extras bundle is " + extras);
-    Log.d(LOG_TAG, "Extras clusterURL: " + extras.getString("clusterURL"));
     Log.i(LOG_TAG, "Account name: " + account.name);
 
     // TODO: don't always invalidate; use getShouldInvalidateAuthToken.
@@ -302,6 +306,9 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter implements GlobalSe
       Log.i(LOG_TAG, "Waiting on sync monitor.");
       try {
         syncMonitor.wait();
+        long next = System.currentTimeMillis() + MINIMUM_SYNC_INTERVAL_MILLISECONDS;
+        Log.i(LOG_TAG, "Setting minimum next sync time to " + next);
+        extendEarliestNextSync(next);
       } catch (InterruptedException e) {
         Log.i(LOG_TAG, "Waiting on sync monitor interrupted.", e);
       }
@@ -340,7 +347,6 @@ public class SyncAdapter extends AbstractThreadedSyncAdapter implements GlobalSe
                                                     keyBundle, this, this.mContext, extras);
 
     globalSession.start();
-
   }
 
   private void notifyMonitor() {

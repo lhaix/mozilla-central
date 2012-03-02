@@ -83,7 +83,7 @@ helper_isFloat32Array(JSObject *obj) {
  *    BufferData_array (int, js::TypedArray *, int)
  */
 static JSBool
-nsIDOMWebGLRenderingContext_BufferData(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_BufferData(JSContext *cx, unsigned argc, jsval *vp)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -93,7 +93,7 @@ nsIDOMWebGLRenderingContext_BufferData(JSContext *cx, uintN argc, jsval *vp)
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 3)
@@ -156,7 +156,7 @@ nsIDOMWebGLRenderingContext_BufferData(JSContext *cx, uintN argc, jsval *vp)
  *    BufferSubData_array (int, int, js::TypedArray *)
  */
 static JSBool
-nsIDOMWebGLRenderingContext_BufferSubData(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_BufferSubData(JSContext *cx, unsigned argc, jsval *vp)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -166,7 +166,7 @@ nsIDOMWebGLRenderingContext_BufferSubData(JSContext *cx, uintN argc, jsval *vp)
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 3)
@@ -224,11 +224,11 @@ nsIDOMWebGLRenderingContext_BufferSubData(JSContext *cx, uintN argc, jsval *vp)
 }
 
 /*
- * ReadPixels takes:
- *    ReadPixels(int, int, int, int, uint, uint, ArrayBufferView)
+ * CompressedTexImage2D takes:
+ *    CompressedTexImage2D(uint, int, uint, int, int, int, ArrayBufferView)
  */
 static JSBool
-nsIDOMWebGLRenderingContext_ReadPixels(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_CompressedTexImage2D(JSContext *cx, unsigned argc, jsval *vp)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -240,7 +240,108 @@ nsIDOMWebGLRenderingContext_ReadPixels(JSContext *cx, uintN argc, jsval *vp)
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+        return JS_FALSE;
+
+    if (argc != 7)
+        return xpc_qsThrow(cx, NS_ERROR_XPC_NOT_ENOUGH_ARGS);
+
+    jsval *argv = JS_ARGV(cx, vp);
+
+    GET_UINT32_ARG(argv0, 0);
+    GET_INT32_ARG(argv1, 1);
+    GET_UINT32_ARG(argv2, 2);
+    GET_INT32_ARG(argv3, 3);
+    GET_INT32_ARG(argv4, 4);
+    GET_INT32_ARG(argv5, 5);
+
+    if (!JSVAL_IS_PRIMITIVE(argv[6])) {
+        JSObject* argv6 = JSVAL_TO_OBJECT(argv[6]);
+        if (js_IsTypedArray(argv6)) {
+            rv = self->CompressedTexImage2D_array(argv0, argv1, argv2, argv3, argv4, argv5,
+                                                  js::TypedArray::getTypedArray(argv6));
+        } else {
+            xpc_qsThrowBadArg(cx, NS_ERROR_FAILURE, vp, 6);
+            return JS_FALSE;
+        }
+    } else {
+        xpc_qsThrow(cx, NS_ERROR_FAILURE);
+        return JS_FALSE;
+    }
+
+    *vp = JSVAL_VOID;
+    return JS_TRUE;
+}
+
+/*
+ * CompressedTexSubImage2D takes:
+ *    CompressedTexSubImage2D(uint, int, int, int, int, int, uint, ArrayBufferView)
+ */
+static JSBool
+nsIDOMWebGLRenderingContext_CompressedTexSubImage2D(JSContext *cx, unsigned argc, jsval *vp)
+{
+    XPC_QS_ASSERT_CONTEXT_OK(cx);
+    JSObject *obj = JS_THIS_OBJECT(cx, vp);
+    if (!obj)
+        return JS_FALSE;
+
+    nsresult rv;
+
+    nsIDOMWebGLRenderingContext *self;
+    xpc_qsSelfRef selfref;
+    JS::AutoValueRooter tvr(cx);
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+        return JS_FALSE;
+
+    if (argc != 7)
+        return xpc_qsThrow(cx, NS_ERROR_XPC_NOT_ENOUGH_ARGS);
+
+    jsval *argv = JS_ARGV(cx, vp);
+
+    GET_UINT32_ARG(argv0, 0);
+    GET_INT32_ARG(argv1, 1);
+    GET_INT32_ARG(argv2, 2);
+    GET_INT32_ARG(argv3, 3);
+    GET_INT32_ARG(argv4, 4);
+    GET_INT32_ARG(argv5, 5);
+    GET_UINT32_ARG(argv6, 6);
+
+    if (!JSVAL_IS_PRIMITIVE(argv[7])) {
+        JSObject* argv7 = JSVAL_TO_OBJECT(argv[7]);
+        if (js_IsTypedArray(argv7)) {
+            rv = self->CompressedTexSubImage2D_array(argv0, argv1, argv2, argv3, argv4, argv5,
+                                                     argv6, js::TypedArray::getTypedArray(argv7));
+        } else {
+            xpc_qsThrowBadArg(cx, NS_ERROR_FAILURE, vp, 7);
+            return JS_FALSE;
+        }
+    } else {
+        xpc_qsThrow(cx, NS_ERROR_FAILURE);
+        return JS_FALSE;
+    }
+
+    *vp = JSVAL_VOID;
+    return JS_TRUE;
+}
+
+/*
+ * ReadPixels takes:
+ *    ReadPixels(int, int, int, int, uint, uint, ArrayBufferView)
+ */
+static JSBool
+nsIDOMWebGLRenderingContext_ReadPixels(JSContext *cx, unsigned argc, jsval *vp)
+{
+    XPC_QS_ASSERT_CONTEXT_OK(cx);
+    JSObject *obj = JS_THIS_OBJECT(cx, vp);
+    if (!obj)
+        return JS_FALSE;
+
+    nsresult rv;
+
+    nsIDOMWebGLRenderingContext *self;
+    xpc_qsSelfRef selfref;
+    JS::AutoValueRooter tvr(cx);
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 7)
@@ -288,7 +389,7 @@ nsIDOMWebGLRenderingContext_ReadPixels(JSContext *cx, uintN argc, jsval *vp)
  *    TexImage2D(uint, int, uint, uint, uint, ImageData)
  */
 static JSBool
-nsIDOMWebGLRenderingContext_TexImage2D(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_TexImage2D(JSContext *cx, unsigned argc, jsval *vp)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -300,7 +401,7 @@ nsIDOMWebGLRenderingContext_TexImage2D(JSContext *cx, uintN argc, jsval *vp)
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 6 || argc == 7 || argc == 8)
@@ -344,7 +445,7 @@ nsIDOMWebGLRenderingContext_TexImage2D(JSContext *cx, uintN argc, jsval *vp)
             JS_GetProperty(cx, argv5, "data", &js_data);
             if (js_width  == JSVAL_VOID ||
                 js_height == JSVAL_VOID ||
-                js_data   == JSVAL_VOID)
+                !js_data.isObject())
             {
                 xpc_qsThrowBadArg(cx, NS_ERROR_FAILURE, vp, 5);
                 return JS_FALSE;
@@ -409,7 +510,7 @@ nsIDOMWebGLRenderingContext_TexImage2D(JSContext *cx, uintN argc, jsval *vp)
  *    TexSubImage2D(uint, int, int, int, uint, uint, ImageData)
  */
 static JSBool
-nsIDOMWebGLRenderingContext_TexSubImage2D(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_TexSubImage2D(JSContext *cx, unsigned argc, jsval *vp)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -421,7 +522,7 @@ nsIDOMWebGLRenderingContext_TexSubImage2D(JSContext *cx, uintN argc, jsval *vp)
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 7 || argc == 8)
@@ -465,7 +566,7 @@ nsIDOMWebGLRenderingContext_TexSubImage2D(JSContext *cx, uintN argc, jsval *vp)
             JS_GetProperty(cx, argv6, "data", &js_data);
             if (js_width  == JSVAL_VOID ||
                 js_height == JSVAL_VOID ||
-                js_data   == JSVAL_VOID)
+                !js_data.isObject())
             {
                 xpc_qsThrowBadArg(cx, NS_ERROR_FAILURE, vp, 6);
                 return JS_FALSE;
@@ -520,7 +621,7 @@ nsIDOMWebGLRenderingContext_TexSubImage2D(JSContext *cx, uintN argc, jsval *vp)
 
 /* NOTE: There is a TN version of this below, update it as well */
 static inline JSBool
-helper_nsIDOMWebGLRenderingContext_Uniform_x_iv(JSContext *cx, uintN argc, jsval *vp, int nElements)
+helper_nsIDOMWebGLRenderingContext_Uniform_x_iv(JSContext *cx, unsigned argc, jsval *vp, int nElements)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -532,7 +633,7 @@ helper_nsIDOMWebGLRenderingContext_Uniform_x_iv(JSContext *cx, uintN argc, jsval
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 2)
@@ -594,7 +695,7 @@ helper_nsIDOMWebGLRenderingContext_Uniform_x_iv(JSContext *cx, uintN argc, jsval
 
 /* NOTE: There is a TN version of this below, update it as well */
 static inline JSBool
-helper_nsIDOMWebGLRenderingContext_Uniform_x_fv(JSContext *cx, uintN argc, jsval *vp, int nElements)
+helper_nsIDOMWebGLRenderingContext_Uniform_x_fv(JSContext *cx, unsigned argc, jsval *vp, int nElements)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -606,7 +707,7 @@ helper_nsIDOMWebGLRenderingContext_Uniform_x_fv(JSContext *cx, uintN argc, jsval
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 2)
@@ -668,7 +769,7 @@ helper_nsIDOMWebGLRenderingContext_Uniform_x_fv(JSContext *cx, uintN argc, jsval
 
 /* NOTE: There is a TN version of this below, update it as well */
 static inline JSBool
-helper_nsIDOMWebGLRenderingContext_UniformMatrix_x_fv(JSContext *cx, uintN argc, jsval *vp, int nElements)
+helper_nsIDOMWebGLRenderingContext_UniformMatrix_x_fv(JSContext *cx, unsigned argc, jsval *vp, int nElements)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -678,7 +779,7 @@ helper_nsIDOMWebGLRenderingContext_UniformMatrix_x_fv(JSContext *cx, uintN argc,
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 3)
@@ -741,7 +842,7 @@ helper_nsIDOMWebGLRenderingContext_UniformMatrix_x_fv(JSContext *cx, uintN argc,
 }
 
 static inline JSBool
-helper_nsIDOMWebGLRenderingContext_VertexAttrib_x_fv(JSContext *cx, uintN argc, jsval *vp, int nElements)
+helper_nsIDOMWebGLRenderingContext_VertexAttrib_x_fv(JSContext *cx, unsigned argc, jsval *vp, int nElements)
 {
     XPC_QS_ASSERT_CONTEXT_OK(cx);
     JSObject *obj = JS_THIS_OBJECT(cx, vp);
@@ -751,7 +852,7 @@ helper_nsIDOMWebGLRenderingContext_VertexAttrib_x_fv(JSContext *cx, uintN argc, 
     nsIDOMWebGLRenderingContext *self;
     xpc_qsSelfRef selfref;
     JS::AutoValueRooter tvr(cx);
-    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
+    if (!xpc_qsUnwrapThis(cx, obj, &self, &selfref.ptr, tvr.jsval_addr(), nsnull))
         return JS_FALSE;
 
     if (argc < 2)
@@ -809,91 +910,91 @@ helper_nsIDOMWebGLRenderingContext_VertexAttrib_x_fv(JSContext *cx, uintN argc, 
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_Uniform1iv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_Uniform1iv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_Uniform_x_iv(cx, argc, vp, 1);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_Uniform2iv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_Uniform2iv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_Uniform_x_iv(cx, argc, vp, 2);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_Uniform3iv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_Uniform3iv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_Uniform_x_iv(cx, argc, vp, 3);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_Uniform4iv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_Uniform4iv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_Uniform_x_iv(cx, argc, vp, 4);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_Uniform1fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_Uniform1fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_Uniform_x_fv(cx, argc, vp, 1);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_Uniform2fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_Uniform2fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_Uniform_x_fv(cx, argc, vp, 2);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_Uniform3fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_Uniform3fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_Uniform_x_fv(cx, argc, vp, 3);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_Uniform4fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_Uniform4fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_Uniform_x_fv(cx, argc, vp, 4);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_UniformMatrix2fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_UniformMatrix2fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_UniformMatrix_x_fv(cx, argc, vp, 2);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_UniformMatrix3fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_UniformMatrix3fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_UniformMatrix_x_fv(cx, argc, vp, 3);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_UniformMatrix4fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_UniformMatrix4fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_UniformMatrix_x_fv(cx, argc, vp, 4);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_VertexAttrib1fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_VertexAttrib1fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_VertexAttrib_x_fv(cx, argc, vp, 1);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_VertexAttrib2fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_VertexAttrib2fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_VertexAttrib_x_fv(cx, argc, vp, 2);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_VertexAttrib3fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_VertexAttrib3fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_VertexAttrib_x_fv(cx, argc, vp, 3);
 }
 
 static JSBool
-nsIDOMWebGLRenderingContext_VertexAttrib4fv(JSContext *cx, uintN argc, jsval *vp)
+nsIDOMWebGLRenderingContext_VertexAttrib4fv(JSContext *cx, unsigned argc, jsval *vp)
 {
     return helper_nsIDOMWebGLRenderingContext_VertexAttrib_x_fv(cx, argc, vp, 4);
 }

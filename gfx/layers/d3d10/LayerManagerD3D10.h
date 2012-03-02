@@ -100,7 +100,7 @@ public:
    *
    * \return True is initialization was succesful, false when it was not.
    */
-  bool Initialize();
+  bool Initialize(bool force = false);
 
   /*
    * LayerManager implementation.
@@ -160,8 +160,6 @@ public:
   { return nsnull; }
 
   virtual already_AddRefed<ReadbackLayer> CreateReadbackLayer();
-
-  virtual already_AddRefed<ImageContainer> CreateImageContainer();
 
   virtual already_AddRefed<gfxASurface>
     CreateOptimalSurface(const gfxIntSize &aSize,

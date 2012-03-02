@@ -129,6 +129,7 @@
 extern void NS_ShutdownChainItemPool();
 
 using namespace mozilla;
+using namespace mozilla::dom;
 
 nsrefcnt nsLayoutStatics::sLayoutStaticRefcnt = 0;
 
@@ -161,7 +162,7 @@ nsLayoutStatics::Initialize()
   }
 
   nsGlobalWindow::Init();
-  dom::Navigator::Init();
+  Navigator::Init();
 
   rv = nsContentUtils::Init();
   if (NS_FAILED(rv)) {
@@ -337,9 +338,6 @@ nsLayoutStatics::Shutdown()
   nsListControlFrame::Shutdown();
   nsXBLWindowKeyHandler::ShutDown();
   nsAutoCopyListener::Shutdown();
-
-  nsHTMLEditor::Shutdown();
-  nsTextServicesDocument::Shutdown();
 
 #ifdef MOZ_SYDNEYAUDIO
   nsAudioStream::ShutdownLibrary();

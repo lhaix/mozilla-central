@@ -24,6 +24,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
 
+#ifdef MOZ_WEBSMS_BACKEND
+    <!-- WebSMS -->
+    <uses-permission android:name="android.permission.SEND_SMS"/>
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
+    <uses-permission android:name="android.permission.WRITE_SMS"/>
+    <uses-permission android:name="android.permission.READ_SMS"/>
+#endif
+
     <uses-permission android:name="com.android.browser.permission.READ_HISTORY_BOOKMARKS"/> 
     <uses-permission android:name="com.android.browser.permission.WRITE_HISTORY_BOOKMARKS"/> 
 
@@ -48,10 +56,14 @@
                   android:configChanges="keyboard|keyboardHidden|mcc|mnc|orientation"
                   android:windowSoftInputMode="stateUnspecified|adjustResize"
                   android:launchMode="singleTask"
-                  android:theme="@style/Gecko">
+                  android:theme="@style/Gecko.App">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="org.mozilla.gecko.UPDATE"/>
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <!-- Default browser intents -->
@@ -91,6 +103,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Masquerade as the Resolver so that we can be opened from the Marketplace. -->
+        <activity-alias
+            android:name="com.android.internal.app.ResolverActivity"
+            android:targetActivity=".App"
+            android:exported="true" />
+
         <receiver android:name="NotificationHandler">
             <intent-filter>
                 <action android:name="org.mozilla.gecko.ACTION_ALERT_CLICK" />
@@ -104,6 +122,7 @@
                   android:excludeFromRecents="true">
           <intent-filter>
             <action android:name="org.mozilla.gecko.restart"/>
+            <action android:name="org.mozilla.gecko.restart_update"/>
           </intent-filter>
         </activity>
 
@@ -121,27 +140,28 @@
 	</activity>
 #endif
 
+        <!-- Bug 715260: Hiding Webapps support
         <activity android:name="LauncherShortcuts"
                   android:label="@string/launcher_shortcuts_title"
                   android:theme="@style/Gecko.Translucent">
-            <!--  This intent-filter allows your shortcuts to be created in the launcher. -->
             <intent-filter>
                 <action android:name="android.intent.action.CREATE_SHORTCUT" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        -->
 
         <activity android:name="org.mozilla.gecko.AwesomeBar"
-                  android:theme="@style/Gecko.Light"
+                  android:theme="@style/Gecko.Light.AwesomeBar"
                   android:configChanges="orientation"
                   android:windowSoftInputMode="stateAlwaysVisible|adjustResize"/>
 
         <activity android:name="org.mozilla.gecko.TabsTray"
-                  android:theme="@style/Gecko.Translucent"
+                  android:theme="@style/Gecko.Translucent.TabsTray"
                   android:launchMode="singleTask"/>
 
         <activity android:name="org.mozilla.gecko.GeckoPreferences"
-                  android:theme="@style/Gecko.TitleBar"
+                  android:theme="@style/Gecko.TitleBar.Preferences"
                   android:label="@string/settings_title"
                   android:excludeFromRecents="true"/>
 
@@ -149,10 +169,27 @@
                   android:authorities="@ANDROID_PACKAGE_NAME@.db.browser"
                   android:permission="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"/>
 
+        <provider android:name="@ANDROID_PACKAGE_NAME@.db.PasswordsProvider"
+                  android:authorities="@ANDROID_PACKAGE_NAME@.db.passwords"
+                  android:permission="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"
+                  android:protectionLevel="signature"/>
+
+        <provider android:name="@ANDROID_PACKAGE_NAME@.db.FormHistoryProvider"
+                  android:authorities="@ANDROID_PACKAGE_NAME@.db.formhistory"
+                  android:permission="@ANDROID_PACKAGE_NAME@.permissions.FORMHISTORY_PROVIDER"
+                  android:protectionLevel="signature"/>
+
+        <provider android:name="@ANDROID_PACKAGE_NAME@.db.TabsProvider"
+                  android:authorities="@ANDROID_PACKAGE_NAME@.db.tabs"
+                  android:permission="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"/>
+
 #include ../sync/manifests/SyncAndroidManifest_services.xml.in
     </application>
 
     <permission android:name="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"
+                android:protectionLevel="signature"/>
+
+    <permission android:name="@ANDROID_PACKAGE_NAME@.permissions.FORMHISTORY_PROVIDER"
                 android:protectionLevel="signature"/>
 
 </manifest> 

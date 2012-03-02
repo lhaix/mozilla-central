@@ -131,7 +131,7 @@ gfxPlatformMac::CreateOffscreenSurface(const gfxIntSize& size,
     NS_IF_ADDREF(newSurface);
     return newSurface;
 }
-    
+
 already_AddRefed<gfxASurface>
 gfxPlatformMac::OptimizeImage(gfxImageSurface *aSurface,
                               gfxASurface::gfxImageFormat format)
@@ -162,7 +162,12 @@ gfxPlatformMac::GetScaledFontForFont(gfxFont *aFont)
 bool
 gfxPlatformMac::SupportsAzure(BackendType& aBackend)
 {
-  aBackend = BACKEND_SKIA;
+  if (mPreferredDrawTargetBackend != BACKEND_NONE) {
+    aBackend = mPreferredDrawTargetBackend;
+  } else {
+    aBackend = BACKEND_COREGRAPHICS;
+  }
+
   return true;
 }
 
@@ -297,6 +302,36 @@ gfxPlatformMac::ReadAntiAliasingThreshold()
 
     return threshold;
 }
+
+already_AddRefed<gfxASurface>
+gfxPlatformMac::GetThebesSurfaceForDrawTarget(DrawTarget *aTarget)
+{
+  if (aTarget->GetType() == BACKEND_COREGRAPHICS) {
+    void *surface = aTarget->GetUserData(&kThebesSurfaceKey);
+    if (surface) {
+      nsRefPtr<gfxASurface> surf = static_cast<gfxQuartzSurface*>(surface);
+      return surf.forget();
+    } else {
+      CGContextRef cg = static_cast<CGContextRef>(aTarget->GetNativeSurface(NATIVE_SURFACE_CGCONTEXT));
+
+      //XXX: it would be nice to have an implicit conversion from IntSize to gfxIntSize
+      IntSize intSize = aTarget->GetSize();
+      gfxIntSize size(intSize.width, intSize.height);
+
+      nsRefPtr<gfxASurface> surf =
+        new gfxQuartzSurface(cg, size);
+
+      // add a reference to be held by the drawTarget
+      surf->AddRef();
+      aTarget->AddUserData(&kThebesSurfaceKey, surf.get(), DestroyThebesSurface);
+
+      return surf.forget();
+    }
+  }
+
+  return gfxPlatform::GetThebesSurfaceForDrawTarget(aTarget);
+}
+
 
 qcms_profile *
 gfxPlatformMac::GetPlatformCMSOutputProfile()

@@ -62,9 +62,9 @@ namespace js {
 
 struct NativeIterator {
     HeapPtrObject obj;
-    HeapId    *props_array;
-    HeapId    *props_cursor;
-    HeapId    *props_end;
+    HeapPtr<JSFlatString> *props_array;
+    HeapPtr<JSFlatString> *props_cursor;
+    HeapPtr<JSFlatString> *props_end;
     const Shape **shapes_array;
     uint32_t  shapes_length;
     uint32_t  shapes_key;
@@ -73,11 +73,11 @@ struct NativeIterator {
 
     bool isKeyIter() const { return (flags & JSITER_FOREACH) == 0; }
 
-    inline HeapId *begin() const {
+    inline HeapPtr<JSFlatString> *begin() const {
         return props_array;
     }
 
-    inline HeapId *end() const {
+    inline HeapPtr<JSFlatString> *end() const {
         return props_end;
     }
 
@@ -85,7 +85,7 @@ struct NativeIterator {
         return end() - begin();
     }
 
-    HeapId *current() const {
+    HeapPtr<JSFlatString> *current() const {
         JS_ASSERT(props_cursor < props_end);
         return props_cursor;
     }
@@ -96,31 +96,90 @@ struct NativeIterator {
 
     static NativeIterator *allocateIterator(JSContext *cx, uint32_t slength,
                                             const js::AutoIdVector &props);
-    void init(JSObject *obj, uintN flags, uint32_t slength, uint32_t key);
+    void init(JSObject *obj, unsigned flags, uint32_t slength, uint32_t key);
 
     void mark(JSTracer *trc);
+};
+
+class ElementIteratorObject : public JSObject {
+  public:
+    enum {
+        TargetSlot,
+        IndexSlot,
+        NumSlots
+    };
+
+    static JSObject *create(JSContext *cx, JSObject *target);
+
+    inline uint32_t getIndex() const;
+    inline void setIndex(uint32_t index);
+    inline JSObject *getTargetObject() const;
+
+    /*
+        Array iterators are like this:
+
+        Array.prototype[iterate] = function () {
+            for (var i = 0; i < (this.length >>> 0); i++) {
+                var desc = Object.getOwnPropertyDescriptor(this, i);
+                yield desc === undefined ? undefined : this[i];
+            }
+        }
+
+        This has the following implications:
+
+          - Array iterators are generic; Array.prototype[iterate] can be transferred to
+            any other object to create iterators over it.
+
+          - The next() method of an Array iterator is non-reentrant. Trying to reenter,
+            e.g. by using it on an object with a length getter that calls it.next() on
+            the same iterator, causes a TypeError.
+
+          - The iterator fetches obj.length every time its next() method is called.
+
+          - The iterator converts obj.length to a whole number using ToUint32. As a
+            consequence the iterator can't go on forever; it can yield at most 2^32-1
+            values. Then i will be 0xffffffff, and no possible length value will be
+            greater than that.
+
+          - The iterator does not skip "array holes". When it encounters a hole, it
+            yields undefined.
+
+          - The iterator never consults the prototype chain.
+
+          - If an element has a getter which throws, the exception is propagated, and
+            the iterator is closed (that is, all future calls to next() will simply
+            throw StopIteration).
+
+        Note that if next() were reentrant, even more details of its inner
+        workings would be observable.
+    */
+
+    /*
+     * If there are any more elements to visit, store the value of the next
+     * element in *vp, increment the index, and return true. If not, call
+     * vp->setMagic(JS_NO_ITER_VALUE) and return true. Return false on error.
+     */
+    bool iteratorNext(JSContext *cx, Value *vp);
 };
 
 bool
 VectorToIdArray(JSContext *cx, js::AutoIdVector &props, JSIdArray **idap);
 
 bool
-GetIterator(JSContext *cx, JSObject *obj, uintN flags, js::Value *vp);
+GetIterator(JSContext *cx, JSObject *obj, unsigned flags, js::Value *vp);
 
 bool
-VectorToKeyIterator(JSContext *cx, JSObject *obj, uintN flags, js::AutoIdVector &props, js::Value *vp);
+VectorToKeyIterator(JSContext *cx, JSObject *obj, unsigned flags, js::AutoIdVector &props, js::Value *vp);
 
 bool
-VectorToValueIterator(JSContext *cx, JSObject *obj, uintN flags, js::AutoIdVector &props, js::Value *vp);
+VectorToValueIterator(JSContext *cx, JSObject *obj, unsigned flags, js::AutoIdVector &props, js::Value *vp);
 
 /*
  * Creates either a key or value iterator, depending on flags. For a value
  * iterator, performs value-lookup to convert the given list of jsids.
  */
 bool
-EnumeratedIdVectorToIterator(JSContext *cx, JSObject *obj, uintN flags, js::AutoIdVector &props, js::Value *vp);
-
-}
+EnumeratedIdVectorToIterator(JSContext *cx, JSObject *obj, unsigned flags, js::AutoIdVector &props, js::Value *vp);
 
 /*
  * Convert the value stored in *vp to its iteration object. The flags should
@@ -128,11 +187,16 @@ EnumeratedIdVectorToIterator(JSContext *cx, JSObject *obj, uintN flags, js::Auto
  * for-in semantics are required, and when the caller can guarantee that the
  * iterator will never be exposed to scripts.
  */
-extern JS_FRIEND_API(JSBool)
-js_ValueToIterator(JSContext *cx, uintN flags, js::Value *vp);
+extern JSBool
+ValueToIterator(JSContext *cx, unsigned flags, js::Value *vp);
 
-extern JS_FRIEND_API(JSBool)
-js_CloseIterator(JSContext *cx, JSObject *iterObj);
+extern bool
+CloseIterator(JSContext *cx, JSObject *iterObj);
+
+extern bool
+UnwindIteratorForException(JSContext *cx, JSObject *obj);
+
+}
 
 extern bool
 js_SuppressDeletedProperty(JSContext *cx, JSObject *obj, jsid id);
@@ -176,7 +240,7 @@ struct JSGenerator {
     js::FrameRegs       regs;
     JSObject            *enumerators;
     js::StackFrame      *floating;
-    js::Value           floatingStack[1];
+    js::HeapValue       floatingStack[1];
 
     js::StackFrame *floatingFrame() {
         return floating;

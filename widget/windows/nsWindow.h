@@ -99,9 +99,7 @@ class nsWindow : public nsBaseWidget
   typedef mozilla::TimeStamp TimeStamp;
   typedef mozilla::TimeDuration TimeDuration;
   typedef mozilla::widget::WindowHook WindowHook;
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   typedef mozilla::widget::TaskbarWindowPreview TaskbarWindowPreview;
-#endif
 public:
   nsWindow();
   virtual ~nsWindow();
@@ -278,7 +276,6 @@ public:
    */
   bool                    AssociateDefaultIMC(bool aAssociate);
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   bool HasTaskbarIconBeenCreated() { return mHasTaskbarIconBeenCreated; }
   // Called when either the nsWindow or an nsITaskbarTabPreview receives the noticiation that this window
   // has its icon placed on the taskbar.
@@ -290,7 +287,6 @@ public:
     return preview.forget();
   }
   void SetTaskbarPreview(nsITaskbarWindowPreview *preview) { mTaskbarPreview = do_GetWeakReference(preview); }
-#endif
 
   NS_IMETHOD              ReparentNativeWidget(nsIWidget* aNewParent);
 
@@ -408,9 +404,7 @@ protected:
   void                    OnScrollInternal(UINT aMsg, WPARAM aWParam,
                                            LPARAM aLParam);
   bool                    OnGesture(WPARAM wParam, LPARAM lParam);
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   bool                    OnTouch(WPARAM wParam, LPARAM lParam);
-#endif
   bool                    OnHotKey(WPARAM wParam, LPARAM lParam);
   BOOL                    OnInputLangChange(HKL aHKL);
   bool                    OnPaint(HDC aDC, PRUint32 aNestingLevel);
@@ -482,9 +476,6 @@ protected:
   nsIntRegion             GetRegionToPaint(bool aForceFullRepaint, 
                                            PAINTSTRUCT ps, HDC aDC);
   static void             ActivateOtherWindowHelper(HWND aWnd);
-#ifdef ACCESSIBILITY
-  static STDMETHODIMP_(LRESULT) LresultFromObject(REFIID riid, WPARAM wParam, LPUNKNOWN pAcc);
-#endif // ACCESSIBILITY
   void                    ClearCachedResources();
 
   nsPopupType PopupType() { return mPopupType; }
@@ -596,32 +587,22 @@ protected:
   nsRefPtr<gfxASurface> mTransparentSurface;
   HDC                   mMemoryDC;
   nsTransparencyMode    mTransparencyMode;
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   nsIntRegion           mPossiblyTransparentRegion;
   MARGINS               mGlassMargins;
-#endif // #if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
 #endif // MOZ_XUL
 
   // Win7 Gesture processing and management
   nsWinGesture          mGesture;
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   // Weak ref to the nsITaskbarWindowPreview associated with this window
   nsWeakPtr             mTaskbarPreview;
   // True if the taskbar (possibly through the tab preview) tells us that the
   // icon has been created on the taskbar.
   bool                  mHasTaskbarIconBeenCreated;
-#endif
 
   // The point in time at which the last paint completed. We use this to avoid
   //  painting too rapidly in response to frequent input events.
   TimeStamp mLastPaintEndTime;
-
-#ifdef ACCESSIBILITY
-  static BOOL           sIsAccessibilityOn;
-  static HINSTANCE      sAccLib;
-  static LPFNLRESULTFROMOBJECT sLresultFromObject;
-#endif // ACCESSIBILITY
 
   // sRedirectedKeyDown is WM_KEYDOWN message or WM_SYSKEYDOWN message which
   // was reirected to SendInput() API by OnKeyDown().

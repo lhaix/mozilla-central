@@ -145,21 +145,38 @@ static PRInt64 GetResident()
 
 static void XMappingIter(PRInt64& Vsize, PRInt64& Resident)
 {
+    Vsize = -1;
+    Resident = -1;
     int mapfd = open("/proc/self/xmap", O_RDONLY);
     struct stat st;
-    prxmap_t *prmapp;
+    prxmap_t *prmapp = NULL;
     if (mapfd >= 0) {
         if (!fstat(mapfd, &st)) {
             int nmap = st.st_size / sizeof(prxmap_t);
-            prmapp = (prxmap_t*)malloc((nmap + 1) * sizeof(prxmap_t));
-            int n = read(mapfd, prmapp, (nmap + 1) * sizeof(prxmap_t));
-            if (n > 0) {
-                Vsize = 0;
-                Resident = 0;
-                for (int i = 0; i < n / sizeof(prxmap_t); i++) {
-                    Vsize += prmapp[i].pr_size;
-                    Resident += prmapp[i].pr_rss * prmapp[i].pr_pagesize;
+            while (1) {
+                // stat(2) on /proc/<pid>/xmap returns an incorrect value,
+                // prior to the release of Solaris 11.
+                // Here is a workaround for it.
+                nmap *= 2;
+                prmapp = (prxmap_t*)malloc((nmap + 1) * sizeof(prxmap_t));
+                if (!prmapp) {
+                    // out of memory
+                    break;
                 }
+                int n = pread(mapfd, prmapp, (nmap + 1) * sizeof(prxmap_t), 0);
+                if (n < 0) {
+                    break;
+                }
+                if (nmap >= n / sizeof (prxmap_t)) {
+                    Vsize = 0;
+                    Resident = 0;
+                    for (int i = 0; i < n / sizeof (prxmap_t); i++) {
+                        Vsize += prmapp[i].pr_size;
+                        Resident += prmapp[i].pr_rss * prmapp[i].pr_pagesize;
+                    }
+                    break;
+                }
+                free(prmapp);
             }
             free(prmapp);
         }
@@ -169,16 +186,14 @@ static void XMappingIter(PRInt64& Vsize, PRInt64& Resident)
 
 static PRInt64 GetVsize()
 {
-    PRInt64 Vsize = -1;
-    PRInt64 Resident = -1;
+    PRInt64 Vsize, Resident;
     XMappingIter(Vsize, Resident);
     return Vsize;
 }
 
 static PRInt64 GetResident()
 {
-    PRInt64 Vsize = -1;
-    PRInt64 Resident = -1;
+    PRInt64 Vsize, Resident;
     XMappingIter(Vsize, Resident);
     return Resident;
 }
@@ -242,7 +257,6 @@ static PRInt64 GetVsize()
   return s.ullTotalVirtual - s.ullAvailVirtual;
 }
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
 static PRInt64 GetPrivate()
 {
     PROCESS_MEMORY_COUNTERS_EX pmcex;
@@ -263,7 +277,6 @@ NS_MEMORY_REPORTER_IMPLEMENT(Private,
     "Memory that cannot be shared with other processes, including memory that "
     "is committed and marked MEM_PRIVATE, data that is not mapped, and "
     "executable pages that have been written to.")
-#endif
 
 static PRInt64 GetResident()
 {
@@ -567,7 +580,7 @@ nsMemoryReporterManager::Init()
     REGISTER(PageFaultsHard);
 #endif
 
-#if defined(XP_WIN) && MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
+#if defined(XP_WIN)
     REGISTER(Private);
 #endif
 
@@ -808,12 +821,33 @@ nsMemoryReporterManager::GetExplicit(PRInt64 *aExplicit)
     }
     PRInt64 explicitNonHeapMultiSize2 = wrappedExplicitNonHeapMultiSize2->mValue;
 
-    // Check the two measurements give the same result.
-    NS_ASSERTION(explicitNonHeapMultiSize == explicitNonHeapMultiSize2,
-                 "The two measurements of 'explicit' memory usage don't match");
+    // Check the two measurements give the same result.  This was an
+    // NS_ASSERTION but they occasionally don't match due to races (bug
+    // 728990).
+    if (explicitNonHeapMultiSize != explicitNonHeapMultiSize2) {
+        char *msg = PR_smprintf("The two measurements of 'explicit' memory "
+                                "usage don't match (%lld vs %lld)",
+                                explicitNonHeapMultiSize,
+                                explicitNonHeapMultiSize2);
+        NS_WARNING(msg);
+        PR_smprintf_free(msg);
+    }
 #endif
 
     *aExplicit = heapAllocated + explicitNonHeapNormalSize + explicitNonHeapMultiSize;
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMemoryReporterManager::GetHasMozMallocUsableSize(bool *aHas)
+{
+    void *p = malloc(16);
+    if (!p) {
+        return NS_ERROR_OUT_OF_MEMORY;
+    }
+    size_t usable = moz_malloc_usable_size(p);
+    free(p);
+    *aHas = !!(usable > 0);
     return NS_OK;
 }
 

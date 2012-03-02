@@ -113,6 +113,7 @@
 #include <process.h>
 #include <commctrl.h>
 #include <unknwn.h>
+#include <psapi.h>
 
 #include "prlog.h"
 #include "prtime.h"
@@ -283,14 +284,6 @@ bool            nsWindow::sAllowD3D9              = false;
 
 TriStateBool nsWindow::sHasBogusPopupsDropShadowOnMultiMonitor = TRI_UNKNOWN;
 
-#ifdef ACCESSIBILITY
-BOOL            nsWindow::sIsAccessibilityOn      = FALSE;
-// Accessibility wm_getobject handler
-HINSTANCE       nsWindow::sAccLib                 = 0;
-LPFNLRESULTFROMOBJECT 
-                nsWindow::sLresultFromObject      = 0;
-#endif // ACCESSIBILITY
-
 // Used in OOPP plugin focus processing.
 const PRUnichar* kOOPPPluginFocusEventId   = L"OOPP Plugin Focus Widget Event";
 PRUint32        nsWindow::sOOPPPluginFocusEvent   =
@@ -415,30 +408,25 @@ nsWindow::nsWindow() : nsBaseWidget()
   mLastKeyboardLayout   = 0;
   mAssumeWheelIsZoomUntil = 0;
   mBlurSuppressLevel    = 0;
+  mLastPaintEndTime     = TimeStamp::Now();
 #ifdef MOZ_XUL
   mTransparentSurface   = nsnull;
   mMemoryDC             = nsnull;
   mTransparencyMode     = eTransparencyOpaque;
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   memset(&mGlassMargins, 0, sizeof mGlassMargins);
-#endif // #if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
 #endif
   mBackground           = ::GetSysColor(COLOR_BTNFACE);
   mBrush                = ::CreateSolidBrush(NSRGB_2_COLOREF(mBackground));
   mForeground           = ::GetSysColor(COLOR_WINDOWTEXT);
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   mTaskbarPreview = nsnull;
   mHasTaskbarIconBeenCreated = false;
-#endif
 
   // Global initialization
   if (!sInstanceCount) {
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
     // Global app registration id for Win7 and up. See
     // WinTaskbar.cpp for details.
     mozilla::widget::WinTaskbar::RegisterAppUserModelID();
-#endif
 
     gKbdLayout.LoadLayout(::GetKeyboardLayout(0));
 
@@ -613,12 +601,10 @@ nsWindow::Create(nsIWidget *aParent,
     return NS_ERROR_FAILURE;
   }
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   if (mIsRTL && nsUXThemeData::dwmSetWindowAttributePtr) {
     DWORD dwAttribute = TRUE;    
     nsUXThemeData::dwmSetWindowAttributePtr(mWnd, DWMWA_NONCLIENT_RTL_LAYOUT, &dwAttribute, sizeof dwAttribute);
   }
-#endif
 
   if (mWindowType != eWindowType_plugin &&
       mWindowType != eWindowType_invisible &&
@@ -1280,7 +1266,8 @@ NS_METHOD nsWindow::IsVisible(bool & bState)
 // transparency. These routines are called on size and move operations.
 void nsWindow::ClearThemeRegion()
 {
-  if (nsUXThemeData::sIsVistaOrLater && !HasGlass() &&
+  if (WinUtils::GetWindowsVersion() >= WinUtils::VISTA_VERSION &&
+      !HasGlass() &&
       (mWindowType == eWindowType_popup && !IsPopupWithTitleBar() &&
        (mPopupType == ePopupTypeTooltip || mPopupType == ePopupTypePanel))) {
     SetWindowRgn(mWnd, NULL, false);
@@ -1294,14 +1281,15 @@ void nsWindow::SetThemeRegion()
   // so default constants are used for part and state. At some point we might need part and
   // state values from nsNativeThemeWin's GetThemePartAndState, but currently windows that
   // change shape based on state haven't come up.
-  if (nsUXThemeData::sIsVistaOrLater && !HasGlass() &&
+  if (WinUtils::GetWindowsVersion() >= WinUtils::VISTA_VERSION &&
+      !HasGlass() &&
       (mWindowType == eWindowType_popup && !IsPopupWithTitleBar() &&
        (mPopupType == ePopupTypeTooltip || mPopupType == ePopupTypePanel))) {
     HRGN hRgn = nsnull;
     RECT rect = {0,0,mBounds.width,mBounds.height};
     
     HDC dc = ::GetDC(mWnd);
-    nsUXThemeData::getThemeBackgroundRegion(nsUXThemeData::GetTheme(eUXTooltip), dc, TTP_STANDARD, TS_NORMAL, &rect, &hRgn);
+    GetThemeBackgroundRegion(nsUXThemeData::GetTheme(eUXTooltip), dc, TTP_STANDARD, TS_NORMAL, &rect, &hRgn);
     if (hRgn) {
       if (!SetWindowRgn(mWnd, hRgn, false)) // do not delete or alter hRgn if accepted.
         DeleteObject(hRgn);
@@ -2515,7 +2503,6 @@ RegionFromArray(const nsTArray<nsIntRect>& aRects)
 
 void nsWindow::UpdateOpaqueRegion(const nsIntRegion &aOpaqueRegion)
 {
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   if (!HasGlass() || GetParent())
     return;
 
@@ -2559,12 +2546,10 @@ void nsWindow::UpdateOpaqueRegion(const nsIntRegion &aOpaqueRegion)
     mGlassMargins = margins;
     UpdateGlass();
   }
-#endif // #if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
 }
 
 void nsWindow::UpdateGlass()
 {
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   MARGINS margins = mGlassMargins;
 
   // DWMNCRP_USEWINDOWSTYLE - The non-client rendering area is
@@ -2597,7 +2582,6 @@ void nsWindow::UpdateGlass()
     nsUXThemeData::dwmExtendFrameIntoClientAreaPtr(mWnd, &margins);
     nsUXThemeData::dwmSetWindowAttributePtr(mWnd, DWMWA_NCRENDERING_POLICY, &policy, sizeof policy);
   }
-#endif // #if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
 }
 #endif
 
@@ -3249,7 +3233,7 @@ nsWindow::GetLayerManager(PLayersChild* aShadowManager,
       if (!prefs.mPreferD3D9 && !prefs.mPreferOpenGL) {
         nsRefPtr<mozilla::layers::LayerManagerD3D10> layerManager =
           new mozilla::layers::LayerManagerD3D10(this);
-        if (layerManager->Initialize()) {
+        if (layerManager->Initialize(prefs.mForceAcceleration)) {
           mLayerManager = layerManager;
         }
       }
@@ -3258,7 +3242,7 @@ nsWindow::GetLayerManager(PLayersChild* aShadowManager,
       if (!prefs.mPreferOpenGL && !mLayerManager && sAllowD3D9) {
         nsRefPtr<mozilla::layers::LayerManagerD3D9> layerManager =
           new mozilla::layers::LayerManagerD3D9(this);
-        if (layerManager->Initialize()) {
+        if (layerManager->Initialize(prefs.mForceAcceleration)) {
           mLayerManager = layerManager;
         }
       }
@@ -3542,20 +3526,16 @@ NS_IMETHODIMP nsWindow::DispatchEvent(nsGUIEvent* event, nsEventStatus & aStatus
   if (mViewCallback) {
     // A subset of events are sent to the base xul window first
     switch(event->message) {
-      // send to the base window (view mgr ignores these for the view)
-      case NS_UISTATECHANGED:
-      case NS_DESTROY:
-      case NS_SETZLEVEL:
-      case NS_XUL_CLOSE:
-      case NS_MOVE:
-        (*mEventCallback)(event); // web shell / xul window
-        return NS_OK;
-
       // sent to the base window, then to the view
       case NS_SIZE:
       case NS_DEACTIVATE:
       case NS_ACTIVATE:
       case NS_SIZEMODE:
+      case NS_UISTATECHANGED:
+      case NS_DESTROY:
+      case NS_SETZLEVEL:
+      case NS_XUL_CLOSE:
+      case NS_MOVE:
         (*mEventCallback)(event); // web shell / xul window
         break;
     };
@@ -4559,7 +4539,6 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
   bool result = false;    // call the default nsWindow proc
   *aRetValue = 0;
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   // Glass hit testing w/custom transparent margins
   LRESULT dwmHitResult;
   if (mCustomNonClient &&
@@ -4568,7 +4547,6 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
     *aRetValue = dwmHitResult;
     return true;
   }
-#endif // MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
 
   switch (msg) {
     // WM_QUERYENDSESSION must be handled by all windows.
@@ -4760,11 +4738,9 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
       if (!mCustomNonClient)
         break;
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
       // let the dwm handle nc painting on glass
       if(nsUXThemeData::CheckForCompositor())
         break;
-#endif
 
       if (wParam == TRUE) {
         // going active
@@ -4796,11 +4772,9 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
       if (!mCustomNonClient)
         break;
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
       // let the dwm handle nc painting on glass
       if(nsUXThemeData::CheckForCompositor())
         break;
-#endif
 
       HRGN paintRgn = ExcludeNonClientFromPaintRegion((HRGN)wParam);
       LRESULT res = CallWindowProcW(GetPrevWindowProc(), mWnd,
@@ -5199,21 +5173,10 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
       if (sJustGotActivate) {
         result = DispatchFocusToTopLevelWindow(NS_ACTIVATE);
       }
-
-#ifdef ACCESSIBILITY
-      if (nsWindow::sIsAccessibilityOn) {
-        // Create it for the first time so that it can start firing events
-        nsAccessible *rootAccessible = GetRootAccessible();
-      }
-#endif
       break;
 
     case WM_KILLFOCUS:
-      if (sJustGotDeactivate || !wParam) {
-        // Note: wParam is FALSE when the window has lost focus. Sometimes
-        // We can receive WM_KILLFOCUS with !wParam while changing to
-        // full-screen mode and we won't receive an WM_ACTIVATE/WA_INACTIVE
-        // message, so inform the focus manager that we've lost focus now.
+      if (sJustGotDeactivate) {
         result = DispatchFocusToTopLevelWindow(NS_DEACTIVATE);
       }
       break;
@@ -5320,7 +5283,6 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
       return true;
     }
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   case WM_DWMCOMPOSITIONCHANGED:
     // First, update the compositor state to latest one. All other methods
     // should use same state as here for consistency painting.
@@ -5333,7 +5295,6 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
     UpdateGlass();
     Invalidate(true, true, true);
     break;
-#endif
 
   case WM_UPDATEUISTATE:
   {
@@ -5364,14 +5325,12 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
     *aRetValue = TABLET_ROTATE_GESTURE_ENABLE;
     break;
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   case WM_TOUCH:
     result = OnTouch(wParam, lParam);
     if (result) {
       *aRetValue = 0;
     }
     break;
-#endif
 
   case WM_GESTURE:
     result = OnGesture(wParam, lParam);
@@ -5491,10 +5450,8 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
         nsTextStore::OnTextChangeMsg();
       }
 #endif //NS_ENABLE_TSF
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
       if (msg == nsAppShell::GetTaskbarButtonCreatedMessage())
         SetHasTaskbarIconBeenCreated();
-#endif
       if (msg == sOOPPPluginFocusEvent) {
         if (wParam == 1) {
           // With OOPP, the plugin window exists in another process and is a child of
@@ -6238,7 +6195,6 @@ void nsWindow::UserActivity()
   }
 }
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
 bool nsWindow::OnTouch(WPARAM wParam, LPARAM lParam)
 {
   PRUint32 cInputs = LOWORD(wParam);
@@ -6275,7 +6231,6 @@ bool nsWindow::OnTouch(WPARAM wParam, LPARAM lParam)
   mGesture.CloseTouchInputHandle((HTOUCHINPUT)lParam);
   return true;
 }
-#endif
 
 // Gesture event processing. Handles WM_GESTURE events.
 bool nsWindow::OnGesture(WPARAM wParam, LPARAM lParam)
@@ -6375,7 +6330,7 @@ nsWindow::InitMouseWheelScrollData()
 
   if (!::SystemParametersInfo(SPI_GETWHEELSCROLLCHARS, 0,
                               &sMouseWheelScrollChars, 0)) {
-    NS_ASSERTION(!nsUXThemeData::sIsVistaOrLater,
+    NS_ASSERTION(WinUtils::GetWindowsVersion() < WinUtils::VISTA_VERSION,
                  "Failed to get SPI_GETWHEELSCROLLCHARS");
     sMouseWheelScrollChars = 1;
   } else if (sMouseWheelScrollChars > WHEEL_DELTA) {
@@ -7309,15 +7264,17 @@ nsWindow::SetWindowClipRegion(const nsTArray<nsIntRect>& aRects,
     }
   }
 
-  // If a plugin is not visibile, especially if it is in a background tab,
+  // If a plugin is not visible, especially if it is in a background tab,
   // it should not be able to steal keyboard focus.  This code checks whether
   // the region that the plugin is being clipped to is NULLREGION.  If it is,
   // the plugin window gets disabled.
   if(mWindowType == eWindowType_plugin) {
     if(NULLREGION == ::CombineRgn(dest, dest, dest, RGN_OR)) {
+      ::ShowWindow(mWnd, SW_HIDE);
       ::EnableWindow(mWnd, FALSE);
     } else {
       ::EnableWindow(mWnd, TRUE);
+      ::ShowWindow(mWnd, SW_SHOW);
     }
   }
   if (!::SetWindowRgn(mWnd, dest, TRUE)) {
@@ -7476,22 +7433,12 @@ bool nsWindow::OnHotKey(WPARAM wParam, LPARAM lParam)
   return true;
 }
 
-typedef DWORD (WINAPI *GetProcessImageFileNameProc)(HANDLE, LPWSTR, DWORD);
-
 // Determine whether the given HWND is the handle for the Elantech helper
 // window.  The helper window cannot be distinguished based on its
 // window class, so we need to check if it is owned by the helper process,
 // ETDCtrl.exe.
 static bool IsElantechHelperWindow(HWND aHWND)
 {
-  static HMODULE hPSAPI = ::LoadLibraryW(L"psapi.dll");
-  static GetProcessImageFileNameProc pGetProcessImageFileName =
-    reinterpret_cast<GetProcessImageFileNameProc>(::GetProcAddress(hPSAPI, "GetProcessImageFileNameW"));
-
-  if (!pGetProcessImageFileName) {
-    return false;
-  }
-
   const PRUnichar* filenameSuffix = L"\\etdctrl.exe";
   const int filenameSuffixLength = 12;
 
@@ -7503,7 +7450,7 @@ static bool IsElantechHelperWindow(HWND aHWND)
   HANDLE hProcess = ::OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
   if (hProcess) {
     PRUnichar path[256] = {L'\0'};
-    if (pGetProcessImageFileName(hProcess, path, ArrayLength(path))) {
+    if (GetProcessImageFileName(hProcess, path, ArrayLength(path))) {
       int pathLength = lstrlenW(path);
       if (pathLength >= filenameSuffixLength) {
         if (lstrcmpiW(path + pathLength - filenameSuffixLength, filenameSuffix) == 0) {
@@ -8071,8 +8018,6 @@ nsWindow::GetRootAccessible()
   if (accForceDisable)
       return nsnull;
 
-  nsWindow::sIsAccessibilityOn = TRUE;
-
   if (mInDtor || mOnDestroyCalled || mWindowType == eWindowType_invisible) {
     return nsnull;
   }
@@ -8081,24 +8026,6 @@ nsWindow::GetRootAccessible()
   NS_LOG_WMGETOBJECT_WND("This Window", mWnd);
 
   return DispatchAccessibleEvent(NS_GETACCESSIBLE);
-}
-
-STDMETHODIMP_(LRESULT)
-nsWindow::LresultFromObject(REFIID riid, WPARAM wParam, LPUNKNOWN pAcc)
-{
-  // open the dll dynamically
-  if (!sAccLib)
-    sAccLib =::LoadLibraryW(L"OLEACC.DLL");
-
-  if (sAccLib) {
-    if (!sLresultFromObject)
-      sLresultFromObject = (LPFNLRESULTFROMOBJECT)GetProcAddress(sAccLib,"LresultFromObject");
-
-    if (sLresultFromObject)
-      return sLresultFromObject(riid,wParam,pAcc);
-  }
-
-  return 0;
 }
 #endif
 
@@ -8183,10 +8110,8 @@ void nsWindow::SetWindowTranslucencyInner(nsTransparencyMode aMode)
   ::SetWindowLongPtrW(hWnd, GWL_STYLE, style);
   ::SetWindowLongPtrW(hWnd, GWL_EXSTYLE, exStyle);
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   if (HasGlass())
     memset(&mGlassMargins, 0, sizeof mGlassMargins);
-#endif // #if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   mTransparencyMode = aMode;
 
   SetupTranslucentWindowMemoryBitmap(aMode);

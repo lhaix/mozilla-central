@@ -337,14 +337,55 @@ class Compiler : public BaseCompiler
         size_t offsetIndex;
     };
 
+    struct JumpTableEdge {
+        uint32_t source;
+        uint32_t target;
+    };
+
+    struct ChunkJumpTableEdge {
+        JumpTableEdge edge;
+        void **jumpTableEntry;
+    };
+
     struct LoopEntry {
         uint32_t pcOffset;
         Label label;
     };
 
-    struct VarType {
+    /*
+     * Information about the current type of an argument or local in the
+     * script. The known type tag of these types is cached when possible to
+     * avoid generating duplicate dependency constraints.
+     */
+    class VarType {
         JSValueType type;
         types::TypeSet *types;
+
+      public:
+        void setTypes(types::TypeSet *types) {
+            this->types = types;
+            this->type = JSVAL_TYPE_MISSING;
+        }
+
+        types::TypeSet *getTypes() { return types; }
+
+        JSValueType getTypeTag(JSContext *cx) {
+            if (type == JSVAL_TYPE_MISSING)
+                type = types ? types->getKnownTypeTag(cx) : JSVAL_TYPE_UNKNOWN;
+            return type;
+        }
+    };
+
+    struct OutgoingChunkEdge {
+        uint32_t source;
+        uint32_t target;
+
+#ifdef JS_CPU_X64
+        Label sourceTrampoline;
+#endif
+
+        Jump fastJump;
+        MaybeJump slowJump;
     };
 
     struct SlotType
@@ -355,13 +396,15 @@ class Compiler : public BaseCompiler
     };
 
     JSScript *outerScript;
+    unsigned chunkIndex;
     bool isConstructing;
+    ChunkDescriptor &outerChunk;
 
     /* SSA information for the outer script and all frames we will be inlining. */
     analyze::CrossScriptSSA ssa;
 
     GlobalObject *globalObj;
-    const HeapValue *globalSlots;  /* Original slots pointer. */
+    const HeapSlot *globalSlots;  /* Original slots pointer. */
 
     Assembler masm;
     FrameState frame;
@@ -428,8 +471,9 @@ private:
     js::Vector<uint32_t> fixedIntToDoubleEntries;
     js::Vector<uint32_t> fixedDoubleToAnyEntries;
     js::Vector<JumpTable, 16> jumpTables;
-    js::Vector<uint32_t, 16> jumpTableOffsets;
+    js::Vector<JumpTableEdge, 16> jumpTableEdges;
     js::Vector<LoopEntry, 16> loopEntries;
+    js::Vector<OutgoingChunkEdge, 16> chunkEdges;
     StubCompiler stubcc;
     Label invokeLabel;
     Label arityLabel;
@@ -444,7 +488,7 @@ private:
     bool hasGlobalReallocation;
     bool oomInVector;       // True if we have OOM'd appending to a vector. 
     bool overflowICSpace;   // True if we added a constant pool in a reserved space.
-    uint32_t gcNumber;
+    uint64_t gcNumber;
     enum { NoApplyTricks, LazyArgsObj } applyTricks;
     PCLengthEntry *pcLengths;
 
@@ -452,7 +496,7 @@ private:
 
     friend class CompilerAllocPolicy;
   public:
-    Compiler(JSContext *cx, JSScript *outerScript, bool isConstructing);
+    Compiler(JSContext *cx, JSScript *outerScript, unsigned chunkIndex, bool isConstructing);
     ~Compiler();
 
     CompileStatus compile();
@@ -475,6 +519,15 @@ private:
         while (scan && scan->parent != outer)
             scan = static_cast<ActiveFrame *>(scan->parent);
         return scan->parentPC;
+    }
+
+    JITScript *outerJIT() {
+        return outerScript->getJIT(isConstructing);
+    }
+
+    bool bytecodeInChunk(jsbytecode *pc) {
+        return (unsigned(pc - outerScript->code) >= outerChunk.begin)
+            && (unsigned(pc - outerScript->code) < outerChunk.end);
     }
 
     jsbytecode *inlinePC() { return PC; }
@@ -500,11 +553,11 @@ private:
     }
 
   private:
-    CompileStatus performCompilation(JITScript **jitp);
+    CompileStatus performCompilation();
     CompileStatus generatePrologue();
     CompileStatus generateMethod();
     CompileStatus generateEpilogue();
-    CompileStatus finishThisUp(JITScript **jitp);
+    CompileStatus finishThisUp();
     CompileStatus pushActiveFrame(JSScript *script, uint32_t argc);
     void popActiveFrame();
     void updatePCCounters(jsbytecode *pc, Label *start, bool *updated);
@@ -553,7 +606,6 @@ private:
 
     /* Non-emitting helpers. */
     void pushSyncedEntry(uint32_t pushed);
-    uint32_t fullAtomIndex(jsbytecode *pc);
     bool jumpInScript(Jump j, jsbytecode *pc);
     bool compareTwoValues(JSContext *cx, JSOp op, const Value &lhs, const Value &rhs);
     bool canUseApplyTricks();
@@ -561,7 +613,7 @@ private:
     /* Emitting helpers. */
     bool constantFoldBranch(jsbytecode *target, bool taken);
     bool emitStubCmpOp(BoolStub stub, jsbytecode *target, JSOp fused);
-    bool iter(uintN flags);
+    bool iter(unsigned flags);
     void iterNext(ptrdiff_t offset);
     bool iterMore(jsbytecode *target);
     void iterEnd();
@@ -591,9 +643,12 @@ private:
     void tryConvertInteger(FrameEntry *fe, Uses uses);
 
     /* Opcode handlers. */
-    bool jumpAndRun(Jump j, jsbytecode *target, Jump *slow = NULL, bool *trampoline = NULL);
+    bool jumpAndRun(Jump j, jsbytecode *target,
+                    Jump *slow = NULL, bool *trampoline = NULL,
+                    bool fallthrough = false);
     bool startLoop(jsbytecode *head, Jump entry, jsbytecode *entryTarget);
     bool finishLoop(jsbytecode *head);
+    inline bool shouldStartLoop(jsbytecode *head);
     void jsop_bindname(PropertyName *name);
     void jsop_setglobal(uint32_t index);
     void jsop_getprop_slow(PropertyName *name, bool forPrototype = false);
@@ -631,13 +686,14 @@ private:
     bool jsop_instanceof();
     void jsop_name(PropertyName *name, JSValueType type);
     bool jsop_xname(PropertyName *name);
-    void enterBlock(JSObject *obj);
+    void enterBlock(StaticBlockObject *block);
     void leaveBlock();
     void emitEval(uint32_t argc);
     void jsop_arguments(RejoinState rejoin);
     bool jsop_tableswitch(jsbytecode *pc);
 
     /* Fast arithmetic. */
+    bool jsop_binary_slow(JSOp op, VoidStub stub, JSValueType type, FrameEntry *lhs, FrameEntry *rhs);
     bool jsop_binary(JSOp op, VoidStub stub, JSValueType type, types::TypeSet *typeSet);
     void jsop_binary_full(FrameEntry *lhs, FrameEntry *rhs, JSOp op, VoidStub stub,
                           JSValueType type, bool cannotOverflow, bool ignoreOverflow);
@@ -700,6 +756,7 @@ private:
     CompileStatus jsop_equality_obj_obj(JSOp op, jsbytecode *target, JSOp fused);
     bool jsop_equality_int_string(JSOp op, BoolStub stub, jsbytecode *target, JSOp fused);
     void jsop_pos();
+    void jsop_in();
 
     static inline Assembler::Condition
     GetCompareCondition(JSOp op, JSOp fused)

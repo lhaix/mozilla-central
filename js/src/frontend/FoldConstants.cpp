@@ -49,6 +49,10 @@
 #include "jsxml.h"
 #endif
 
+#include "jsatominlines.h"
+
+#include "vm/String-inl.h"
+
 using namespace js;
 
 static ParseNode *
@@ -105,7 +109,7 @@ FoldType(JSContext *cx, ParseNode *pn, ParseNodeKind kind)
         switch (kind) {
           case PNK_NUMBER:
             if (pn->isKind(PNK_STRING)) {
-                jsdouble d;
+                double d;
                 if (!ToNumber(cx, StringValue(pn->pn_atom), &d))
                     return JS_FALSE;
                 pn->pn_dval = d;
@@ -142,7 +146,7 @@ static JSBool
 FoldBinaryNumeric(JSContext *cx, JSOp op, ParseNode *pn1, ParseNode *pn2,
                   ParseNode *pn, TreeContext *tc)
 {
-    jsdouble d, d2;
+    double d, d2;
     int32_t i, j;
 
     JS_ASSERT(pn1->isKind(PNK_NUMBER) && pn2->isKind(PNK_NUMBER));
@@ -818,7 +822,7 @@ js::FoldConstants(JSContext *cx, ParseNode *pn, TreeContext *tc, bool inCond)
       case PNK_POS:
       case PNK_NEG:
         if (pn1->isKind(PNK_NUMBER)) {
-            jsdouble d;
+            double d;
 
             /* Operate on one numeric constant. */
             d = pn1->pn_dval;

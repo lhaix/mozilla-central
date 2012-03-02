@@ -48,7 +48,6 @@
 #include "jsbool.h"
 #include "assembler/assembler/MacroAssemblerCodeRef.h"
 #include "assembler/assembler/CodeLocation.h"
-#include "jsiter.h"
 #include "jstypes.h"
 #include "methodjit/StubCalls.h"
 #include "methodjit/MonoIC.h"
@@ -64,7 +63,6 @@
 #include "jscntxtinlines.h"
 #include "jsatominlines.h"
 #include "StubCalls-inl.h"
-#include "MethodJIT-inl.h"
 
 #include "jsautooplen.h"
 
@@ -152,14 +150,11 @@ top:
                    * adjustment and regs.sp[1] after, to save and restore the
                    * pending exception.
                    */
-                  Value v = cx->getPendingException();
                   JS_ASSERT(JSOp(*pc) == JSOP_ENDITER);
-                  cx->clearPendingException();
-                  bool ok = !!js_CloseIterator(cx, &cx->regs().sp[-1].toObject());
+                  bool ok = UnwindIteratorForException(cx, &cx->regs().sp[-1].toObject());
                   cx->regs().sp -= 1;
                   if (!ok)
                       goto top;
-                  cx->setPendingException(v);
                 }
             }
         }
@@ -250,8 +245,7 @@ stubs::FixupArity(VMFrame &f, uint32_t nactual)
     /*
      * Grossssss! *move* the stack frame. If this ends up being perf-critical,
      * we can figure out how to spot-optimize it. Be careful to touch only the
-     * members that have been initialized by initJitFrameCallerHalf and the
-     * early prologue.
+     * members that have been initialized by the caller and early prologue.
      */
     InitialFrameFlags initial = oldfp->initialFlags();
     JSFunction *fun           = oldfp->fun();
@@ -321,15 +315,13 @@ UncachedInlineCall(VMFrame &f, InitialFrameFlags initial,
     types::TypeMonitorCall(cx, args, construct);
 
     /* Try to compile if not already compiled. */
-    if (newscript->getJITStatus(construct) == JITScript_None) {
-        CompileStatus status = CanMethodJIT(cx, newscript, construct, CompileRequest_Interpreter);
-        if (status == Compile_Error) {
-            /* A runtime exception was thrown, get out. */
-            return false;
-        }
-        if (status == Compile_Abort)
-            *unjittable = true;
+    CompileStatus status = CanMethodJIT(cx, newscript, newscript->code, construct, CompileRequest_Interpreter);
+    if (status == Compile_Error) {
+        /* A runtime exception was thrown, get out. */
+        return false;
     }
+    if (status == Compile_Abort)
+        *unjittable = true;
 
     /*
      * Make sure we are not calling from an inline frame if we need to make a
@@ -367,11 +359,13 @@ UncachedInlineCall(VMFrame &f, InitialFrameFlags initial,
      */
     if (!newType) {
         if (JITScript *jit = newscript->getJIT(regs.fp()->isConstructing())) {
-            *pret = jit->invokeEntry;
+            if (jit->invokeEntry) {
+                *pret = jit->invokeEntry;
 
-            /* Restore the old fp around and let the JIT code repush the new fp. */
-            regs.popFrame((Value *) regs.fp());
-            return true;
+                /* Restore the old fp around and let the JIT code repush the new fp. */
+                regs.popFrame((Value *) regs.fp());
+                return true;
+            }
         }
     }
 
@@ -536,22 +530,22 @@ js_InternalThrow(VMFrame &f)
     for (;;) {
         if (cx->isExceptionPending()) {
             // Call the throw hook if necessary
-            JSThrowHook handler = cx->debugHooks->throwHook;
+            JSThrowHook handler = cx->runtime->debugHooks.throwHook;
             if (handler || !cx->compartment->getDebuggees().empty()) {
                 Value rval;
                 JSTrapStatus st = Debugger::onExceptionUnwind(cx, &rval);
                 if (st == JSTRAP_CONTINUE && handler) {
                     st = handler(cx, cx->fp()->script(), cx->regs().pc, &rval,
-                                 cx->debugHooks->throwHookData);
+                                 cx->runtime->debugHooks.throwHookData);
                 }
 
                 switch (st) {
                 case JSTRAP_ERROR:
                     cx->clearPendingException();
-                    return NULL;
+                    break;
 
                 case JSTRAP_CONTINUE:
-                  break;
+                    break;
 
                 case JSTRAP_RETURN:
                     cx->clearPendingException();
@@ -592,11 +586,11 @@ js_InternalThrow(VMFrame &f)
         if (f.entryfp == f.fp())
             break;
 
-        JS_ASSERT(f.regs.sp == cx->regs().sp);
+        JS_ASSERT(&cx->regs() == &f.regs);
         InlineReturn(f);
     }
 
-    JS_ASSERT(f.regs.sp == cx->regs().sp);
+    JS_ASSERT(&cx->regs() == &f.regs);
 
     if (!pc)
         return NULL;
@@ -620,9 +614,6 @@ js_InternalThrow(VMFrame &f)
 
     analyze::AutoEnterAnalysis enter(cx);
 
-    cx->regs().pc = pc;
-    cx->regs().sp = fp->base() + script->analysis()->getCode(pc).stackDepth;
-
     /*
      * Interpret the ENTERBLOCK and EXCEPTION opcodes, so that we don't go
      * back into the interpreter with a pending exception. This will cause
@@ -630,7 +621,7 @@ js_InternalThrow(VMFrame &f)
      */
     if (cx->isExceptionPending()) {
         JS_ASSERT(JSOp(*pc) == JSOP_ENTERBLOCK);
-        StaticBlockObject &blockObj = script->getObject(GET_SLOTNO(pc))->asStaticBlock();
+        StaticBlockObject &blockObj = script->getObject(GET_UINT32_INDEX(pc))->asStaticBlock();
         Value *vp = cx->regs().sp + blockObj.slotCount();
         SetValueRangeToUndefined(cx->regs().sp, vp);
         cx->regs().sp = vp;
@@ -698,6 +689,28 @@ stubs::ScriptProbeOnlyEpilogue(VMFrame &f)
     Probes::exitJSFun(f.cx, f.fp()->fun(), f.fp()->script());
 }
 
+void JS_FASTCALL
+stubs::CrossChunkShim(VMFrame &f, void *edge_)
+{
+    DebugOnly<CrossChunkEdge*> edge = (CrossChunkEdge *) edge_;
+
+    mjit::ExpandInlineFrames(f.cx->compartment);
+
+    JSScript *script = f.script();
+    JS_ASSERT(edge->target < script->length);
+    JS_ASSERT(script->code + edge->target == f.pc());
+
+    CompileStatus status = CanMethodJIT(f.cx, script, f.pc(), f.fp()->isConstructing(),
+                                        CompileRequest_Interpreter);
+    if (status == Compile_Error)
+        THROW();
+
+    void **addr = f.returnAddressLocation();
+    *addr = JS_FUNC_TO_DATA_PTR(void *, JaegerInterpoline);
+
+    f.fp()->setRejoin(StubRejoin(REJOIN_RESUME));
+}
+
 JS_STATIC_ASSERT(JSOP_NOP == 0);
 
 /* :XXX: common out with identical copy in Compiler.cpp */
@@ -718,6 +731,10 @@ FinishVarIncOp(VMFrame &f, RejoinState rejoin, Value ov, Value nv, Value *vp)
     JSContext *cx = f.cx;
 
     JSOp op = JSOp(*f.pc());
+    JS_ASSERT(op == JSOP_LOCALINC || op == JSOP_INCLOCAL ||
+              op == JSOP_LOCALDEC || op == JSOP_DECLOCAL ||
+              op == JSOP_ARGINC || op == JSOP_INCARG ||
+              op == JSOP_ARGDEC || op == JSOP_DECARG);
     const JSCodeSpec *cs = &js_CodeSpec[op];
 
     unsigned i = GET_SLOTNO(f.pc());
@@ -783,7 +800,7 @@ js_InternalInterpret(void *returnData, void *returnType, void *returnReg, js::VM
 
 #ifdef JS_METHODJIT_SPEW
     JaegerSpew(JSpew_Recompile, "interpreter rejoin (file \"%s\") (line \"%d\") (op %s) (opline \"%d\")\n",
-               script->filename, script->lineno, OpcodeNames[op], js_PCToLineNumber(cx, script, pc));
+               script->filename, script->lineno, OpcodeNames[op], PCToLineNumber(script, pc));
 #endif
 
     uint32_t nextDepth = UINT32_MAX;

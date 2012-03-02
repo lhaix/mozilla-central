@@ -47,6 +47,7 @@
 #include "nsIOService.h"
 #include "nsStreamUtils.h"
 #include "nsNetSegmentUtils.h"
+#include "nsNetAddr.h"
 #include "nsTransportUtils.h"
 #include "nsProxyInfo.h"
 #include "nsNetCID.h"
@@ -586,7 +587,6 @@ nsSocketOutputStream::Write(const char *buf, PRUint32 count, PRUint32 *countWrit
     PRInt32 n = PR_Write(fd, buf, count);
 
     SOCKET_LOG(("  PR_Write returned [n=%d]\n", n));
-    NS_ASSERTION(n != 0, "unexpected return value");
 
     nsresult rv;
     {
@@ -723,6 +723,7 @@ nsSocketTransport::nsSocketTransport()
     , mInputClosed(true)
     , mOutputClosed(true)
     , mResolving(false)
+    , mNetAddrIsSet(false)
     , mLock("nsSocketTransport.mLock")
     , mFD(nsnull)
     , mFDref(0)
@@ -859,6 +860,7 @@ nsSocketTransport::InitWithConnectedSocket(PRFileDesc *fd, const PRNetAddr *addr
     mPollFlags = (PR_POLL_READ | PR_POLL_WRITE | PR_POLL_EXCEPT);
     mPollTimeout = mTimeouts[TIMEOUT_READ_WRITE];
     mState = STATE_TRANSFERRING;
+    mNetAddrIsSet = true;
 
     mFD = fd;
     mFDref = 1;
@@ -1400,6 +1402,10 @@ nsSocketTransport::OnSocketConnected()
     mPollTimeout = mTimeouts[TIMEOUT_READ_WRITE];
     mState = STATE_TRANSFERRING;
 
+    // Set the mNetAddrIsSet flag only when state has reached TRANSFERRING
+    // because we need to make sure its value does not change due to failover
+    mNetAddrIsSet = true;
+
     // assign mFD (must do this within the transport lock), but take care not
     // to trample over mFDref if mFD is already set.
     {
@@ -1916,7 +1922,11 @@ nsSocketTransport::GetPeerAddr(PRNetAddr *addr)
     // we can freely access mNetAddr from any thread without being
     // inside a critical section.
 
-    NS_ENSURE_TRUE(mState == STATE_TRANSFERRING, NS_ERROR_NOT_AVAILABLE);
+    if (!mNetAddrIsSet) {
+        SOCKET_LOG(("nsSocketTransport::GetPeerAddr [this=%p state=%d] "
+                    "NOT_AVAILABLE because not yet connected.", this, mState));
+        return NS_ERROR_NOT_AVAILABLE;
+    }
 
     memcpy(addr, &mNetAddr, sizeof(mNetAddr));
     return NS_OK;
@@ -1947,6 +1957,38 @@ nsSocketTransport::GetSelfAddr(PRNetAddr *addr)
     }
 
     return rv;
+}
+
+/* nsINetAddr getScriptablePeerAddr (); */
+NS_IMETHODIMP
+nsSocketTransport::GetScriptablePeerAddr(nsINetAddr * *addr NS_OUTPARAM)
+{
+    PRNetAddr rawAddr;
+
+    nsresult rv;
+    rv = GetPeerAddr(&rawAddr);
+    if (NS_FAILED(rv))
+        return rv;
+
+    NS_ADDREF(*addr = new nsNetAddr(&rawAddr));
+
+    return NS_OK;
+}
+
+/* nsINetAddr getScriptableSelfAddr (); */
+NS_IMETHODIMP
+nsSocketTransport::GetScriptableSelfAddr(nsINetAddr * *addr NS_OUTPARAM)
+{
+    PRNetAddr rawAddr;
+
+    nsresult rv;
+    rv = GetSelfAddr(&rawAddr);
+    if (NS_FAILED(rv))
+        return rv;
+
+    NS_ADDREF(*addr = new nsNetAddr(&rawAddr));
+
+    return NS_OK;
 }
 
 NS_IMETHODIMP

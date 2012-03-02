@@ -111,8 +111,8 @@ struct BaseIC : public MacroAssemblerTypedefs {
     }
     bool shouldUpdate(JSContext *cx);
     void spew(JSContext *cx, const char *event, const char *reason);
-    LookupStatus disable(JSContext *cx, const char *reason, void *stub);
-    void updatePCCounters(JSContext *cx, Assembler &masm);
+    LookupStatus disable(VMFrame &f, const char *reason, void *stub);
+    void updatePCCounters(VMFrame &f, Assembler &masm);
     bool isCallOp();
 };
 
@@ -197,7 +197,7 @@ class BasePolyIC : public BaseIC {
         if (isOnePool()) {
             JSC::ExecutablePool *oldPool = u.execPool;
             JS_ASSERT(!isTagged(oldPool));
-            ExecPoolVector *execPools = cx->new_<ExecPoolVector>(SystemAllocPolicy()); 
+            ExecPoolVector *execPools = OffTheBooks::new_<ExecPoolVector>(SystemAllocPolicy()); 
             if (!execPools)
                 return false;
             if (!execPools->append(oldPool) || !execPools->append(pool)) {
@@ -303,7 +303,7 @@ struct GetElementIC : public BasePolyIC {
                                Value *vp);
     LookupStatus attachArguments(VMFrame &f, JSObject *obj, const Value &v, jsid id, Value *vp);
     LookupStatus attachTypedArray(VMFrame &f, JSObject *obj, const Value &v, jsid id, Value *vp);
-    LookupStatus disable(JSContext *cx, const char *reason);
+    LookupStatus disable(VMFrame &f, const char *reason);
     LookupStatus error(JSContext *cx);
     bool shouldUpdate(JSContext *cx);
 };
@@ -369,7 +369,7 @@ struct SetElementIC : public BaseIC {
     LookupStatus attachTypedArray(VMFrame &f, JSObject *obj, int32_t key);
     LookupStatus attachHoleStub(VMFrame &f, JSObject *obj, int32_t key);
     LookupStatus update(VMFrame &f, const Value &objval, const Value &idval);
-    LookupStatus disable(JSContext *cx, const char *reason);
+    LookupStatus disable(VMFrame &f, const char *reason);
     LookupStatus error(JSContext *cx);
     bool shouldUpdate(JSContext *cx);
 };
@@ -426,9 +426,9 @@ struct PICInfo : public BasePolyIC {
 
     // Return a JITCode block corresponding to the code memory to attach a
     // new stub to.
-    JITCode lastCodeBlock(JITScript *jit) {
+    JITCode lastCodeBlock(JITChunk *chunk) {
         if (!stubsGenerated)
-            return JITCode(jit->code.m_code.executableAddress(), jit->code.m_size);
+            return JITCode(chunk->code.m_code.executableAddress(), chunk->code.m_size);
         return lastStubStart;
     }
 

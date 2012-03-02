@@ -50,7 +50,6 @@
 #include "nsWeakPtr.h"
 #include "nsVoidArray.h"
 #include "nsTArray.h"
-#include "nsHashSets.h"
 #include "nsIDOMXMLDocument.h"
 #include "nsIDOMDocumentXBL.h"
 #include "nsStubDocumentObserver.h"
@@ -880,8 +879,8 @@ public:
     MaybeRescheduleAnimationFrameNotifications();
   }
 
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsDocument,
-                                                         nsIDocument)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsDocument,
+                                                                   nsIDocument)
 
   void DoNotifyPossibleTitleChange();
 
@@ -990,6 +989,8 @@ public:
   void UpdateVisibilityState();
   // Posts an event to call UpdateVisibilityState
   virtual void PostVisibilityUpdateEvent();
+
+  virtual size_t SizeOfStyleSheets(nsMallocSizeOfFun aMallocSizeOf) const;
 
 protected:
   friend class nsNodeUtils;

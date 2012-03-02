@@ -115,7 +115,7 @@ struct CacheEntry
   }
 
   size_t SizeOfExcludingThis(nsMallocSizeOfFun mallocSizeOf) {
-    return mallocSizeOf(data, size);
+    return mallocSizeOf(data);
   }
 };
 
@@ -151,6 +151,8 @@ public:
   nsresult GetDebugObjectOutputStream(nsIObjectOutputStream* aStream,
                                       nsIObjectOutputStream** outStream);
 
+  nsresult RecordAgesAlways();
+
   static StartupCache* GetSingleton();
   static void DeleteSingleton();
 
@@ -164,7 +166,13 @@ private:
   StartupCache();
   ~StartupCache();
 
-  nsresult LoadArchive();
+  enum TelemetrifyAge {
+    IGNORE_AGE = 0,
+    RECORD_AGE = 1
+  };
+  static enum TelemetrifyAge gPostFlushAgeAction;
+
+  nsresult LoadArchive(enum TelemetrifyAge flag);
   nsresult Init();
   void WriteToDisk();
   nsresult ResetStartupWriteTimer();

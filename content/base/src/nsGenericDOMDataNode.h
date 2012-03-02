@@ -143,8 +143,12 @@ public:
   nsresult IsSupported(const nsAString& aFeature,
                        const nsAString& aVersion,
                        bool* aReturn);
-  nsresult CloneNode(bool aDeep, nsIDOMNode** aReturn)
+  nsresult CloneNode(bool aDeep, PRUint8 aOptionalArgc, nsIDOMNode** aReturn)
   {
+    if (!aOptionalArgc) {
+      aDeep = true;
+    }
+    
     return nsNodeUtils::CloneNodeImpl(this, aDeep, true, aReturn);
   }
 
@@ -272,7 +276,7 @@ public:
   void ToCString(nsAString& aBuf, PRInt32 aOffset, PRInt32 aLen) const;
 #endif
 
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(nsGenericDOMDataNode)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS(nsGenericDOMDataNode)
 
 protected:
   virtual mozilla::dom::Element* GetNameSpaceElement()
@@ -348,6 +352,16 @@ protected:
 
   nsTextFragment mText;
 
+public:
+  virtual bool IsPurple()
+  {
+    return mRefCnt.IsPurple();
+  }
+  virtual void RemovePurple()
+  {
+    mRefCnt.RemovePurple();
+  }
+  
 private:
   already_AddRefed<nsIAtom> GetCurrentValueAtom();
 };

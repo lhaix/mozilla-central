@@ -151,16 +151,22 @@
 @BINPATH@/components/dom_system_b2g.xpt
 #endif
 @BINPATH@/components/dom_battery.xpt
+#ifdef MOZ_B2G_BT
+@BINPATH@/components/dom_bluetooth.xpt
+#endif
 @BINPATH@/components/dom_canvas.xpt
+@BINPATH@/components/dom_contacts.xpt
 @BINPATH@/components/dom_core.xpt
 @BINPATH@/components/dom_css.xpt
 @BINPATH@/components/dom_events.xpt
 @BINPATH@/components/dom_geolocation.xpt
+@BINPATH@/components/dom_network.xpt
 @BINPATH@/components/dom_notification.xpt
 @BINPATH@/components/dom_html.xpt
 @BINPATH@/components/dom_indexeddb.xpt
 @BINPATH@/components/dom_offline.xpt
 @BINPATH@/components/dom_json.xpt
+@BINPATH@/components/dom_power.xpt
 @BINPATH@/components/dom_range.xpt
 @BINPATH@/components/dom_sidebar.xpt
 @BINPATH@/components/dom_sms.xpt
@@ -187,6 +193,7 @@
 @BINPATH@/components/find.xpt
 @BINPATH@/components/fuel.xpt
 @BINPATH@/components/gfx.xpt
+@BINPATH@/components/html5.xpt
 @BINPATH@/components/htmlparser.xpt
 @BINPATH@/components/imglib2.xpt
 @BINPATH@/components/imgicon.xpt
@@ -288,6 +295,8 @@
 ; JavaScript components
 @BINPATH@/components/ConsoleAPI.manifest
 @BINPATH@/components/ConsoleAPI.js
+@BINPATH@/components/ContactManager.js
+@BINPATH@/components/ContactManager.manifest
 @BINPATH@/components/FeedProcessor.manifest
 @BINPATH@/components/FeedProcessor.js
 @BINPATH@/components/BrowserFeeds.manifest
@@ -394,10 +403,10 @@
 @BINPATH@/components/nsFilePicker.js
 @BINPATH@/components/nsFilePicker.manifest
 #ifdef MOZ_B2G_RIL
-@BINPATH@/components/nsTelephonyWorker.manifest
-@BINPATH@/components/nsTelephonyWorker.js
-@BINPATH@/components/Telephony.manifest
-@BINPATH@/components/Telephony.js
+@BINPATH@/components/RadioInterfaceLayer.manifest
+@BINPATH@/components/RadioInterfaceLayer.js
+@BINPATH@/components/SmsDatabaseService.manifest
+@BINPATH@/components/SmsDatabaseService.js
 @BINPATH@/components/nsWifiWorker.js
 @BINPATH@/components/nsWifiWorker.manifest
 #endif
@@ -523,9 +532,7 @@
 ; svg
 @BINPATH@/res/svg.css
 @BINPATH@/components/dom_svg.xpt
-#ifdef MOZ_SMIL
 @BINPATH@/components/dom_smil.xpt
-#endif
 
 ; [Personal Security Manager]
 ;
@@ -603,3 +610,6 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/chrome/icons/
 @BINPATH@/chrome/chrome@JAREXT@
 @BINPATH@/chrome/chrome.manifest
+@BINPATH@/components/B2GComponents.manifest
+@BINPATH@/components/B2GComponents.xpt
+@BINPATH@/components/CameraContent.js

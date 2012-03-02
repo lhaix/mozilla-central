@@ -46,7 +46,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include "jsprf.h"
-#include "jsstdint.h"
 #include "jsutil.h"
 #include "jspubtd.h"
 #include "jsstr.h"
@@ -344,7 +343,7 @@ static int cvt_f(SprintfState *ss, double d, const char *fmt0, const char *fmt1)
         /* Totally bogus % command to sprintf. Just ignore it */
         return 0;
     }
-    memcpy(fin, fmt0, (size_t)amount);
+    js_memcpy(fin, fmt0, (size_t)amount);
     fin[amount] = 0;
 
     /* Convert floating point using the native sprintf code */
@@ -581,7 +580,7 @@ static struct NumArgState* BuildArgArray( const char *fmt, va_list ap, int* rv, 
                 nas[ cn ].type = TYPE_UINT32;
             } else if (sizeof(void *) == sizeof(int64_t)) {
                 nas[ cn ].type = TYPE_UINT64;
-            } else if (sizeof(void *) == sizeof(JSIntn)) {
+            } else if (sizeof(void *) == sizeof(int)) {
                 nas[ cn ].type = TYPE_UINTN;
             } else {
                 nas[ cn ].type = TYPE_UNKNOWN;
@@ -643,7 +642,7 @@ static struct NumArgState* BuildArgArray( const char *fmt, va_list ap, int* rv, 
         case TYPE_INT16:
         case TYPE_UINT16:
         case TYPE_INTN:
-        case TYPE_UINTN:                (void)va_arg( ap, JSIntn );             break;
+        case TYPE_UINTN:                (void)va_arg( ap, int );             break;
 
         case TYPE_INT32:                (void)va_arg( ap, int32_t );            break;
 
@@ -657,7 +656,7 @@ static struct NumArgState* BuildArgArray( const char *fmt, va_list ap, int* rv, 
 
         case TYPE_WSTRING:      (void)va_arg( ap, jschar* );            break;
 
-        case TYPE_INTSTR:       (void)va_arg( ap, JSIntn* );            break;
+        case TYPE_INTSTR:       (void)va_arg( ap, int* );            break;
 
         case TYPE_DOUBLE:       (void)va_arg( ap, double );             break;
 
@@ -918,7 +917,7 @@ static int dosprintf(SprintfState *ss, const char *fmt, va_list ap)
                 i = fmt - dolPt;
                 if( i < (int)sizeof( pattern ) ){
                     pattern[0] = '%';
-                    memcpy( &pattern[1], dolPt, (size_t)i );
+                    js_memcpy( &pattern[1], dolPt, (size_t)i );
                     rv = cvt_f(ss, u.d, pattern, &pattern[i+1] );
                 }
             } else

@@ -54,7 +54,6 @@
 #include "jsval.h"
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
-#include "jsobj.h"
 #include "jsarray.h"
 #include "jsnum.h"
 
@@ -190,7 +189,7 @@ class NodeBuilder
 
         if (!userobj) {
             userv.setNull();
-            for (uintN i = 0; i < AST_LIMIT; i++) {
+            for (unsigned i = 0; i < AST_LIMIT; i++) {
                 callbacks[i].setNull();
             }
             return true;
@@ -198,7 +197,7 @@ class NodeBuilder
 
         userv.setObject(*userobj);
 
-        for (uintN i = 0; i < AST_LIMIT; i++) {
+        for (unsigned i = 0; i < AST_LIMIT; i++) {
             Value funv;
 
             const char *name = callbackNames[i];
@@ -556,10 +555,6 @@ class NodeBuilder
 
     bool generatorExpression(Value body, NodeVector &blocks, Value filter,
                              TokenPos *pos, Value *dst);
-
-    bool graphExpression(jsint idx, Value expr, TokenPos *pos, Value *dst);
-
-    bool graphIndexExpression(jsint idx, TokenPos *pos, Value *dst);
 
     bool letExpression(NodeVector &head, Value expr, TokenPos *pos, Value *dst);
 
@@ -1219,29 +1214,6 @@ NodeBuilder::generatorExpression(Value body, NodeVector &blocks, Value filter, T
                    "blocks", array,
                    "filter", filter,
                    dst);
-}
-
-bool
-NodeBuilder::graphExpression(jsint idx, Value expr, TokenPos *pos, Value *dst)
-{
-    Value cb = callbacks[AST_GRAPH_EXPR];
-    if (!cb.isNull())
-        return callback(cb, NumberValue(idx), pos, dst);
-
-    return newNode(AST_GRAPH_EXPR, pos,
-                   "index", NumberValue(idx),
-                   "expression", expr,
-                   dst);
-}
-
-bool
-NodeBuilder::graphIndexExpression(jsint idx, TokenPos *pos, Value *dst)
-{
-    Value cb = callbacks[AST_GRAPH_IDX_EXPR];
-    if (!cb.isNull())
-        return callback(cb, NumberValue(idx), pos, dst);
-
-    return newNode(AST_GRAPH_IDX_EXPR, pos, "index", NumberValue(idx), dst);
 }
 
 bool
@@ -2620,19 +2592,6 @@ ASTSerializer::expression(ParseNode *pn, Value *dst)
                builder.yieldExpression(arg, &pn->pn_pos, dst);
       }
 
-      case PNK_DEFSHARP:
-      {
-        DefSharpExpression &defsharp = pn->asDefSharpExpression();
-        Value expr;
-        return expression(&defsharp.expression(), &expr) &&
-               builder.graphExpression(defsharp.number(), expr, &defsharp.pn_pos, dst);
-      }
-
-      case PNK_USESHARP: {
-        UseSharpExpression &expr = pn->asUseSharpExpression();
-        return builder.graphIndexExpression(expr.number(), &expr.pn_pos, dst);
-      }
-
       case PNK_ARRAYCOMP:
         /* NB: it's no longer the case that pn_count could be 2. */
         LOCAL_ASSERT(pn->pn_count == 1);
@@ -2860,7 +2819,7 @@ ASTSerializer::literal(ParseNode *pn, Value *dst)
         if (!js_GetClassPrototype(cx, &cx->fp()->scopeChain(), JSProto_RegExp, &proto))
             return false;
 
-        JSObject *re2 = js_CloneRegExpObject(cx, re1, proto);
+        JSObject *re2 = CloneRegExpObject(cx, re1, proto);
         if (!re2)
             return false;
 

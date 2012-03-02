@@ -46,6 +46,7 @@
 #include "jsprvtd.h"
 #include "jslock.h"
 #include "jscell.h"
+#include "jsutil.h"
 
 #include "js/HashTable.h"
 #include "vm/Unicode.h"
@@ -96,7 +97,7 @@ extern JSSubString js_EmptySubString;
 #define JS7_ISDEC(c)    ((((unsigned)(c)) - '0') <= 9)
 #define JS7_UNDEC(c)    ((c) - '0')
 #define JS7_ISHEX(c)    ((c) < 128 && isxdigit(c))
-#define JS7_UNHEX(c)    (uintN)(JS7_ISDEC(c) ? (c) - '0' : 10 + tolower(c) - 'a')
+#define JS7_UNHEX(c)    (unsigned)(JS7_ISDEC(c) ? (c) - '0' : 10 + tolower(c) - 'a')
 #define JS7_ISLET(c)    ((c) < 128 && isalpha(c))
 
 /* Initialize the String class, returning its prototype object. */
@@ -185,7 +186,11 @@ namespace js {
  * or str2 are not GC-allocated things.
  */
 extern bool
-EqualStrings(JSContext *cx, JSString *str1, JSString *str2, JSBool *result);
+EqualStrings(JSContext *cx, JSString *str1, JSString *str2, bool *result);
+
+/* Use the infallible method instead! */
+extern bool
+EqualStrings(JSContext *cx, JSLinearString *str1, JSLinearString *str2, bool *result) MOZ_DELETE;
 
 /* EqualStrings is infallible on linear strings. */
 extern bool
@@ -215,7 +220,11 @@ js_strchr(const jschar *s, jschar c);
 extern jschar *
 js_strchr_limit(const jschar *s, jschar c, const jschar *limit);
 
-#define js_strncpy(t, s, n)     memcpy((t), (s), (n) * sizeof(jschar))
+static JS_ALWAYS_INLINE void
+js_strncpy(jschar *dst, const jschar *src, size_t nelem)
+{
+    return js::PodCopy(dst, src, nelem);
+}
 
 namespace js {
 
@@ -280,21 +289,21 @@ DeflateStringToUTF8Buffer(JSContext *cx, const jschar *chars,
  * function optimization in js{interp,tracer}.cpp.
  */
 extern JSBool
-str_replace(JSContext *cx, uintN argc, js::Value *vp);
+str_replace(JSContext *cx, unsigned argc, js::Value *vp);
 
 extern JSBool
-str_fromCharCode(JSContext *cx, uintN argc, Value *vp);
+str_fromCharCode(JSContext *cx, unsigned argc, Value *vp);
 
 } /* namespace js */
 
 extern JSBool
-js_str_toString(JSContext *cx, uintN argc, js::Value *vp);
+js_str_toString(JSContext *cx, unsigned argc, js::Value *vp);
 
 extern JSBool
-js_str_charAt(JSContext *cx, uintN argc, js::Value *vp);
+js_str_charAt(JSContext *cx, unsigned argc, js::Value *vp);
 
 extern JSBool
-js_str_charCodeAt(JSContext *cx, uintN argc, js::Value *vp);
+js_str_charCodeAt(JSContext *cx, unsigned argc, js::Value *vp);
 
 /*
  * Convert one UCS-4 char and write it into a UTF-8 buffer, which must be at
@@ -339,17 +348,17 @@ FileEscapedString(FILE *fp, JSLinearString *str, uint32_t quote)
 }
 
 JSBool
-str_match(JSContext *cx, uintN argc, Value *vp);
+str_match(JSContext *cx, unsigned argc, Value *vp);
 
 JSBool
-str_search(JSContext *cx, uintN argc, Value *vp);
+str_search(JSContext *cx, unsigned argc, Value *vp);
 
 JSBool
-str_split(JSContext *cx, uintN argc, Value *vp);
+str_split(JSContext *cx, unsigned argc, Value *vp);
 
 } /* namespace js */
 
 extern JSBool
-js_String(JSContext *cx, uintN argc, js::Value *vp);
+js_String(JSContext *cx, unsigned argc, js::Value *vp);
 
 #endif /* jsstr_h___ */

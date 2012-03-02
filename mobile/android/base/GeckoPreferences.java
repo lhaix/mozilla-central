@@ -58,6 +58,7 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.text.TextWatcher;
+import android.text.TextUtils;
 import android.content.DialogInterface;
 
 import org.json.JSONArray;
@@ -70,19 +71,24 @@ public class GeckoPreferences
 {
     private static final String LOGTAG = "GeckoPreferences";
 
-    private ArrayList<String> mPreferencesList = new ArrayList<String>();
+    private ArrayList<String> mPreferencesList;
     private PreferenceScreen mPreferenceScreen;
+    private static boolean sIsCharEncodingEnabled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        if (Build.VERSION.SDK_INT >= 11)
-            new GeckoActionBar().setDisplayHomeAsUpEnabled(this, true);
-
         addPreferencesFromResource(R.xml.preferences);
-        mPreferenceScreen = getPreferenceScreen();
         GeckoAppShell.registerGeckoEventListener("Preferences:Data", this);
+   }
+
+   @Override
+   public void onWindowFocusChanged(boolean hasFocus) {
+        if (!hasFocus)
+            return;
+
+        mPreferencesList = new ArrayList<String>();
+        mPreferenceScreen = getPreferenceScreen();
         initGroups(mPreferenceScreen);
         initValues();
     }
@@ -108,7 +114,7 @@ public class GeckoPreferences
     private void initValues() {
         JSONArray jsonPrefs = new JSONArray(mPreferencesList);
 
-        GeckoEvent event = new GeckoEvent("Preferences:Get", jsonPrefs.toString());
+        GeckoEvent event = GeckoEvent.createBroadcastEvent("Preferences:Get", jsonPrefs.toString());
         GeckoAppShell.sendEventToGecko(event);
     }
 
@@ -139,12 +145,22 @@ public class GeckoPreferences
     final private int DIALOG_CREATE_MASTER_PASSWORD = 0;
     final private int DIALOG_REMOVE_MASTER_PASSWORD = 1;
 
+    public static void setCharEncodingState(boolean enabled) {
+        sIsCharEncodingEnabled = enabled;
+    }
+
+    public static boolean getCharEncodingState() {
+        return sIsCharEncodingEnabled;
+    }
+
     @Override
     public boolean onPreferenceChange(Preference preference, Object newValue) {
         String prefName = preference.getKey();
         if (prefName != null && prefName.equals("privacy.masterpassword.enabled")) {
             showDialog((Boolean)newValue ? DIALOG_CREATE_MASTER_PASSWORD : DIALOG_REMOVE_MASTER_PASSWORD);
             return false;
+        } else if (prefName != null && prefName.equals("browser.menu.showCharacterEncoding")) {
+            setCharEncodingState(((String) newValue).equals("true"));
         }
 
         setPreference(prefName, newValue);
@@ -187,7 +203,8 @@ public class GeckoPreferences
 
             String text1 = input1.getText().toString();
             String text2 = input2.getText().toString();
-            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(text1.equals(text2));
+            boolean disabled = TextUtils.isEmpty(text1) || TextUtils.isEmpty(text2) || !text1.equals(text2);
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(!disabled);
         }
 
         public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
@@ -216,7 +233,7 @@ public class GeckoPreferences
                                     jsonPref.put("type", "string");
                                     jsonPref.put("value", input1.getText().toString());
                     
-                                    GeckoEvent event = new GeckoEvent("Preferences:Set", jsonPref.toString());
+                                    GeckoEvent event = GeckoEvent.createBroadcastEvent("Preferences:Set", jsonPref.toString());
                                     GeckoAppShell.sendEventToGecko(event);
                                 } catch(Exception ex) {
                                     Log.e(LOGTAG, "Error setting masterpassword", ex);
@@ -230,8 +247,8 @@ public class GeckoPreferences
                             }
                         });
                         dialog = builder.create();
-                        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-                            public void onDismiss(DialogInterface dialog) {
+                        dialog.setOnShowListener(new DialogInterface.OnShowListener() {
+                            public void onShow(DialogInterface dialog) {
                                 input1.setText("");
                                 input2.setText("");
                                 input1.requestFocus();
@@ -257,7 +274,7 @@ public class GeckoPreferences
                                     jsonPref.put("type", "string");
                                     jsonPref.put("value", input.getText().toString());
                         
-                                    GeckoEvent event = new GeckoEvent("Preferences:Set", jsonPref.toString());
+                                    GeckoEvent event = GeckoEvent.createBroadcastEvent("Preferences:Set", jsonPref.toString());
                                     GeckoAppShell.sendEventToGecko(event);
                                 } catch(Exception ex) {
                                     Log.e(LOGTAG, "Error setting masterpassword", ex);
@@ -356,7 +373,7 @@ public class GeckoPreferences
                 jsonPref.put("value", String.valueOf(value));
             }
 
-            GeckoEvent event = new GeckoEvent("Preferences:Set", jsonPref.toString());
+            GeckoEvent event = GeckoEvent.createBroadcastEvent("Preferences:Set", jsonPref.toString());
             GeckoAppShell.sendEventToGecko(event);
         } catch (JSONException e) {
             Log.e(LOGTAG, "JSON exception: ", e);

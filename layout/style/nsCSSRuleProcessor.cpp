@@ -797,8 +797,7 @@ RuleHash::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const
 size_t
 RuleHash::SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const
 {
-  return aMallocSizeOf(this, sizeof(RuleHash)) +
-         SizeOfExcludingThis(aMallocSizeOf);
+  return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
 }
 
 //--------------------------------
@@ -960,7 +959,7 @@ SizeOfSelectorsEntry(PLDHashEntryHdr* aHdr, nsMallocSizeOfFun aMallocSizeOf, voi
 size_t
 RuleCascadeData::SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const
 {
-  size_t n = aMallocSizeOf(this, sizeof(RuleCascadeData));
+  size_t n = aMallocSizeOf(this);
 
   n += mRuleHash.SizeOfExcludingThis(aMallocSizeOf);
   for (PRUint32 i = 0; i < ArrayLength(mPseudoElementRuleHashes); ++i) {
@@ -1263,7 +1262,7 @@ nsCSSRuleProcessor::GetWindowsThemeIdentifier()
 nsEventStates
 nsCSSRuleProcessor::GetContentState(Element* aElement)
 {
-  nsEventStates state = aElement->State();
+  nsEventStates state = aElement->StyleState();
 
   // If we are not supposed to mark visited links as such, be sure to
   // flip the bits appropriately.  We want to do this here, rather
@@ -1283,7 +1282,7 @@ nsCSSRuleProcessor::GetContentState(Element* aElement)
 bool
 nsCSSRuleProcessor::IsLink(Element* aElement)
 {
-  nsEventStates state = aElement->State();
+  nsEventStates state = aElement->StyleState();
   return state.HasAtLeastOneOfStates(NS_EVENT_STATE_VISITED | NS_EVENT_STATE_UNVISITED);
 }
 
@@ -1572,8 +1571,10 @@ static const nsEventStates sPseudoClassStates[] = {
   nsEventStates(),
   nsEventStates()
 };
-PR_STATIC_ASSERT(NS_ARRAY_LENGTH(sPseudoClassStates) ==
-                   nsCSSPseudoClasses::ePseudoClass_NotPseudoClass + 1);
+MOZ_STATIC_ASSERT(NS_ARRAY_LENGTH(sPseudoClassStates) ==
+                  nsCSSPseudoClasses::ePseudoClass_NotPseudoClass + 1,
+                  "ePseudoClass_NotPseudoClass is no longer at the end of"
+                  "sPseudoClassStates");
 
 // |aDependence| has two functions:
 //  * when non-null, it indicates that we're processing a negation,
@@ -2588,8 +2589,7 @@ nsCSSRuleProcessor::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const
 /* virtual */ size_t
 nsCSSRuleProcessor::SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const
 {
-  return aMallocSizeOf(this, sizeof(nsCSSRuleProcessor)) +
-         SizeOfExcludingThis(aMallocSizeOf);
+  return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
 }
 
 // Append all the currently-active font face rules to aArray.  Return

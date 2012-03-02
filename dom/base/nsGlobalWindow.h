@@ -236,7 +236,7 @@ private:
 class nsOuterWindowProxy : public js::Wrapper
 {
 public:
-  nsOuterWindowProxy() : js::Wrapper((uintN)0) {}
+  nsOuterWindowProxy() : js::Wrapper((unsigned)0) {}
 
   virtual bool isOuterWindow() {
     return true;
@@ -327,6 +327,8 @@ public:
   virtual void OnFinalize(JSObject* aObject);
   virtual void SetScriptsEnabled(bool aEnabled, bool aFireTimeouts);
 
+  virtual bool IsBlackForCC();
+
   // nsIScriptObjectPrincipal
   virtual nsIPrincipal* GetPrincipal();
 
@@ -396,6 +398,7 @@ public:
   virtual NS_HIDDEN_(void) MaybeUpdateTouchState();
   virtual NS_HIDDEN_(void) UpdateTouchState();
   virtual NS_HIDDEN_(bool) DispatchCustomEvent(const char *aEventName);
+  virtual NS_HIDDEN_(nsresult) SetFullScreenInternal(bool aIsFullScreen, bool aRequireTrust);
 
   // nsIDOMStorageIndexedDB
   NS_DECL_NSIDOMSTORAGEINDEXEDDB
@@ -508,8 +511,8 @@ public:
 
   friend class WindowStateHolder;
 
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsGlobalWindow,
-                                                         nsIScriptGlobalObject)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsGlobalWindow,
+                                                                   nsIScriptGlobalObject)
 
   void InitJavaProperties();
 
@@ -574,7 +577,9 @@ public:
   }
 
   PRInt64 SizeOf() const;
+  size_t SizeOfStyleSheets(nsMallocSizeOfFun aMallocSizeOf) const;
 
+  void UnmarkGrayTimers();
 private:
   // Enable updates for the accelerometer.
   void EnableDeviceMotionUpdates();
@@ -590,11 +595,9 @@ protected:
   virtual ~nsGlobalWindow();
   void CleanUp(bool aIgnoreModalDialog);
   void ClearControllers();
-  static void TryClearWindowScope(nsISupports* aWindow);
-  void ClearScopeWhenAllScriptsStop();
   nsresult FinalClose();
 
-  void FreeInnerObjects(bool aClearScope);
+  void FreeInnerObjects();
   nsGlobalWindow *CallerInnerWindow();
 
   nsresult InnerSetNewDocument(nsIDocument* aDocument);
@@ -672,7 +675,6 @@ protected:
                                     nsIDOMWindow **aReturn);
 
   static void CloseWindow(nsISupports* aWindow);
-  static void ClearWindowScope(nsISupports* aWindow);
 
   // Timeout Functions
   // Language agnostic timeout function (all args passed).

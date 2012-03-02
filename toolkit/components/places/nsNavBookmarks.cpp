@@ -43,7 +43,6 @@
 
 #include "nsNavHistory.h"
 #include "nsAnnotationService.h"
-#include "nsILivemarkService.h"
 #include "nsPlacesMacros.h"
 #include "Helpers.h"
 
@@ -56,6 +55,8 @@
 #include "mozilla/storage.h"
 #include "mozilla/FunctionTimer.h"
 #include "mozilla/Util.h"
+
+#include "sampler.h"
 
 #define BOOKMARKS_TO_KEYWORDS_INITIAL_CACHE_SIZE 64
 #define RECENT_BOOKMARKS_INITIAL_CACHE_SIZE 10
@@ -681,6 +682,7 @@ nsNavBookmarks::InsertBookmark(PRInt64 aFolder,
 NS_IMETHODIMP
 nsNavBookmarks::RemoveItem(PRInt64 aItemId)
 {
+  SAMPLE_LABEL("bookmarks", "RemoveItem");
   NS_ENSURE_ARG(aItemId != mRoot);
 
   BookmarkData bookmark;
@@ -1050,6 +1052,48 @@ nsNavBookmarks::GetRemoveFolderTransaction(PRInt64 aFolderId, nsITransaction** a
 
 
 nsresult
+nsNavBookmarks::GetDescendantFolders(PRInt64 aFolderId,
+                                     nsTArray<PRInt64>& aDescendantFoldersArray) {
+  nsresult rv;
+  // New descendant folders will be added from this index on.
+  PRUint32 startIndex = aDescendantFoldersArray.Length();
+  {
+    nsCOMPtr<mozIStorageStatement> stmt = mDB->GetStatement(
+      "SELECT id "
+      "FROM moz_bookmarks "
+      "WHERE parent = :parent "
+      "AND type = :item_type "
+    );
+    NS_ENSURE_STATE(stmt);
+    mozStorageStatementScoper scoper(stmt);
+
+    rv = stmt->BindInt64ByName(NS_LITERAL_CSTRING("parent"), aFolderId);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = stmt->BindInt32ByName(NS_LITERAL_CSTRING("item_type"), TYPE_FOLDER);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    bool hasMore = false;
+    while (NS_SUCCEEDED(stmt->ExecuteStep(&hasMore)) && hasMore) {
+      PRInt64 itemId;
+      rv = stmt->GetInt64(0, &itemId);
+      NS_ENSURE_SUCCESS(rv, rv);
+      aDescendantFoldersArray.AppendElement(itemId);
+    }
+  }
+
+  // Recursively call GetDescendantFolders for added folders.
+  // We start at startIndex since previous folders are checked
+  // by previous calls to this method.
+  PRUint32 childCount = aDescendantFoldersArray.Length();
+  for (PRUint32 i = startIndex; i < childCount; ++i) {
+    GetDescendantFolders(aDescendantFoldersArray[i], aDescendantFoldersArray);
+  }
+
+  return NS_OK;
+}
+
+
+nsresult
 nsNavBookmarks::GetDescendantChildren(PRInt64 aFolderId,
                                       const nsACString& aFolderGuid,
                                       PRInt64 aGrandParentId,
@@ -1132,6 +1176,7 @@ nsNavBookmarks::GetDescendantChildren(PRInt64 aFolderId,
 NS_IMETHODIMP
 nsNavBookmarks::RemoveFolderChildren(PRInt64 aFolderId)
 {
+  SAMPLE_LABEL("bookmarks", "RemoveFolderChilder");
   NS_ENSURE_ARG_MIN(aFolderId, 1);
 
   BookmarkData folder;
@@ -2751,6 +2796,7 @@ nsNavBookmarks::EnsureKeywordsHash() {
 NS_IMETHODIMP
 nsNavBookmarks::RunInBatchMode(nsINavHistoryBatchCallback* aCallback,
                                nsISupports* aUserData) {
+  SAMPLE_LABEL("bookmarks", "RunInBatchMode");
   NS_ENSURE_ARG(aCallback);
 
   mBatching = true;

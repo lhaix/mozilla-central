@@ -45,7 +45,12 @@ include $(DEPTH)/config/autoconf.mk
 
 MODULE		= xpcom
 
-DIRS		= external component bug656331_component
+DIRS		= \
+  external \
+  component \
+  bug656331_component \
+  component_no_aslr \
+  $(NULL)
 
 ifeq ($(OS_ARCH),WINNT)
 DIRS		+= windows
@@ -86,9 +91,11 @@ CPP_UNIT_TESTS = \
                  ShowAlignments.cpp \
                  ShowSSEConfig.cpp \
                  TestAutoPtr.cpp \
+                 TestBloomFilter.cpp \
                  TestCOMArray.cpp \
                  TestCOMPtr.cpp \
                  TestCOMPtrEq.cpp \
+                 TestDeque.cpp \
                  TestFile.cpp \
                  TestHashtables.cpp \
                  TestID.cpp \
@@ -109,7 +116,6 @@ endif
 #CPP_UNIT_TESTS += \
 #                  TestArray.cpp \
 #                  TestCRT.cpp \
-#                  TestDeque.cpp \
 #                  TestEncoding.cpp \
 #                  TestExpirationTracker.cpp \
 #                  TestPipes.cpp \
@@ -163,7 +169,6 @@ include $(topsrcdir)/config/rules.mk
 
 LOCAL_INCLUDES	= \
                 -I$(srcdir)/../ds \
-		-I$(srcdir)/services \
 		$(NULL)
 
 libs::

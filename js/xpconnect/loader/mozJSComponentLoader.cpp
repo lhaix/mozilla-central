@@ -196,7 +196,7 @@ mozJSLoaderErrorReporter(JSContext *cx, const char *message, JSErrorReport *rep)
 }
 
 static JSBool
-Dump(JSContext *cx, uintN argc, jsval *vp)
+Dump(JSContext *cx, unsigned argc, jsval *vp)
 {
     JSString *str;
     if (!argc)
@@ -221,7 +221,7 @@ Dump(JSContext *cx, uintN argc, jsval *vp)
 }
 
 static JSBool
-Debug(JSContext *cx, uintN argc, jsval *vp)
+Debug(JSContext *cx, unsigned argc, jsval *vp)
 {
 #ifdef DEBUG
     return Dump(cx, argc, vp);
@@ -231,7 +231,7 @@ Debug(JSContext *cx, uintN argc, jsval *vp)
 }
 
 static JSBool
-Atob(JSContext *cx, uintN argc, jsval *vp)
+Atob(JSContext *cx, unsigned argc, jsval *vp)
 {
     if (!argc)
         return true;
@@ -240,7 +240,7 @@ Atob(JSContext *cx, uintN argc, jsval *vp)
 }
 
 static JSBool
-Btoa(JSContext *cx, uintN argc, jsval *vp)
+Btoa(JSContext *cx, unsigned argc, jsval *vp)
 {
     if (!argc)
         return true;
@@ -249,7 +249,7 @@ Btoa(JSContext *cx, uintN argc, jsval *vp)
 }
 
 static JSBool
-File(JSContext *cx, uintN argc, jsval *vp)
+File(JSContext *cx, unsigned argc, jsval *vp)
 {
     nsresult rv;
 
@@ -317,7 +317,6 @@ public:
 
 private:
     JSContext* mContext;
-    intN       mContextThread;
     nsIThreadJSContextStack* mContextStack;
     char*      mBuf;
 
@@ -446,9 +445,6 @@ mozJSComponentLoader::ReallyInit()
 
     // Always use the latest js version
     JS_SetVersion(mContext, JSVERSION_LATEST);
-
-    // Limit C stack consumption to a reasonable 512K
-    JS_SetNativeStackQuota(mContext, 512 * 1024);
 
     nsCOMPtr<nsIScriptSecurityManager> secman =
         do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID);
@@ -1168,19 +1164,21 @@ mozJSComponentLoader::ImportInto(const nsACString & aLocation,
         if (!newEntry || !mInProgressImports.Put(key, newEntry))
             return NS_ERROR_OUT_OF_MEMORY;
 
-        jsval exception = JSVAL_VOID;
+        JS::Anchor<jsval> exception(JSVAL_VOID);
         rv = GlobalForLocation(sourceLocalFile, resURI, &newEntry->global,
-                               &newEntry->location, &exception);
+                               &newEntry->location, &exception.get());
 
         mInProgressImports.Remove(key);
 
         if (NS_FAILED(rv)) {
             *_retval = nsnull;
 
-            if (!JSVAL_IS_VOID(exception)) {
+            if (!JSVAL_IS_VOID(exception.get())) {
                 // An exception was thrown during compilation. Propagate it
                 // out to our caller so they can report it.
-                JS_SetPendingException(callercx, exception);
+                if (!JS_WrapValue(callercx, &exception.get()))
+                    return NS_ERROR_OUT_OF_MEMORY;
+                JS_SetPendingException(callercx, exception.get());
                 return NS_OK;
             }
 
@@ -1355,23 +1353,18 @@ mozJSComponentLoader::ModuleEntry::GetFactory(const mozilla::Module& module,
 //----------------------------------------------------------------------
 
 JSCLContextHelper::JSCLContextHelper(mozJSComponentLoader *loader)
-    : mContext(loader->mContext), mContextThread(0),
+    : mContext(loader->mContext),
       mContextStack(loader->mContextStack),
       mBuf(nsnull)
 {
     mContextStack->Push(mContext);
-    mContextThread = JS_GetContextThread(mContext);
-    if (mContextThread) {
-        JS_BeginRequest(mContext);
-    }
+    JS_BeginRequest(mContext);
 }
 
 JSCLContextHelper::~JSCLContextHelper()
 {
     if (mContextStack) {
-        if (mContextThread) {
-            JS_EndRequest(mContext);
-        }
+        JS_EndRequest(mContext);
 
         mContextStack->Pop(nsnull);
 

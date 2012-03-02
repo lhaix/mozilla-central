@@ -106,7 +106,7 @@ XPCNativeMember::Resolve(XPCCallContext& ccx, XPCNativeInterface* iface,
 
     // This is a method or attribute - we'll be needing a function object
 
-    intN argc;
+    int argc;
     JSNative callback;
 
     if (IsMethod()) {
@@ -115,7 +115,7 @@ XPCNativeMember::Resolve(XPCCallContext& ccx, XPCNativeInterface* iface,
             return false;
 
         // Note: ASSUMES that retval is last arg.
-        argc = (intN) info->GetParamCount();
+        argc = (int) info->GetParamCount();
         if (argc && info->GetParam((uint8_t)(argc-1)).IsRetval())
             argc-- ;
 
@@ -419,11 +419,7 @@ XPCNativeInterface::DestroyInstance(XPCNativeInterface* inst)
 size_t
 XPCNativeInterface::SizeOfIncludingThis(nsMallocSizeOfFun mallocSizeOf)
 {
-    size_t computedSize = sizeof(XPCNativeInterface);
-    if (mMemberCount > 1)
-        computedSize += (mMemberCount - 1) * sizeof(XPCNativeMember);
-
-    return mallocSizeOf(this, computedSize);
+    return mallocSizeOf(this);
 }
 
 void
@@ -785,11 +781,7 @@ XPCNativeSet::DestroyInstance(XPCNativeSet* inst)
 size_t
 XPCNativeSet::SizeOfIncludingThis(nsMallocSizeOfFun mallocSizeOf)
 {
-    size_t computedSize = sizeof(XPCNativeSet);
-    if (mInterfaceCount > 1)
-        computedSize += (mInterfaceCount - 1) * sizeof(XPCNativeInterface *);
-
-    return mallocSizeOf(this, computedSize);
+    return mallocSizeOf(this);
 }
 
 void

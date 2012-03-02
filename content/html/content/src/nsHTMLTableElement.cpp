@@ -736,12 +736,14 @@ nsHTMLTableElement::InsertRow(PRInt32 aIndex, nsIDOMHTMLElement** aValue)
       // is appended.
       if (aIndex == -1 || PRUint32(aIndex) == rowCount) {
         rv = parent->AppendChild(newRowNode, getter_AddRefs(retChild));
+        NS_ENSURE_SUCCESS(rv, rv);
       }
       else
       {
         // insert the new row before the reference row we found above
         rv = parent->InsertBefore(newRowNode, refRow,
                                   getter_AddRefs(retChild));
+        NS_ENSURE_SUCCESS(rv, rv);
       }
 
       if (retChild) {
@@ -778,6 +780,7 @@ nsHTMLTableElement::InsertRow(PRInt32 aIndex, nsIDOMHTMLElement** aValue)
 
       if (newRowGroup) {
         rv = AppendChildTo(newRowGroup, true);
+        NS_ENSURE_SUCCESS(rv, rv);
 
         rowGroup = do_QueryInterface(newRowGroup);
       }
@@ -898,7 +901,7 @@ nsHTMLTableElement::ParseAttribute(PRInt32 aNamespaceID,
   if (aNamespaceID == kNameSpaceID_None) {
     if (aAttribute == nsGkAtoms::cellspacing ||
         aAttribute == nsGkAtoms::cellpadding) {
-      return aResult.ParseSpecialIntValue(aValue);
+      return aResult.ParseNonNegativeIntValue(aValue);
     }
     if (aAttribute == nsGkAtoms::cols ||
         aAttribute == nsGkAtoms::border) {
@@ -968,19 +971,10 @@ MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
     // cellspacing
     const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::cellspacing);
     nsCSSValue* borderSpacing = aData->ValueForBorderSpacing();
-    if (value && value->Type() == nsAttrValue::eInteger) {
-      if (borderSpacing->GetUnit() == eCSSUnit_Null) {
-        borderSpacing->
-          SetFloatValue((float)value->GetIntegerValue(), eCSSUnit_Pixel);
-      }
-    }
-    else if (value && value->Type() == nsAttrValue::ePercent &&
-             eCompatibility_NavQuirks == mode) {
-      // in quirks mode, treat a % cellspacing value a pixel value.
-      if (borderSpacing->GetUnit() == eCSSUnit_Null) {
-        borderSpacing->
-         SetFloatValue(100.0f * value->GetPercentValue(), eCSSUnit_Pixel);
-      }
+    if (value && value->Type() == nsAttrValue::eInteger &&
+        borderSpacing->GetUnit() == eCSSUnit_Null) {
+      borderSpacing->
+        SetFloatValue(float(value->GetIntegerValue()), eCSSUnit_Pixel);
     }
   }
   if (aData->mSIDs & NS_STYLE_INHERIT_BIT(Table)) {
@@ -1156,39 +1150,29 @@ MapInheritedTableAttributesIntoRule(const nsMappedAttributes* aAttributes,
 {
   if (aData->mSIDs & NS_STYLE_INHERIT_BIT(Padding)) {
     const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::cellpadding);
-    if (value) {
-      nsAttrValue::ValueType valueType = value->Type();
-      if (valueType == nsAttrValue::eInteger ||
-          valueType == nsAttrValue::ePercent) {
-        // We have cellpadding.  This will override our padding values if we
-        // don't have any set.
-        nsCSSValue padVal;
-        if (valueType == nsAttrValue::eInteger)
-          padVal.SetFloatValue((float)value->GetIntegerValue(), eCSSUnit_Pixel);
-        else {
-          // when we support % cellpadding in standard mode, uncomment the
-          // following
-          float pctVal = value->GetPercentValue();
-          //if (eCompatibility_NavQuirks == mode) {
-          // in quirks mode treat a pct cellpadding value as a pixel value
-          padVal.SetFloatValue(100.0f * pctVal, eCSSUnit_Pixel);
-          //}
-          //else {
-          //  padVal.SetPercentValue(pctVal);
-          //}
-        }
-        nsCSSValue* paddingLeft = aData->ValueForPaddingLeftValue();
-        if (paddingLeft->GetUnit() == eCSSUnit_Null)
-          *paddingLeft = padVal;
-        nsCSSValue* paddingRight = aData->ValueForPaddingRightValue();
-        if (paddingRight->GetUnit() == eCSSUnit_Null)
-          *paddingRight = padVal;
-        nsCSSValue* paddingTop = aData->ValueForPaddingTop();
-        if (paddingTop->GetUnit() == eCSSUnit_Null)
-          *paddingTop = padVal;
-        nsCSSValue* paddingBottom = aData->ValueForPaddingBottom();
-        if (paddingBottom->GetUnit() == eCSSUnit_Null)
-          *paddingBottom = padVal;
+    if (value && value->Type() == nsAttrValue::eInteger) {
+      // We have cellpadding.  This will override our padding values if we
+      // don't have any set.
+      nsCSSValue padVal(float(value->GetIntegerValue()), eCSSUnit_Pixel);
+
+      nsCSSValue* paddingLeft = aData->ValueForPaddingLeftValue();
+      if (paddingLeft->GetUnit() == eCSSUnit_Null) {
+        *paddingLeft = padVal;
+      }
+
+      nsCSSValue* paddingRight = aData->ValueForPaddingRightValue();
+      if (paddingRight->GetUnit() == eCSSUnit_Null) {
+        *paddingRight = padVal;
+      }
+
+      nsCSSValue* paddingTop = aData->ValueForPaddingTop();
+      if (paddingTop->GetUnit() == eCSSUnit_Null) {
+        *paddingTop = padVal;
+      }
+
+      nsCSSValue* paddingBottom = aData->ValueForPaddingBottom();
+      if (paddingBottom->GetUnit() == eCSSUnit_Null) {
+        *paddingBottom = padVal;
       }
     }
   }
@@ -1262,7 +1246,7 @@ nsHTMLTableElement::UnbindFromTree(bool aDeep, bool aNullParent)
 
 nsresult
 nsHTMLTableElement::BeforeSetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                                  const nsAString* aValue,
+                                  const nsAttrValueOrString* aValue,
                                   bool aNotify)
 {
   if (aName == nsGkAtoms::cellpadding && aNameSpaceID == kNameSpaceID_None) {
@@ -1274,7 +1258,7 @@ nsHTMLTableElement::BeforeSetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 
 nsresult
 nsHTMLTableElement::AfterSetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                                 const nsAString* aValue,
+                                 const nsAttrValue* aValue,
                                  bool aNotify)
 {
   if (aName == nsGkAtoms::cellpadding && aNameSpaceID == kNameSpaceID_None) {

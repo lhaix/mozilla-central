@@ -267,7 +267,7 @@ Shape::matches(const StackShape &other) const
 
 inline bool
 Shape::matchesParamsAfterId(BaseShape *base, uint32_t aslot,
-                            uintN aattrs, uintN aflags, intN ashortid) const
+                            unsigned aattrs, unsigned aflags, int ashortid) const
 {
     return base->unowned() == this->base()->unowned() &&
            maybeSlot() == aslot &&
@@ -395,7 +395,7 @@ Shape::writeBarrierPre(const js::Shape *shape)
 
     JSCompartment *comp = shape->compartment();
     if (comp->needsBarrier())
-        MarkShapeUnbarriered(comp->barrierTracer(), shape, "write barrier");
+        MarkShapeUnbarriered(comp->barrierTracer(), const_cast<Shape *>(shape), "write barrier");
 #endif
 }
 
@@ -410,7 +410,7 @@ Shape::readBarrier(const Shape *shape)
 #ifdef JSGC_INCREMENTAL
     JSCompartment *comp = shape->compartment();
     if (comp->needsBarrier())
-        MarkShapeUnbarriered(comp->barrierTracer(), shape, "read barrier");
+        MarkShapeUnbarriered(comp->barrierTracer(), const_cast<Shape *>(shape), "read barrier");
 #endif
 }
 

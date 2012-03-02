@@ -70,9 +70,9 @@ LayerManagerD3D9::~LayerManagerD3D9()
 }
 
 bool
-LayerManagerD3D9::Initialize()
+LayerManagerD3D9::Initialize(bool force)
 {
-  ScopedGfxFeatureReporter reporter("D3D9 Layers");
+  ScopedGfxFeatureReporter reporter("D3D9 Layers", force);
 
   /* XXX: this preference and blacklist code should move out of the layer manager */
   bool forceAccelerate =
@@ -237,13 +237,6 @@ LayerManagerD3D9::CreateReadbackLayer()
 {
   nsRefPtr<ReadbackLayer> layer = new ReadbackLayerD3D9(this);
   return layer.forget();
-}
-
-already_AddRefed<ImageContainer>
-LayerManagerD3D9::CreateImageContainer()
-{
-  nsRefPtr<ImageContainer> container = new ImageContainerD3D9(device());
-  return container.forget();
 }
 
 already_AddRefed<ShadowThebesLayer>

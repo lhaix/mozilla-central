@@ -165,7 +165,7 @@ Invoke(JSContext *cx, InvokeArgsGuard &args, MaybeConstruct construct = NO_CONST
  * arguments onto the stack.
  */
 extern bool
-Invoke(JSContext *cx, const Value &thisv, const Value &fval, uintN argc, Value *argv,
+Invoke(JSContext *cx, const Value &thisv, const Value &fval, unsigned argc, Value *argv,
        Value *rval);
 
 /*
@@ -173,7 +173,7 @@ Invoke(JSContext *cx, const Value &thisv, const Value &fval, uintN argc, Value *
  * getter/setter calls.
  */
 extern bool
-InvokeGetterOrSetter(JSContext *cx, JSObject *obj, const Value &fval, uintN argc, Value *argv,
+InvokeGetterOrSetter(JSContext *cx, JSObject *obj, const Value &fval, unsigned argc, Value *argv,
                      Value *rval);
 
 /*
@@ -195,7 +195,7 @@ InvokeConstructor(JSContext *cx, InvokeArgsGuard &args)
 
 /* See the fval overload of Invoke. */
 extern bool
-InvokeConstructor(JSContext *cx, const Value &fval, uintN argc, Value *argv, Value *rval);
+InvokeConstructor(JSContext *cx, const Value &fval, unsigned argc, Value *argv, Value *rval);
 
 /*
  * Executes a script with the given scopeChain/this. The 'type' indicates
@@ -215,10 +215,8 @@ Execute(JSContext *cx, JSScript *script, JSObject &scopeChain, Value *rval);
 enum InterpMode
 {
     JSINTERP_NORMAL    = 0, /* interpreter is running normally */
-    JSINTERP_RECORD    = 1, /* interpreter has been started to record/run traces */
-    JSINTERP_PROFILE   = 2, /* interpreter should profile a loop */
-    JSINTERP_REJOIN    = 3, /* as normal, but the frame has already started */
-    JSINTERP_SKIP_TRAP = 4  /* as REJOIN, but skip trap at first opcode */
+    JSINTERP_REJOIN    = 1, /* as normal, but the frame has already started */
+    JSINTERP_SKIP_TRAP = 2  /* as REJOIN, but skip trap at first opcode */
 };
 
 /*
@@ -232,23 +230,14 @@ extern bool
 RunScript(JSContext *cx, JSScript *script, StackFrame *fp);
 
 extern bool
-CheckRedeclaration(JSContext *cx, JSObject *obj, jsid id, uintN attrs);
-
-inline bool
-CheckRedeclaration(JSContext *cx, JSObject *obj, PropertyName *name, uintN attrs)
-{
-    return CheckRedeclaration(cx, obj, ATOM_TO_JSID(name), attrs);
-}
+StrictlyEqual(JSContext *cx, const Value &lval, const Value &rval, bool *equal);
 
 extern bool
-StrictlyEqual(JSContext *cx, const Value &lval, const Value &rval, JSBool *equal);
-
-extern bool
-LooselyEqual(JSContext *cx, const Value &lval, const Value &rval, JSBool *equal);
+LooselyEqual(JSContext *cx, const Value &lval, const Value &rval, bool *equal);
 
 /* === except that NaN is the same as NaN and -0 is not the same as +0. */
 extern bool
-SameValue(JSContext *cx, const Value &v1, const Value &v2, JSBool *same);
+SameValue(JSContext *cx, const Value &v1, const Value &v2, bool *same);
 
 extern JSType
 TypeOfValue(JSContext *cx, const Value &v);
@@ -267,11 +256,11 @@ ValueToId(JSContext *cx, const Value &v, jsid *idp);
  * @return  The value of the upvar.
  */
 extern const Value &
-GetUpvar(JSContext *cx, uintN level, UpvarCookie cookie);
+GetUpvar(JSContext *cx, unsigned level, UpvarCookie cookie);
 
 /* Search the call stack for the nearest frame with static level targetLevel. */
 extern StackFrame *
-FindUpvarFrame(JSContext *cx, uintN targetLevel);
+FindUpvarFrame(JSContext *cx, unsigned targetLevel);
 
 /*
  * A linked list of the |FrameRegs regs;| variables belonging to all
@@ -360,6 +349,22 @@ Debug_SetValueRangeToCrashOnTouch(HeapValue *vec, size_t len)
 {
 #ifdef DEBUG
     Debug_SetValueRangeToCrashOnTouch((Value *) vec, len);
+#endif
+}
+
+static JS_ALWAYS_INLINE void
+Debug_SetSlotRangeToCrashOnTouch(HeapSlot *vec, size_t len)
+{
+#ifdef DEBUG
+    Debug_SetValueRangeToCrashOnTouch((Value *) vec, len);
+#endif
+}
+
+static JS_ALWAYS_INLINE void
+Debug_SetSlotRangeToCrashOnTouch(HeapSlot *begin, HeapSlot *end)
+{
+#ifdef DEBUG
+    Debug_SetValueRangeToCrashOnTouch((Value *) begin, end - begin);
 #endif
 }
 

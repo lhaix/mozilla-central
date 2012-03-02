@@ -51,6 +51,17 @@
 /* Forward declarations. */
 struct JSContext;
 
+static JS_ALWAYS_INLINE void *
+js_memcpy(void *dst_, const void *src_, size_t len)
+{
+    char *dst = (char *) dst_;
+    const char *src = (const char *) src_;
+    JS_ASSERT_IF(dst >= src, (size_t) (dst - src) >= len);
+    JS_ASSERT_IF(src >= dst, (size_t) (src - dst) >= len);
+
+    return memcpy(dst, src, len);
+}
+
 #ifdef __cplusplus
 namespace js {
 
@@ -181,96 +192,6 @@ class AutoScopedAssign
     ~AutoScopedAssign() { *addr = old; }
 };
 
-template <class RefCountable>
-class AlreadyIncRefed
-{
-    typedef RefCountable *****ConvertibleToBool;
-
-    RefCountable *obj;
-
-  public:
-    explicit AlreadyIncRefed(RefCountable *obj = NULL) : obj(obj) {}
-
-    bool null() const { return obj == NULL; }
-    operator ConvertibleToBool() const { return (ConvertibleToBool)obj; }
-
-    RefCountable *operator->() const { JS_ASSERT(!null()); return obj; }
-    RefCountable &operator*() const { JS_ASSERT(!null()); return *obj; }
-    RefCountable *get() const { return obj; }
-};
-
-template <class RefCountable>
-class NeedsIncRef
-{
-    typedef RefCountable *****ConvertibleToBool;
-
-    RefCountable *obj;
-
-  public:
-    explicit NeedsIncRef(RefCountable *obj = NULL) : obj(obj) {}
-
-    bool null() const { return obj == NULL; }
-    operator ConvertibleToBool() const { return (ConvertibleToBool)obj; }
-
-    RefCountable *operator->() const { JS_ASSERT(!null()); return obj; }
-    RefCountable &operator*() const { JS_ASSERT(!null()); return *obj; }
-    RefCountable *get() const { return obj; }
-};
-
-template <class RefCountable>
-class AutoRefCount
-{
-    typedef RefCountable *****ConvertibleToBool;
-
-    JSContext *const cx;
-    RefCountable *obj;
-
-    AutoRefCount(const AutoRefCount &other) MOZ_DELETE;
-    void operator=(const AutoRefCount &other) MOZ_DELETE;
-
-  public:
-    explicit AutoRefCount(JSContext *cx)
-      : cx(cx), obj(NULL)
-    {}
-
-    AutoRefCount(JSContext *cx, NeedsIncRef<RefCountable> aobj)
-      : cx(cx), obj(aobj.get())
-    {
-        if (obj)
-            obj->incref(cx);
-    }
-
-    AutoRefCount(JSContext *cx, AlreadyIncRefed<RefCountable> aobj)
-      : cx(cx), obj(aobj.get())
-    {}
-
-    ~AutoRefCount() {
-        if (obj)
-            obj->decref(cx);
-    }
-
-    void reset(NeedsIncRef<RefCountable> aobj) {
-        if (obj)
-            obj->decref(cx);
-        obj = aobj.get();
-        if (obj)
-            obj->incref(cx);
-    }
-
-    void reset(AlreadyIncRefed<RefCountable> aobj) {
-        if (obj)
-            obj->decref(cx);
-        obj = aobj.get();
-    }
-
-    bool null() const { return obj == NULL; }
-    operator ConvertibleToBool() const { return (ConvertibleToBool)obj; }
-
-    RefCountable *operator->() const { JS_ASSERT(!null()); return obj; }
-    RefCountable &operator*() const { JS_ASSERT(!null()); return *obj; }
-    RefCountable *get() const { return obj; }
-};
-
 template <class T>
 JS_ALWAYS_INLINE static void
 PodZero(T *t)
@@ -288,7 +209,7 @@ PodZero(T *t, size_t nelem)
      * length.  The compiler should inline the memset call with constant
      * size, though.
      */
-    for (size_t i = 0; i < nelem; ++i, ++t)
+    for (T *end = t + nelem; t != end; ++t)
         memset(t, 0, sizeof(T));
 }
 
@@ -311,6 +232,13 @@ PodArrayZero(T (&t)[N])
 
 template <class T>
 JS_ALWAYS_INLINE static void
+PodAssign(T *dst, const T *src)
+{
+    js_memcpy((char *) dst, (const char *) src, sizeof(T));
+}
+
+template <class T>
+JS_ALWAYS_INLINE static void
 PodCopy(T *dst, const T *src, size_t nelem)
 {
     /* Cannot find portable word-sized abs(). */
@@ -318,8 +246,12 @@ PodCopy(T *dst, const T *src, size_t nelem)
     JS_ASSERT_IF(src >= dst, size_t(src - dst) >= nelem);
 
     if (nelem < 128) {
+        /*
+         * Avoid using operator= in this loop, as it may have been
+         * intentionally deleted by the POD type.
+         */
         for (const T *srcend = src + nelem; src != srcend; ++src, ++dst)
-            *dst = *src;
+            PodAssign(dst, src);
     } else {
         memcpy(dst, src, nelem * sizeof(T));
     }
@@ -348,7 +280,7 @@ UnsignedPtrDiff(const void *bigger, const void *smaller)
 }
 
 /*
- * Ordinarily, a function taking a JSContext* 'cx' paremter reports errors on
+ * Ordinarily, a function taking a JSContext* 'cx' parameter reports errors on
  * the context. In some cases, functions optionally report and indicate this by
  * taking a nullable 'maybecx' parameter. In some cases, though, a function
  * always needs a 'cx', but optionally reports. This option is presented by the
@@ -399,9 +331,9 @@ inline __attribute__ ((unused)) void MUST_FLOW_THROUGH(const char *label) {}
 #ifdef JS_CRASH_DIAGNOSTICS
 # define JS_POISON(p, val, size) memset((p), (val), (size))
 # define JS_OPT_ASSERT(expr)                                                  \
-    ((expr) ? (void)0 : JS_Assert(#expr, __FILE__, __LINE__))
+    ((expr) ? (void)0 : MOZ_Assert(#expr, __FILE__, __LINE__))
 # define JS_OPT_ASSERT_IF(cond, expr)                                         \
-    ((!(cond) || (expr)) ? (void)0 : JS_Assert(#expr, __FILE__, __LINE__))
+    ((!(cond) || (expr)) ? (void)0 : MOZ_Assert(#expr, __FILE__, __LINE__))
 #else
 # define JS_POISON(p, val, size) ((void) 0)
 # define JS_OPT_ASSERT(expr) ((void) 0)

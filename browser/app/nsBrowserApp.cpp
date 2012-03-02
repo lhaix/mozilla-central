@@ -36,6 +36,7 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "nsXULAppAPI.h"
 #include "application.ini.h"
 #include "nsXPCOMGlue.h"
 #if defined(XP_WIN)
@@ -52,11 +53,6 @@
 
 #include <stdio.h>
 #include <stdarg.h>
-#include <string.h>
-
-#include "plstr.h"
-#include "prprf.h"
-#include "prenv.h"
 
 #include "nsCOMPtr.h"
 #include "nsILocalFile.h"
@@ -302,25 +298,12 @@ static int do_main(const char *exePath, int argc, char* argv[])
       Output("Couldn't read application.ini");
       return 255;
     }
-    result = XRE_main(argc, argv, appData);
+    int result = XRE_main(argc, argv, appData);
     XRE_FreeAppData(appData);
-  } else {
-#ifdef XP_WIN
-    // exePath comes from mozilla::BinaryPath::Get, which returns a UTF-8
-    // encoded path, so it is safe to convert it
-    rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(exePath), PR_FALSE,
-                         getter_AddRefs(appini));
-#else
-    rv = NS_NewNativeLocalFile(nsDependentCString(exePath), PR_FALSE,
-                               getter_AddRefs(appini));
-#endif
-    if (NS_FAILED(rv)) {
-      return 255;
-    }
-    result = XRE_main(argc, argv, &sAppData);
+    return result;
   }
 
-  return result;
+  return XRE_main(argc, argv, &sAppData);
 }
 
 int main(int argc, char* argv[])
