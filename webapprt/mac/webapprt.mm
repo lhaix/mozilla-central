@@ -55,14 +55,28 @@
 #include <Cocoa/Cocoa.h>
 #include <Foundation/Foundation.h>
 
+
+#include "nsXPCOMGlue.h"
+#include "nsINIParser.h"
+#include "nsXPCOMPrivate.h"              // for MAXPATHLEN and XPCOM_DLL
+#include "nsXULAppAPI.h"
+#include "nsComponentManagerUtils.h"
+#include "nsCOMPtr.h"
+#include "nsILocalFile.h"
+#include "nsStringGlue.h"
+//#include "nsWindowsWMain.cpp"            // we want a wmain entry point
+
+
+
 const char *WEBAPPRT_EXECUTABLE = "webapprt";
+const char *APPINI_NAME = "application.ini";
 //need the correct relative path here
 const char *WEBAPPRT_PATH = "/Contents/MacOS/"; 
 const char *INFO_FILE_PATH = "/Contents/Info.plist";
 
 void execNewBinary(NSString* launchPath);
 
-NSString *pathToCurrentFirefox(NSString* identifier);
+NSString *pathToNewestFirefox(NSString* identifier);
 
 NSException* makeException(NSString* name, NSString* message);
 
@@ -70,6 +84,39 @@ void displayErrorAlert(NSString* title, NSString* message);
 
 
 int gVerbose = 0;
+
+
+  nsresult AttemptGRELoad(char *greDir) {
+    nsresult rv;
+    char xpcomDLLPath[MAXPATHLEN];
+    snprintf(xpcomDLLPath, MAXPATHLEN, "%s%s", greDir, XPCOM_DLL);
+
+    rv = XPCOMGlueStartup(xpcomDLLPath);
+
+    if(NS_FAILED(rv)) {
+      return rv;
+    }
+
+    rv = XPCOMGlueLoadXULFunctions(kXULFuncs);
+    if(NS_FAILED(rv)) {
+      return rv;
+    }
+
+    SetDllDirectoryA(greDir);
+
+    return rv;
+  }
+
+  // Copied from toolkit/xre/nsAppData.cpp.
+  void SetAllocatedString(const char *&str, const char *newvalue) {
+    NS_Free(const_cast<char*>(str));
+    if (newvalue) {
+      str = NS_strdup(newvalue);
+    }
+    else {
+      str = nsnull;
+    }
+  }
 
 
 int main(int argc, char **argv)
@@ -96,7 +143,7 @@ int main(int argc, char **argv)
   @try {
 
   if (!firefoxPath) {
-    firefoxPath = pathToCurrentFirefox(bundleID); // XXX developer feature to specify other firefox here
+    firefoxPath = pathToNewestFirefox(bundleID); // XXX developer feature to specify other firefox here
     if (!firefoxPath) {
       // Launch a dialog to explain to the user that there's no compatible web runtime
       @throw makeException(@"Missing Web Runtime", @"Web Applications require Firefox to be installed");
@@ -156,6 +203,7 @@ int main(int argc, char **argv)
   if ([myVersion compare: firefoxVersion] != NSOrderedSame) {
     //we are going to assume that if they are different, we need to re-copy the webapprt, regardless of whether
     // it is newer or older.  If we don't find a webapprt, then the current Firefox must not be new enough to run webapps.
+    NSLog(@"This Application has an old webrt. Updating it.");
 
     //we know the firefox path, so copy the new webapprt here
     NSString *newWebRTPath = [NSString stringWithFormat: @"%@%s%s", firefoxPath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
@@ -198,14 +246,99 @@ int main(int argc, char **argv)
     //execv the new binary, and ride off into the sunset
     execNewBinary(myWebRTPath);
 
-  }
-  else {
+  } else {
     //we are ready to load XUL and such, and go go go
-    //DO C++ TIM STUFF HERE!!!
+
+      NSLog(@"This Application has the newest webrt.  Launching!");
+      bool isGreLoaded = false;
+
+      int result = 0;
+      char appINIPath[MAXPATHLEN];
+      char rtINIPath[MAXPATHLEN];
+      
+      //CONSTRUCT GREDIR AND CALL XPCOMGLUE WITH IT
+      char greDir[MAXPATHLEN];
+      snprintf(greDir, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH);
+      isGreLoaded = NS_SUCCEEDED(AttemptGRELoad(greDir));
 
 
+      if(!isGreLoaded) {
+        // TODO: User-friendly message explaining that FF needs to be installed
+        return 255;
+      }
+
+      // NOTE: The GRE has successfully loaded, so we can use XPCOM now
+
+      { // Scope for any XPCOM stuff we create
+          nsINIParser parser;
+          if(NS_FAILED(parser.Init(appINIPath))) {
+            NSLog(@"%s was not found\n", appINIPath);
+            return 255;
+          }
 
 
+        // Set up our environment to know where application.ini was loaded from.
+        char appEnv[MAXPATHLEN];
+        snprintf(appEnv, MAXPATHLEN, "XUL_APP_FILE=%s%s", [myBundlePath UTF8String], APPINI_NAME);
+        if (putenv(appEnv)) {
+          NSLog(@"Couldn't set %s.\n", appEnv);
+          return 255;
+        }
+
+        // Get the path to the runtime's INI file.  This should be in the
+        // same directory as the GRE.
+        snprintf(rtINIPath, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], APPINI_NAME);
+
+        // Load the runtime's INI from its path.
+        nsCOMPtr<nsILocalFile> rtINI;
+        if(NS_FAILED(XRE_GetFileFromPath(rtINIPath, getter_AddRefs(rtINI)))) {
+          NSLog(@"Runtime INI path not recognized: '%s'\n", rtINIPath);
+          return 255;
+        }
+
+        if(!rtINI) {
+          NSLog(@"Error: missing webapprt.ini");
+          return 255;
+        }
+
+        nsXREAppData *webShellAppData;
+        if (NS_FAILED(XRE_CreateAppData(rtINI, &webShellAppData))) {
+          NSLog(@"Couldn't read webapprt.ini\n");
+          return 255;
+        }
+
+        char profile[MAXPATHLEN];
+        if(NS_FAILED(parser.GetString("App", "Profile", profile, MAXPATHLEN))) {
+          NSLog(@"Unable to retrieve profile from web app INI file");
+          return 255;
+        }
+        SetAllocatedString(webShellAppData->profile, profile);
+
+        nsCOMPtr<nsILocalFile> directory;
+        if(NS_FAILED(XRE_GetFileFromPath(greDir, getter_AddRefs(directory)))) {
+          NSLog(@"Unable to open app dir");
+          return 255;
+        }
+
+        nsCOMPtr<nsILocalFile> xreDir;
+        if(NS_FAILED(XRE_GetFileFromPath(greDir, getter_AddRefs(xreDir)))) {
+          NSLog(@"Unable to open XRE dir");
+          return 255;
+        }
+
+        xreDir.forget(&webShellAppData->xreDirectory);
+        directory.forget(&webShellAppData->directory);
+
+        // There is only XUL.
+        result = XRE_main(argc, argv, webShellAppData);
+
+        // Cleanup
+        // TODO: The app is about to exit;
+        //       do we care about cleaning this stuff up?
+        XRE_FreeAppData(webShellAppData);
+      }
+      XPCOMGlueShutdown();
+      return result;
   }
   
 }
@@ -242,7 +375,7 @@ void displayErrorAlert(NSString* title, NSString* message)
 
 /* Find the currently installed Firefox, if any, and return
  * an absolute path to it. */
-NSString *pathToCurrentFirefox(NSString* identifier)
+NSString *pathToNewestFirefox(NSString* identifier)
 {
   //default is firefox
   NSString* appIdent = @"org.mozilla.nightlydebug";
