@@ -85,6 +85,18 @@ void displayErrorAlert(NSString* title, NSString* message);
 
 int gVerbose = 0;
 
+XRE_GetFileFromPathType XRE_GetFileFromPath;
+XRE_CreateAppDataType XRE_CreateAppData;
+XRE_FreeAppDataType XRE_FreeAppData;
+XRE_mainType XRE_main;
+
+  const nsDynamicFunctionLoad kXULFuncs[] = {
+      { "XRE_GetFileFromPath", (NSFuncPtr*) &XRE_GetFileFromPath },
+      { "XRE_CreateAppData", (NSFuncPtr*) &XRE_CreateAppData },
+      { "XRE_FreeAppData", (NSFuncPtr*) &XRE_FreeAppData },
+      { "XRE_main", (NSFuncPtr*) &XRE_main },
+      { nsnull, nsnull }
+  };
 
   nsresult AttemptGRELoad(char *greDir) {
     nsresult rv;
@@ -101,8 +113,6 @@ int gVerbose = 0;
     if(NS_FAILED(rv)) {
       return rv;
     }
-
-    SetDllDirectoryA(greDir);
 
     return rv;
   }

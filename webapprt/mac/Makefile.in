@@ -22,4 +22,11 @@ LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/base
 LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/build
 LOCAL_INCLUDES += -I$(DEPTH)/build
 
+DEFINES += -DXPCOM_GLUE
+STL_FLAGS=
+
+LIBS = \
+  $(XPCOM_STANDALONE_GLUE_LDOPTS) \
+  $(NULL)
+
 include $(topsrcdir)/config/rules.mk
