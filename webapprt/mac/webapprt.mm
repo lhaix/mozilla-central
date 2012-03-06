@@ -263,9 +263,30 @@ int main(int argc, char **argv)
       bool isGreLoaded = false;
 
       int result = 0;
-      char appINIPath[MAXPATHLEN];
       char rtINIPath[MAXPATHLEN];
-      
+
+
+      //Also set the DYLD_FALLBACK_LIBRARY_PATH, which lets libxpcom load properly
+      char libEnv[MAXPATHLEN];
+      snprintf(libEnv, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH);
+      if (setenv("DYLD_FALLBACK_LIBRARY_PATH", libEnv, 1)) {
+        NSLog(@"Couldn't set DYLD_FALLBACK_LIBRARY_PATH to:  %s", libEnv);
+        return 255;
+      }
+      NSLog(@"Set DYLD_FALLBACK_LIBRARY_PATH to: %s", libEnv);
+  
+
+      // Set up our environment to know where application.ini was loaded from.
+      char appEnv[MAXPATHLEN];
+      snprintf(appEnv, MAXPATHLEN, "%s%s%s", [myBundlePath UTF8String], WEBAPPRT_PATH, APPINI_NAME);
+      if (setenv("XUL_APP_FILE", appEnv, 1)) {
+        NSLog(@"Couldn't set XUL_APP_FILE to: %s", appEnv);
+        return 255;
+      }
+      NSLog(@"Set XUL_APP_FILE to: %s", appEnv);
+
+
+
       //CONSTRUCT GREDIR AND CALL XPCOMGLUE WITH IT
       char greDir[MAXPATHLEN];
       snprintf(greDir, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH);
@@ -281,23 +302,16 @@ int main(int argc, char **argv)
 
       { // Scope for any XPCOM stuff we create
           nsINIParser parser;
-          if(NS_FAILED(parser.Init(appINIPath))) {
-            NSLog(@"%s was not found\n", appINIPath);
+          if(NS_FAILED(parser.Init(appEnv))) {
+            NSLog(@"%s was not found\n", appEnv);
             return 255;
           }
 
 
-        // Set up our environment to know where application.ini was loaded from.
-        char appEnv[MAXPATHLEN];
-        snprintf(appEnv, MAXPATHLEN, "XUL_APP_FILE=%s%s", [myBundlePath UTF8String], APPINI_NAME);
-        if (putenv(appEnv)) {
-          NSLog(@"Couldn't set %s.\n", appEnv);
-          return 255;
-        }
-
         // Get the path to the runtime's INI file.  This should be in the
         // same directory as the GRE.
-        snprintf(rtINIPath, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], APPINI_NAME);
+        snprintf(rtINIPath, MAXPATHLEN, "%s%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH, APPINI_NAME);
+        NSLog(@"webrt.ini path: %s", rtINIPath);
 
         // Load the runtime's INI from its path.
         nsCOMPtr<nsILocalFile> rtINI;
@@ -313,7 +327,7 @@ int main(int argc, char **argv)
 
         nsXREAppData *webShellAppData;
         if (NS_FAILED(XRE_CreateAppData(rtINI, &webShellAppData))) {
-          NSLog(@"Couldn't read webapprt.ini\n");
+          NSLog(@"Couldn't read webapprt.ini: %s", rtINIPath);
           return 255;
         }
 
