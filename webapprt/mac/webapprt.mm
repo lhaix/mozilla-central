@@ -310,8 +310,8 @@ int main(int argc, char **argv)
 
         // Get the path to the runtime's INI file.  This should be in the
         // same directory as the GRE.
-        snprintf(rtINIPath, MAXPATHLEN, "%s%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH, APPINI_NAME);
-        NSLog(@"webrt.ini path: %s", rtINIPath);
+        snprintf(rtINIPath, MAXPATHLEN, "%s%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH, "webapprt.ini");
+        NSLog(@"webapprt.ini path: %s", rtINIPath);
 
         // Load the runtime's INI from its path.
         nsCOMPtr<nsILocalFile> rtINI;
