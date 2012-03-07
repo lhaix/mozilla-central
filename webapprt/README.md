@@ -90,4 +90,53 @@ The installer is responsible for
 
 Mac Native Installation Flow
 ============================
-**TODO** Write this
+
+Tasks:
+
+ 1) Create Application Support Directory
+ 2) Create Application Directory
+
+
+ Step 1: Create Application Support Directory
+ 
+  - Create folder:  ~/Library/Application Support/<profile>, where <profile> 
+    is a unique identifying string for this application. The pattern used above 
+    for Windows is fine, e.g. www.phoboslab.org;http;-1.  Those are all legal filename chars in MacOS.
+  
+    - Create file: ~/Library/Application Support/<profile>/config.json, which is identical to the
+      config.json described above for Windows
+
+
+Step 2:  note: all folder and file names are case-sensitive!
+
+  - Create folder: /Applications/<appname>, where <appname> is the friendly, user-facing name of
+    the application, which is in the install record.
+
+    - Create folder: /Applications/<appname>/Contents
+
+      - Create folder: /Applications/<appname>/Contents/MacOS
+        
+        - Copy file: Firefox.app/Contents/MacOS/webapprt to 
+            /Applications/<appname>/Contents/MacOS/webapprt
+
+        - Create file: application.ini
+        
+          - The template is similar to the Windows example above, but doesn't need the firefox path:
+              [App]
+              Name=<appname>
+              Profile=<profile>
+        
+        - Create folder: /Applications/<appname>/Contents/Resources
+          - Create file: /Applications/<appname>/Contents/Resources/appicon.icns
+            - format discussed below
+ 
+
+      - Create file: /Applications/<appname>/Contents/Info.plist
+        - format discussed below        
+
+
+
+
+
+
+
