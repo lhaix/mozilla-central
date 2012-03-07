@@ -10,7 +10,7 @@
 # for the specific language governing rights and limitations under the
 # License.
 #
-# The Original Code is an NSIS installer/uninstaller for Open Web Apps
+# The Original Code is an NSIS uninstaller for Open Web Apps
 #
 # The Initial Developer of the Original Code is
 # Mozilla Foundation.
@@ -40,6 +40,8 @@ SetCompressor /SOLID /FINAL lzma
 CRCCheck on
 RequestExecutionLevel user
 
+SilentInstall silent
+
 Var PARAMETERS
 
 Var ORIGIN_SCHEME
@@ -47,89 +49,15 @@ Var ORIGIN_HOST
 Var ORIGIN_PORT
 
 Var APP_FILENAME
-Var SHORTCUT_COMMENT
-Var ICON_PATH
 
-Name "Mozilla App Installer"
-OutFile ..\..\data\native-install\windows\installer\install.exe
+Name "Webapp Uninstaller Creator"
+OutFile webapp-uninstaller-creator.exe
 
 Function .onInit
 FunctionEnd
 
-Function RealInit
-  ClearErrors
-
-  ${GetParameters} $PARAMETERS
-  IfErrors 0 +2
-    Abort "No command line arguments specified"
-  DetailPrint "Command line: $PARAMETERS"
-
-  ${GetOptions} $PARAMETERS "/ORIGIN_SCHEME= " $ORIGIN_SCHEME
-  IfErrors 0 +2
-    Abort "Origin URI scheme not specified"
-  DetailPrint "ORIGIN_SCHEME=$ORIGIN_SCHEME"
-
-  ${GetOptions} $PARAMETERS "/ORIGIN_HOST= " $ORIGIN_HOST
-  IfErrors 0 +2
-    Abort "Origin URI host not specified"
-  DetailPrint "ORIGIN_HOST=$ORIGIN_HOST"
-
-  ${GetOptions} $PARAMETERS "/ORIGIN_PORT= " $ORIGIN_PORT
-  IfErrors 0 +2
-    Abort "Origin URI port not specified"
-  DetailPrint "ORIGIN_PORT=$ORIGIN_PORT"
-
-  ReadRegStr $INSTDIR \
-             HKCU \
-            "Software\Microsoft\Windows\CurrentVersion\Uninstall\$ORIGIN_SCHEME://$ORIGIN_HOST:$ORIGIN_PORT" \
-            "InstallLocation"
-  IfErrors 0 +2
-    Abort "Could not read install location from registry"
-  DetailPrint "INSTDIR=$INSTDIR"
-  SetOutPath $INSTDIR
-
-  # Optional items
-  ReadRegStr $APP_FILENAME \
-             HKCU \
-            "Software\Microsoft\Windows\CurrentVersion\Uninstall\$ORIGIN_SCHEME://$ORIGIN_HOST:$ORIGIN_PORT" \
-            "AppFilename"
-  IfErrors +2
-    DetailPrint "APP_FILENAME=$APP_FILENAME"
-
-  ReadRegStr $SHORTCUT_COMMENT \
-             HKCU \
-            "Software\Microsoft\Windows\CurrentVersion\Uninstall\$ORIGIN_SCHEME://$ORIGIN_HOST:$ORIGIN_PORT" \
-            "Comments"
-  IfErrors +2
-    DetailPrint "SHORTCUT_COMMENT=$SHORTCUT_COMMENT"
-
-  ReadRegStr $ICON_PATH \
-             HKCU \
-            "Software\Microsoft\Windows\CurrentVersion\Uninstall\$ORIGIN_SCHEME://$ORIGIN_HOST:$ORIGIN_PORT" \
-            "DisplayIcon"
-  IfErrors +2
-    DetailPrint "ICON_PATH=$ICON_PATH"
-
-  Return
-FunctionEnd
-
-Function CreateShortcuts
-  ClearErrors
-  CreateShortcut $INSTDIR\$APP_FILENAME.lnk \
-                 $INSTDIR\$APP_FILENAME.exe \
-                 "" \
-                 $ICON_PATH \
-                 0 \
-                 "" \
-                 "" \
-                 $SHORTCUT_COMMENT
-  SetOutPath $INSTDIR
-FunctionEnd
-
 Section Install
-  Call RealInit
-  Call CreateShortcuts
-  WriteUninstaller $OUTDIR\uninstall.exe
+  WriteUninstaller $EXEDIR\webapp-uninstaller.exe
 SectionEnd
 
 Function un.onInit
@@ -161,9 +89,31 @@ Section un.Install
             "Software\Microsoft\Windows\CurrentVersion\Uninstall\$ORIGIN_SCHEME://$ORIGIN_HOST:$ORIGIN_PORT" \
             "AppFilename"
 
+  # Remove shortcuts
   Delete $SMPROGRAMS\$APP_FILENAME.lnk
   Delete $DESKTOP\$APP_FILENAME.lnk
-  RMDir /r $INSTDIR
-  RMDir $INSTDIR
+
+  # Remove chrome dir
+  Delete $INSTDIR\chrome\icons\default\topwindow.ico
+  RMDIR $INSTDIR\chrome\icons\default
+  RMDIR $INSTDIR\chrome\icons
+  RMDIR $INSTDIR\chrome
+
+  # Remove bin dir
+  Delete $INSTDIR\bin\application.ini
+  Delete $INSTDIR\bin\uninstall.exe
+  Delete $INSTDIR\bin\$APP_FILENAME.exe
+  Delete $INSTDIR\bin\webapprt.old
+  RMDIR $INSTDIR\bin
+
+  # TODO: If the user has said "please delete my data too,"
+  #       RMDIR /r $INSTDIR\Profiles
+  #       Delete $INSTDIR\profiles.ini
+  #       Remove the equivalent data from AppData\Local
+
+  # Remove toplevel items
+  Delete $INSTDIR\config.json
+
+  # Remove registry key (and values)
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$ORIGIN_SCHEME://$ORIGIN_HOST:$ORIGIN_PORT"
 SectionEnd

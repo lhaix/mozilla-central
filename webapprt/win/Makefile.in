@@ -11,19 +11,15 @@
 # for the specific language governing rights and limitations under the
 # License.
 #
-# The Original Code is mozilla.org code.
+# The Original Code is the Mozilla Browser code.
 #
 # The Initial Developer of the Original Code is
-# Netscape Communications.
-# Portions created by the Initial Developer are Copyright (C) 2001
+# Netscape Communications Corporation.
+# Portions created by the Initial Developer are Copyright (C) 2002
 # the Initial Developer. All Rights Reserved.
 #
 # Contributor(s):
 #  Brian Ryner <bryner@brianryner.com>
-#  Jonathan Wilson <jonwil@tpgi.com.au>
-#  Dan Mosedale <dmose@mozilla.org>
-#  Benjamin Smedberg <benjamin@smedbergs.us>
-#  Jared Wein <jwein@mozilla.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -44,77 +40,15 @@ topsrcdir = @top_srcdir@
 srcdir    = @srcdir@
 VPATH     = @srcdir@
 
-include $(DEPTH)/config/autoconf.mk
-
-APP_VERSION = $(shell cat $(srcdir)/../config/version.txt)
-DEFINES += -DAPP_VERSION="$(APP_VERSION)"
-
-# Build a binary bootstrapping with XRE_main
-
-WEBAPPRT_APP_NAME = webapprt
-PROGRAM   = $(WEBAPPRT_APP_NAME)$(BIN_SUFFIX)
-
-# Don't create a dependency on mozglue
-MOZ_GLUE_LDFLAGS =
-
-CPPSRCS   = webapprt.cpp
-
-LOCAL_INCLUDES += -I$(topsrcdir)/toolkit/xre
-LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/base
-LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/build
-LOCAL_INCLUDES += -I$(DEPTH)/build
-
-DEFINES += -DXPCOM_GLUE
-STL_FLAGS=
-
-LIBS = \
-  $(XPCOM_STANDALONE_GLUE_LDOPTS) \
-  $(NULL)
-
-ifndef MOZ_WINCONSOLE
-ifdef MOZ_DEBUG
-MOZ_WINCONSOLE = 1
-else
-MOZ_WINCONSOLE = 0
-endif
-endif
-
 include $(topsrcdir)/config/config.mk
 
-ifdef _MSC_VER
-# Always enter a Windows program through wmain, whether or not we're
-# a console application.
-WIN32_EXE_LDFLAGS += -ENTRY:wmainCRTStartup
-endif
+PARALLEL_DIRS = \
+  app \
+  webapp-uninstaller \
+  $(NULL)
 
-OS_LIBS += $(call EXPAND_LIBNAME,shell32)
-
-RCINCLUDE = webapprt.rc
-ifndef GNU_CC
-RCFLAGS += -I$(srcdir)
-else
-RCFLAGS += --include-dir $(srcdir)
-endif
-ifdef DEBUG
-RCFLAGS += -DDEBUG
-endif
+# This switches $(INSTALL) to copy mode, like $(SYSINSTALL), so things that
+# shouldn't get 755 perms need $(IFLAGS1) for either way of calling nsinstall.
+NSDISTMODE = copy
 
 include $(topsrcdir)/config/rules.mk
-
-#
-# Control the default heap size.
-# This is the heap returned by GetProcessHeap().
-# As we use the CRT heap, the default size is too large and wastes VM.
-#
-# The default heap size is 1MB on Win32.
-# The heap will grow if need be.
-#
-# Set it to 256k.  See bug 127069.
-#
-ifndef GNU_CC
-LDFLAGS += /HEAP:0x40000
-ifeq ($(OS_TEST),x86_64)
-# set stack to 2MB on x64 build.  See bug 582910
-LDFLAGS += -STACK:2097152
-endif
-endif

@@ -11,14 +11,17 @@
 # for the specific language governing rights and limitations under the
 # License.
 #
-# The Original Code is mozilla.org code.
+# The Original Code is the Mozilla Browser code.
 #
 # The Initial Developer of the Original Code is
-# Netscape Communications Corporation.
-# Portions created by the Initial Developer are Copyright (C) 1998
+# IBM Corporation.
+# Portions created by the Initial Developer are Copyright (C) 2004
 # the Initial Developer. All Rights Reserved.
 #
 # Contributor(s):
+#  Brian Ryner <bryner@brianryner.com>
+#  Chase Phillips <cmp@mozilla.org>
+#  Ehsan Akhgari <ehsan.akhgari@gmail.com>
 #  Robert Strong <robert.bugzilla@gmail.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
@@ -35,23 +38,21 @@
 #
 # ***** END LICENSE BLOCK *****
 
-DEPTH   = ../..
-topsrcdir = @top_srcdir@
-srcdir    = @srcdir@
-VPATH   = @srcdir@
+DEPTH		= ../../..
+topsrcdir	= @top_srcdir@
+srcdir		= @srcdir@
+VPATH		= @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
+# TODO: Localization support
+
 include $(topsrcdir)/config/config.mk
 
-# XXX Uncomment this once we get tests.
-#ifdef ENABLE_TESTS
-#DIRS += test
-#endif
-
-EXTRA_JS_MODULES = \
-	WebAppService.jsm \
-	WindowsShortcutService.jsm \
-	$(NULL)
+build::
+	$(MAKENSISU) -V0 -NOCD $(srcdir)/webapp-uninstaller.nsi
+	./webapp-uninstaller-creator.exe -S
+	$(RM) ./webapp-uninstaller-creator.exe
+	$(INSTALL) ./webapp-uninstaller.exe $(DIST)/bin
 
 include $(topsrcdir)/config/rules.mk

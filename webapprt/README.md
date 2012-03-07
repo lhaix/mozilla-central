@@ -70,6 +70,9 @@ with Firefox.
 using js-ctypes.
 
 **PORT** Write the uninstall registry key and its values.
+The uninstall registry key is the full origin of the app, including port
+(or -1 if default). For example:
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\http://www.myexample.com:-1`.
 Specifically, we'll want to make sure we write the following values:
 
   - **DisplayIcon** (String) Full path to `topwindow.ico`
@@ -80,13 +83,14 @@ Specifically, we'll want to make sure we write the following values:
   - **AppFilename** (String) `${AppFilename}`
   - **UninstallString** See the addon implementation for how to generate this
 
-**PORT** Run the webapp installer executable.  
-The installer is responsible for
+**TODO** Create `${AppDir}\${AppFilename}.lnk`, a shortcut to the app.
+To accomplish this, call the `setShortcut` function available in
+`webapprt\modules\WindowsShortcutService.jsm`.
 
-  - Generating `${AppDir}\${AppFilename}.lnk`, a shortcut to the app.
-  - Writing `${AppDir}\uninstall.exe`
+**TODO** Copy `${AppDir}\${AppFilename}.lnk`
+to the user's Desktop and Start Menu
 
-**PORT** Copy `${AppDir}\${AppFilename}.lnk` to the user's Desktop and Start Menu
+**TODO** Copy `${Firefox}\webapp-uninstaller.exe` to ${AppDir}\uninstall.exe`
 
 Mac Native Installation Flow
 ============================

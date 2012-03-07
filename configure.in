@@ -4667,6 +4667,7 @@ MOZ_BRANDING_DIRECTORY=
 MOZ_OFFICIAL_BRANDING=
 MOZ_FEEDS=1
 MOZ_INSTALLER=1
+MOZ_WEBAPP_RUNTIME=1
 MOZ_JSDEBUGGER=1
 MOZ_AUTH_EXTENSION=1
 MOZ_OGG=1
@@ -4721,7 +4722,6 @@ NECKO_COOKIES=1
 NECKO_PROTOCOLS_DEFAULT="about data file ftp http res viewsource websocket wyciwyg device"
 USE_ARM_KUSER=
 BUILD_CTYPES=1
-MOZ_WEBAPP_RUNTIME=1
 MOZ_USE_NATIVE_POPUP_WINDOWS=
 MOZ_ANDROID_HISTORY=
 MOZ_WEBSMS_BACKEND=
@@ -4751,6 +4751,7 @@ case "${target}" in
 
         NSS_DISABLE_DBM=1
         MOZ_INSTALLER=
+        MOZ_WEBAPP_RUNTIME=
         NECKO_WIFI=
         MOZ_THEME_FASTSTRIPE=1
         MOZ_TREE_FREETYPE=1
@@ -6415,6 +6416,44 @@ if test -n "$MOZ_TREE_FREETYPE"; then
    AC_DEFINE(HAVE_FT_GLYPHSLOT_EMBOLDEN)
    AC_DEFINE(HAVE_FT_LOAD_SFNT_TABLE)
    AC_SUBST(CAIRO_FT_CFLAGS)
+fi
+
+dnl ========================================================
+dnl Web App Runtime
+dnl ========================================================
+MOZ_ARG_DISABLE_BOOL(webapp-runtime,
+[  --disable-webapp-runtime  Disable Web App Runtime],
+    MOZ_WEBAPP_RUNTIME=,
+    MOZ_WEBAPP_RUNTIME=1)
+if test -n "$MOZ_WEBAPP_RUNTIME" -a "$OS_ARCH" = "WINNT"; then
+    # Disable Web App Runtime for Windows builds that use the new toolkit if the
+    # required major version and minimum minor version of Unicode NSIS isn't in
+    # the path.
+    REQ_NSIS_MAJOR_VER=2
+    MIN_NSIS_MINOR_VER=33
+    MOZ_PATH_PROGS(MAKENSISU, $MAKENSISU makensisu-2.46 makensisu makensis)
+    if test -z "$MAKENSISU" -o "$MAKENSISU" = ":"; then
+        AC_MSG_ERROR([To build the Web App Runtime you must have the latest MozillaBuild or Unicode NSIS with a major version of $REQ_NSIS_MAJOR_VER and a minimum minor version of $MIN_NSIS_MINOR_VER in your path. To build without the Web App Runtime reconfigure using --disable-webapp-runtime.])
+    fi
+    changequote(,)
+    MAKENSISU_VER=`"$MAKENSISU" -version 2>/dev/null | sed -e '/-Unicode/!s/.*//g' -e 's/^v\([0-9]\+\.[0-9]\+\)\-Unicode$/\1/g'`
+    changequote([,])
+    if test ! "$MAKENSISU_VER" = ""; then
+        MAKENSISU_MAJOR_VER=`echo $MAKENSISU_VER | $AWK -F\. '{ print $1 }'`
+        MAKENSISU_MINOR_VER=`echo $MAKENSISU_VER | $AWK -F\. '{ print $2 }'`
+    fi
+    AC_MSG_CHECKING([for Unicode NSIS with major version == $REQ_NSIS_MAJOR_VER and minor version >= $MIN_NSIS_MINOR_VER])
+    if test "$MAKENSISU_VER" = "" ||
+       test ! "$MAKENSISU_MAJOR_VER" = "$REQ_NSIS_MAJOR_VER" -o \
+            ! "$MAKENSISU_MINOR_VER" -ge $MIN_NSIS_MINOR_VER; then
+        AC_MSG_RESULT([no])
+        AC_MSG_ERROR([To build the Web App Runtime you must have the latest MozillaBuild or Unicode NSIS with a major version of $REQ_NSIS_MAJOR_VER and a minimum minor version of $MIN_NSIS_MINOR_VER in your path. To build without the Web App Runtime reconfigure using --disable-webapp-runtime.])
+    fi
+    AC_MSG_RESULT([yes])
+fi
+AC_SUBST(MOZ_WEBAPP_RUNTIME)
+if test "$MOZ_WEBAPP_RUNTIME"; then
+    AC_DEFINE(MOZ_WEBAPP_RUNTIME)
 fi
 
 dnl ========================================================
@@ -8503,18 +8542,6 @@ MOZ_ARG_DISABLE_BOOL(cookies,
 AC_SUBST(NECKO_COOKIES)
 if test "$NECKO_COOKIES"; then
     AC_DEFINE(NECKO_COOKIES)
-fi
-
-dnl
-dnl Option to disable Web App Runtime
-dnl
-MOZ_ARG_DISABLE_BOOL(webapp-runtime,
-[  --disable-webapp-runtime  Disable Web App Runtime],
-    MOZ_WEBAPP_RUNTIME=,
-    MOZ_WEBAPP_RUNTIME=1)
-AC_SUBST(MOZ_WEBAPP_RUNTIME)
-if test "$MOZ_WEBAPP_RUNTIME"; then
-    AC_DEFINE(MOZ_WEBAPP_RUNTIME)
 fi
 
 dnl
