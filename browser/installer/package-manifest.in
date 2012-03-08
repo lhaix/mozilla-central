@@ -597,7 +597,6 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 #ifndef XP_UNIX
 @BINPATH@/webapprt.exe
 #else
-@BINPATH@/webapprt-bin
 @BINPATH@/webapprt
 #endif
 @BINPATH@/chrome/webapprt@JAREXT@
