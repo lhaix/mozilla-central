@@ -54,10 +54,16 @@ DEFINES += -DAPP_VERSION="$(APP_VERSION)"
 WEBAPPRT_APP_NAME = webapprt
 PROGRAM   = $(WEBAPPRT_APP_NAME)$(BIN_SUFFIX)
 
-# Don't create a dependency on mozglue
+CPPSRCS   = webapprt.cpp
+
+# Don't create a dependency on mozglue, which is impossible (difficult?)
+# to dynamically link into our executable, which we copy to arbitrary locations.
 MOZ_GLUE_LDFLAGS =
 
-CPPSRCS   = webapprt.cpp
+# mozglue uses mfbt's Assertions.cpp, which provides MOZ_ASSERT, which lots
+# of code in libxpcom uses, so we have to do the same.
+VPATH += $(topsrcdir)/mfbt
+CPPSRCS += Assertions.cpp
 
 LOCAL_INCLUDES += -I$(topsrcdir)/toolkit/xre
 LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/base
