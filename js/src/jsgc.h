@@ -808,7 +808,7 @@ struct Chunk {
     inline void init();
 
     /* Search for a decommitted arena to allocate. */
-    jsuint findDecommittedArenaOffset();
+    unsigned findDecommittedArenaOffset();
     ArenaHeader* fetchNextDecommittedArena();
 
   public:
@@ -1175,7 +1175,7 @@ struct ArenaLists {
         }
     }
 
-    inline void prepareForIncrementalGC(JSCompartment *comp);
+    inline void prepareForIncrementalGC(JSRuntime *rt);
 
     /*
      * Temporarily copy the free list heads to the arenas so the code can see
@@ -1410,7 +1410,7 @@ GCDebugSlice(JSContext *cx, int64_t objCount);
 namespace js {
 
 void
-InitTracer(JSTracer *trc, JSRuntime *rt, JSContext *cx, JSTraceCallback callback);
+InitTracer(JSTracer *trc, JSRuntime *rt, JSTraceCallback callback);
 
 #ifdef JS_THREADSAFE
 
@@ -1766,13 +1766,13 @@ struct GCMarker : public JSTracer {
     }
 
   public:
-    explicit GCMarker(size_t sizeLimit);
-    bool init(bool lazy);
+    explicit GCMarker();
+    bool init();
 
     void setSizeLimit(size_t size) { stack.setSizeLimit(size); }
     size_t sizeLimit() const { return stack.sizeLimit; }
 
-    void start(JSRuntime *rt, JSContext *cx);
+    void start(JSRuntime *rt);
     void stop();
     void reset();
 
@@ -1910,22 +1910,6 @@ struct GCMarker : public JSTracer {
     Vector<GrayRoot, 0, SystemAllocPolicy> grayRoots;
 };
 
-struct BarrierGCMarker : public GCMarker {
-    BarrierGCMarker(size_t sizeLimit) : GCMarker(sizeLimit) {}
-
-    bool init() {
-        return GCMarker::init(true);
-    }
-};
-
-struct FullGCMarker : public GCMarker {
-    FullGCMarker() : GCMarker(size_t(-1)) {}
-
-    bool init() {
-        return GCMarker::init(false);
-    }
-};
-
 void
 SetMarkStackLimit(JSRuntime *rt, size_t limit);
 
@@ -1983,6 +1967,9 @@ NewCompartment(JSContext *cx, JSPrincipals *principals);
 /* Tries to run a GC no matter what (used for GC zeal). */
 void
 RunDebugGC(JSContext *cx);
+
+void
+SetDeterministicGC(JSContext *cx, bool enabled);
 
 #if defined(JSGC_ROOT_ANALYSIS) && defined(DEBUG) && !defined(JS_THREADSAFE)
 /* Overwrites stack references to GC things which have not been rooted. */

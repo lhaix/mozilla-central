@@ -68,10 +68,10 @@
 
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
-#include "jsstrinlines.h"
 
 #include "vm/Stack-inl.h"
 #include "vm/String-inl.h"
+#include "vm/StringBuffer-inl.h"
 
 using namespace mozilla;
 using namespace js;
@@ -746,7 +746,7 @@ Exception(JSContext *cx, unsigned argc, Value *vp)
 
     /* Set the 'message' property. */
     JSString *message;
-    if (args.length() != 0 && !args[0].isUndefined()) {
+    if (args.hasDefined(0)) {
         message = ToString(cx, args[0]);
         if (!message)
             return false;

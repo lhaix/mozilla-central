@@ -197,8 +197,6 @@ DOMCI_CLASS(ChromeWindow)
 // RGBColor object used by getComputedStyle
 DOMCI_CLASS(CSSRGBColor)
 
-DOMCI_CLASS(RangeException)
-
 // CSSValueList object that represents an nsIDOMCSSValueList, used
 // by DOM CSS
 DOMCI_CLASS(CSSValueList)
@@ -431,6 +429,7 @@ DOMCI_CLASS(GeoPositionError)
 DOMCI_CLASS(MozBatteryManager)
 
 DOMCI_CLASS(MozPowerManager)
+DOMCI_CLASS(MozWakeLock)
 
 DOMCI_CLASS(MozSmsManager)
 DOMCI_CLASS(MozSmsMessage)

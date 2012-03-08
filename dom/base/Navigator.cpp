@@ -70,6 +70,8 @@
 #include "mozilla/Telemetry.h"
 #include "BatteryManager.h"
 #include "PowerManager.h"
+#include "nsIDOMWakeLock.h"
+#include "nsIPowerManagerService.h"
 #include "SmsManager.h"
 #include "nsISmsService.h"
 #include "mozilla/Hal.h"
@@ -172,7 +174,10 @@ Navigator::Invalidate()
     mBatteryManager = nsnull;
   }
 
-  mPowerManager = nsnull;
+  if (mPowerManager) {
+    mPowerManager->Shutdown();
+    mPowerManager = nsnull;
+  }
 
   if (mSmsManager) {
     mSmsManager->Shutdown();
@@ -958,13 +963,36 @@ Navigator::GetMozBattery(nsIDOMMozBatteryManager** aBattery)
 NS_IMETHODIMP
 Navigator::GetMozPower(nsIDOMMozPowerManager** aPower)
 {
+  *aPower = nsnull;
+
   if (!mPowerManager) {
+    nsCOMPtr<nsPIDOMWindow> win = do_QueryReferent(mWindow);
+    NS_ENSURE_TRUE(win, NS_OK);
+
     mPowerManager = new power::PowerManager();
+    mPowerManager->Init(win);
   }
 
-  NS_ADDREF(*aPower = mPowerManager);
+  nsCOMPtr<nsIDOMMozPowerManager> power =
+    do_QueryInterface(NS_ISUPPORTS_CAST(nsIDOMMozPowerManager*, mPowerManager));
+  power.forget(aPower);
 
   return NS_OK;
+}
+
+NS_IMETHODIMP
+Navigator::RequestWakeLock(const nsAString &aTopic, nsIDOMMozWakeLock **aWakeLock)
+{
+  *aWakeLock = nsnull;
+
+  nsCOMPtr<nsPIDOMWindow> win = do_QueryReferent(mWindow);
+  NS_ENSURE_TRUE(win, NS_OK);
+
+  nsCOMPtr<nsIPowerManagerService> pmService =
+    do_GetService(POWERMANAGERSERVICE_CONTRACTID);
+  NS_ENSURE_TRUE(pmService, NS_OK);
+
+  return pmService->NewWakeLock(aTopic, win, aWakeLock);
 }
 
 //*****************************************************************************
@@ -1149,21 +1177,17 @@ Navigator::GetMozBluetooth(nsIDOMBluetoothAdapter** aBluetooth)
 }
 #endif //MOZ_B2G_BT
 
-PRInt64
-Navigator::SizeOf() const
+size_t
+Navigator::SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const
 {
-  PRInt64 size = sizeof(*this);
+  size_t n = aMallocSizeOf(this);
 
-  // TODO: add SizeOf() to nsMimeTypeArray, bug 674113.
-  size += mMimeTypes ? sizeof(*mMimeTypes.get()) : 0;
-  // TODO: add SizeOf() to nsPluginArray, bug 674114.
-  size += mPlugins ? sizeof(*mPlugins.get()) : 0;
-  // TODO: add SizeOf() to nsGeolocation, bug 674115.
-  size += mGeolocation ? sizeof(*mGeolocation.get()) : 0;
-  // TODO: add SizeOf() to nsDesktopNotificationCenter, bug 674116.
-  size += mNotification ? sizeof(*mNotification.get()) : 0;
+  // TODO: add SizeOfIncludingThis() to nsMimeTypeArray, bug 674113.
+  // TODO: add SizeOfIncludingThis() to nsPluginArray, bug 674114.
+  // TODO: add SizeOfIncludingThis() to nsGeolocation, bug 674115.
+  // TODO: add SizeOfIncludingThis() to nsDesktopNotificationCenter, bug 674116.
 
-  return size;
+  return n;
 }
 
 void

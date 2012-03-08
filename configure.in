@@ -108,7 +108,7 @@ _SUBDIR_CONFIG_ARGS="$ac_configure_args"
 dnl Set the version number of the libs included with mozilla
 dnl ========================================================
 MOZJPEG=62
-MOZPNG=10401
+MOZPNG=10509
 MOZZLIB=0x1230
 NSPR_VERSION=4
 NSS_VERSION=3
@@ -628,9 +628,10 @@ if test "$GXX" = "yes"; then
     GNU_CXX=1
     CXX_VERSION=`$CXX -v 2>&1 | grep 'gcc version'`
 fi
-if test "`echo | $AS -v 2>&1 | grep -c GNU`" != "0"; then
+if test "`echo | $AS -o conftest.out -v 2>&1 | grep -c GNU`" != "0"; then
     GNU_AS=1
 fi
+rm -f conftest.out
 if test "`echo | $LD -v 2>&1 | grep -c GNU`" != "0"; then
     GNU_LD=1
 fi
@@ -1837,6 +1838,33 @@ if test -n "$CLANG_CXX"; then
 fi
 
 dnl ========================================================
+dnl = Use Address Sanitizer
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(address-sanitizer,
+[  --enable-address-sanitizer       Enable Address Sanitizer (default=no)],
+    MOZ_ASAN=1,
+    MOZ_ASAN= )
+if test -n "$MOZ_ASAN"; then
+    MOZ_LLVM_HACKS=1
+    AC_DEFINE(MOZ_ASAN)
+fi
+AC_SUBST(MOZ_ASAN)
+
+dnl ========================================================
+dnl = Enable hacks required for LLVM instrumentations
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(llvm-hacks,
+[  --enable-llvm-hacks       Enable workarounds required for several LLVM instrumentations (default=no)],
+    MOZ_LLVM_HACKS=1,
+    MOZ_LLVM_HACKS= )
+if test -n "$MOZ_LLVM_HACKS"; then
+    MOZ_NO_WLZDEFS=1
+    MOZ_CFLAGS_NSS=1
+fi
+AC_SUBST(MOZ_NO_WLZDEFS)
+AC_SUBST(MOZ_CFLAGS_NSS)
+
+dnl ========================================================
 dnl GNU specific defaults
 dnl ========================================================
 if test "$GNU_CC"; then
@@ -1846,8 +1874,13 @@ if test "$GNU_CC"; then
     MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$@ -o $@'
     DSO_LDOPTS='-shared'
     if test "$GCC_USE_GNU_LD"; then
-        # Don't allow undefined symbols in libraries
-        DSO_LDOPTS="$DSO_LDOPTS -Wl,-z,defs"
+        # Some tools like ASan use a runtime library that is only
+        # linked against executables, so we must allow undefined
+        # symbols for shared objects in some cases.
+        if test -z "$MOZ_NO_WLZDEFS"; then
+            # Don't allow undefined symbols in libraries
+            DSO_LDOPTS="$DSO_LDOPTS -Wl,-z,defs"
+        fi
     fi
     WARNINGS_AS_ERRORS='-Werror -Wno-error=uninitialized'
     DSO_CFLAGS=''
@@ -5159,10 +5192,10 @@ incorrect])
     else
        AC_CHECK_LIB(QtSensors, main, [
           MOZ_ENABLE_QTMOBILITY=1
-          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I/usr/include/qt4/QtMobility"
-          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I/usr/include/qt4/QtSensors"
-          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I/usr/include/qt4/QtFeedback"
-          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I/usr/include/qt4/QtLocation"
+          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtMobility"
+          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtSensors"
+          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtFeedback"
+          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtLocation"
           MOZ_QT_LIBS="$MOZ_QT_LIBS -lQtSensors -lQtFeedback -lQtLocation"
        ])
     fi
@@ -7348,7 +7381,11 @@ if test "${OS_TARGET}" = "Android"; then
   :
 elif test "${OS_TARGET}" = "WINNT" -o "${OS_TARGET}" = "Darwin" -o "${OS_TARGET}" = "OS2"; then
   dnl On Windows, OSX and OS2, we want to link all our binaries against mozglue
-  MOZ_GLUE_LDFLAGS='$(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib)'
+  if test -z "$GNU_CC"; then
+    MOZ_GLUE_LDFLAGS='$(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib)'
+  else
+    MOZ_GLUE_LDFLAGS='-L$(LIBXUL_DIST)/lib $(call EXPAND_LIBNAME,mozglue)'
+  fi
 else
   dnl On other Unix systems, we only want to link executables against mozglue
   MOZ_GLUE_PROGRAM_LDFLAGS='$(MKSHLIB_FORCE_ALL) $(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib) $(MKSHLIB_UNFORCE_ALL)'
@@ -9248,7 +9285,7 @@ if test -z "$MOZ_NATIVE_NSPR"; then
     fi
     if test "$MOZ_OPTIMIZE" = "1"; then
         ac_configure_args="$ac_configure_args --enable-optimize"
-    else
+    elif test -z "$MOZ_OPTIMIZE"; then
         ac_configure_args="$ac_configure_args --disable-optimize"
     fi
     if test -n "$HAVE_64BIT_OS"; then

@@ -86,7 +86,7 @@ struct JSSharpInfo {
 typedef js::HashMap<JSObject *, JSSharpInfo> JSSharpTable;
 
 struct JSSharpObjectMap {
-    jsrefcount   depth;
+    unsigned     depth;
     uint32_t     sharpgen;
     JSSharpTable table;
 
@@ -293,7 +293,7 @@ struct JSRuntime : js::RuntimeFriendFields
 
     js::RootedValueMap  gcRootsHash;
     js::GCLocks         gcLocksHash;
-    jsrefcount          gcKeepAtoms;
+    unsigned            gcKeepAtoms;
     size_t              gcBytes;
     size_t              gcMaxBytes;
     size_t              gcMaxMallocBytes;
@@ -304,7 +304,7 @@ struct JSRuntime : js::RuntimeFriendFields
      * in MaybeGC.
      */
     volatile uint32_t   gcNumArenasFreeCommitted;
-    js::FullGCMarker    gcMarker;
+    js::GCMarker        gcMarker;
     void                *gcVerifyData;
     bool                gcChunkAllocationSinceLastGC;
     int64_t             gcNextFullGCTime;
@@ -419,6 +419,7 @@ struct JSRuntime : js::RuntimeFriendFields
     int                 gcZealFrequency;
     int                 gcNextScheduled;
     bool                gcDebugCompartmentGC;
+    bool                gcDeterministicOnly;
 
     int gcZeal() { return gcZeal_; }
 
@@ -437,6 +438,7 @@ struct JSRuntime : js::RuntimeFriendFields
 
     JSGCCallback        gcCallback;
     js::GCSliceCallback gcSliceCallback;
+    JSFinalizeCallback  gcFinalizeCallback;
 
   private:
     /*
@@ -1416,6 +1418,14 @@ js_ExpandErrorArguments(JSContext *cx, JSErrorCallback callback,
                         char **message, JSErrorReport *reportp,
                         bool charArgs, va_list ap);
 #endif
+
+namespace js {
+
+/* |callee| requires a usage string provided by JS_DefineFunctionsWithHelp. */
+extern void
+ReportUsageError(JSContext *cx, JSObject *callee, const char *msg);
+
+} /* namespace js */
 
 extern void
 js_ReportOutOfMemory(JSContext *cx);

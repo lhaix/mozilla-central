@@ -455,10 +455,13 @@ public class GeckoAppShell
                                         final int width, final int height) {
         getHandler().post(new Runnable() {
             public void run() {
+                final Tab tab = Tabs.getInstance().getTab(tabId);
+                if (tab == null)
+                    return;
+
                 Bitmap b = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
                 b.copyPixelsFromBuffer(data);
                 freeDirectBuffer(data);
-                final Tab tab = Tabs.getInstance().getTab(tabId);
                 GeckoApp.mAppContext.processThumbnail(tab, b, null);
             }
         });
@@ -1770,7 +1773,7 @@ public class GeckoAppShell
         return false;
     }
 
-    public static void emitGeckoAccessibilityEvent (int eventType, String role, String text, String description, boolean enabled, boolean checked, boolean password) {
+    public static void emitGeckoAccessibilityEvent (int eventType, String[] textList, String description, boolean enabled, boolean checked, boolean password) {
         AccessibilityManager accessibilityManager =
             (AccessibilityManager) GeckoApp.mAppContext.getSystemService(Context.ACCESSIBILITY_SERVICE);
 
@@ -1781,13 +1784,14 @@ public class GeckoAppShell
         LayerView layerView = layerController.getView();
 
         AccessibilityEvent event = AccessibilityEvent.obtain(eventType);
-        event.setClassName(layerView.getClass().getName() + "$" + role);
+        event.setClassName(layerView.getClass().getName());
         event.setPackageName(GeckoApp.mAppContext.getPackageName());
         event.setEnabled(enabled);
         event.setChecked(checked);
         event.setPassword(password);
         event.setContentDescription(description);
-        event.getText().add(text);
+        for (String text: textList)
+            event.getText().add(text);
 
         accessibilityManager.sendAccessibilityEvent(event);
     }
