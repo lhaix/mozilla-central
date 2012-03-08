@@ -70,6 +70,8 @@
 
 const char *WEBAPPRT_EXECUTABLE = "webapprt";
 const char *APPINI_NAME = "application.ini";
+const char *WEBRTINI_NAME = "webapprt.ini";
+
 //need the correct relative path here
 const char *WEBAPPRT_PATH = "/Contents/MacOS/"; 
 const char *INFO_FILE_PATH = "/Contents/Info.plist";
@@ -158,13 +160,38 @@ int main(int argc, char **argv)
       // Launch a dialog to explain to the user that there's no compatible web runtime
       @throw makeException(@"Missing Web Runtime", @"Web Applications require Firefox to be installed");
     }
-  }
+  }  
 
 
   //Get the version number from my Info.plist.  This is more complicated that you might think; the information isn't meant for us,
   // it's meant for the OS.  We're supposed to know our version number.  I am reading the file and parsing into a mutable
   // dictionary object so that we can update it if necessary with the current version number and write it out again.
   NSString* myBundlePath = [[NSBundle mainBundle] bundlePath];
+
+  NSString *myWebRTPath = [NSString stringWithFormat: @"%@%s%s", myBundlePath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
+  NSLog(@"my webrt path: %@", myWebRTPath);
+  if (![[NSFileManager defaultManager] fileExistsAtPath:myWebRTPath]) {
+    @throw makeException(@"Missing WebRT Files", @"Cannot locate binary for this application");
+  }
+
+  //Check to see if the DYLD_FALLBACK_LIBRARY_PATH is set. if not, set it, and relaunch ourselves
+  char libEnv[MAXPATHLEN];
+  snprintf(libEnv, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH);
+
+  char* curVal = getenv("DYLD_FALLBACK_LIBRARY_PATH");
+  NSLog(@"libenv: %s", libEnv);
+  NSLog(@"curval: %s", curVal);
+
+  if ((curVal == NULL) || strncmp(libEnv, curVal, MAXPATHLEN)) {
+    NSLog(@"DYLD_FALLBACK_LIBRARY_PATH NOT SET!!");
+    //they differ, so set it and relaunch
+    setenv("DYLD_FALLBACK_LIBRARY_PATH", libEnv, 1);
+    execNewBinary(myWebRTPath);
+    exit(0);
+  }
+  NSLog(@"Set DYLD_FALLBACK_LIBRARY_PATH to: %s", libEnv);
+
+
   NSString* myInfoFilePath = [NSString stringWithFormat:@"%@%s", myBundlePath, INFO_FILE_PATH];
   if (![[NSFileManager defaultManager] fileExistsAtPath:myInfoFilePath]) {
     //get out of here, I don't have a bundle file?
@@ -222,11 +249,6 @@ int main(int argc, char **argv)
       @throw makeException(@"Missing WebRT Files", @"This version of Firefox cannot run web applications, because it is not recent enough or damaged");
     }
 
-    NSString *myWebRTPath = [NSString stringWithFormat: @"%@%s%s", myBundlePath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
-    NSLog(@"my webrt path: %@", myWebRTPath);
-    if (![[NSFileManager defaultManager] fileExistsAtPath:myWebRTPath]) {
-      @throw makeException(@"Missing WebRT Files", @"Cannot locate binary for this application");
-    }
         //unlink my binary file
     int err = unlink([myWebRTPath UTF8String]);
     if (err) {
@@ -265,17 +287,6 @@ int main(int argc, char **argv)
       int result = 0;
       char rtINIPath[MAXPATHLEN];
 
-
-      //Also set the DYLD_FALLBACK_LIBRARY_PATH, which lets libxpcom load properly
-      char libEnv[MAXPATHLEN];
-      snprintf(libEnv, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH);
-      if (setenv("DYLD_FALLBACK_LIBRARY_PATH", libEnv, 1)) {
-        NSLog(@"Couldn't set DYLD_FALLBACK_LIBRARY_PATH to:  %s", libEnv);
-        return 255;
-      }
-      NSLog(@"Set DYLD_FALLBACK_LIBRARY_PATH to: %s", libEnv);
-  
-
       // Set up our environment to know where application.ini was loaded from.
       char appEnv[MAXPATHLEN];
       snprintf(appEnv, MAXPATHLEN, "%s%s%s", [myBundlePath UTF8String], WEBAPPRT_PATH, APPINI_NAME);
@@ -310,7 +321,7 @@ int main(int argc, char **argv)
 
         // Get the path to the runtime's INI file.  This should be in the
         // same directory as the GRE.
-        snprintf(rtINIPath, MAXPATHLEN, "%s%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH, "webapprt.ini");
+        snprintf(rtINIPath, MAXPATHLEN, "%s%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH, WEBRTINI_NAME);
         NSLog(@"webapprt.ini path: %s", rtINIPath);
 
         // Load the runtime's INI from its path.
@@ -418,11 +429,11 @@ void execNewBinary(NSString* launchPath)
 {
 
   NSLog(@" launching webrt at path: %@\n", launchPath);
-  char binfile[100];
-  sprintf(binfile, "%s", WEBAPPRT_EXECUTABLE);
+  // char binfile[500];
+  // sprintf(binfile, "%s/%s", WEBAPPRT_EXECUTABLE);
 
-  char *newargv[2];
-  newargv[0] = binfile;
+  const char *newargv[2];
+  newargv[0] = [launchPath UTF8String];
   newargv[1] = NULL;
 
   NSLog(@"COMMAND LINE: '%@ %s'", launchPath, newargv[0]);

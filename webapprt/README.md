@@ -103,40 +103,75 @@ Tasks:
 
  Step 1: Create Application Support Directory
  
-  - Create folder:  ~/Library/Application Support/<profile>, where <profile> 
+  - Create folder:  ~/Library/Application Support/${profile}, where ${profile} 
     is a unique identifying string for this application. The pattern used above 
     for Windows is fine, e.g. www.phoboslab.org;http;-1.  Those are all legal filename chars in MacOS.
   
-    - Create file: ~/Library/Application Support/<profile>/config.json, which is identical to the
+    - Create file: ~/Library/Application Support/${profile}/config.json, which is identical to the
       config.json described above for Windows
 
 
 Step 2:  note: all folder and file names are case-sensitive!
 
-  - Create folder: /Applications/<appname>, where <appname> is the friendly, user-facing name of
+  - Create folder: /Applications/${appname}, where ${appname} is the friendly, user-facing name of
     the application, which is in the install record.
 
-    - Create folder: /Applications/<appname>/Contents
+    - Create folder: /Applications/${appname}/Contents
 
-      - Create folder: /Applications/<appname>/Contents/MacOS
+      - Create folder: /Applications/${appname}/Contents/MacOS
         
         - Copy file: Firefox.app/Contents/MacOS/webapprt to 
-            /Applications/<appname>/Contents/MacOS/webapprt
+            /Applications/${appname}/Contents/MacOS/webapprt
 
         - Create file: application.ini
         
-          - The template is similar to the Windows example above, but doesn't need the firefox path:
-              [App]
-              Name=<appname>
-              Profile=<profile>
+          - The template is similar to the Windows example above, but doesn't need the firefox path:  
+              [App]  
+              Name=${appname}  
+              Profile=${profile}  
         
-        - Create folder: /Applications/<appname>/Contents/Resources
-          - Create file: /Applications/<appname>/Contents/Resources/appicon.icns
-            - format discussed below
+        - Create folder: /Applications/${appname}/Contents/Resources
+          - Create file: /Applications/${appname}/Contents/Resources/appicon.icns
+              - this is a binary file, there is example code in nativeshell.js, which calls /usr/bin/sips to create the file from 
+                the icon(s) specified in the app manifest.
+                https://github.com/mozilla/openwebapps/blob/develop/addons/jetpack/lib/nativeshell.js
+
  
 
-      - Create file: /Applications/<appname>/Contents/Info.plist
-        - format discussed below        
+      - Create file: /Applications/${appname}/Contents/Info.plist
+          - The Info.plist file is a metadata file necessary for all Mac native apps.
+            It can be in one of several interchangeable formats, but we will only create
+            xml formatted ones. All ${xxx} must be substituted. 
+            
+            Here is a template file:
+              
+                <?xml version="1.0" encoding="UTF-8"?>  
+                
+                <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">  
+                <plist version="1.0">  
+                <dict>  
+                  <key>CFBundleDevelopmentRegion</key>  
+                  <string>English</string>  
+    	            <key>CFBundleDisplayName</key>  
+    	            <string>${appname}</string>  
+    	            <key>CFBundleExecutable</key>  
+    	            <string>webapprt</string>  
+    	            <key>CFBundleIconFile</key>  
+    	            <string>appicon</string>  
+    	            <key>CFBundleIdentifier</key>  
+    	            <string>${origin}</string>  
+    	            <key>CFBundleInfoDictionaryVersion</key>  
+    	            <string>6.0</string>  
+    	            <key>CFBundleName</key>  
+    	            <string>${appname}</string>  
+    	            <key>CFBundlePackageType</key>  
+    	            <string>APPL</string>  
+    	            <key>CFBundleSignature</key>  
+    	            <string>MOZB</string>  
+    	            <key>CFBundleVersion</key>  
+    	            <string>${firefoxversion}</string>  
+                </dict>  
+                </plist>
 
 
 
