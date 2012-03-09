@@ -18,7 +18,7 @@ PROGRAM = webapprt$(BIN_SUFFIX)
 CMMSRCS = webapprt.mm
 
 # Don't create a dependency on mozglue, which is impossible (difficult?)
-# to dynamically link into our executable, which we copy to arbitrary locations.
+# to dynamically link into our executable, as we copy it to arbitrary locations.
 MOZ_GLUE_LDFLAGS =
 MOZ_GLUE_PROGRAM_LDFLAGS =
 
