@@ -1,6 +1,17 @@
 <?xml version="1.0"?>
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<window id="topwindow" windowtype="app" title="Mozilla Apps Runtime" width="1024" height="800" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" sizemode="normal" resizable="true">
+<?xul-overlay href="chrome://webapp/content/baseMenuOverlay.xul"?>
+
+# All DTD information is stored in a separate file so that it can be shared by
+# hiddenWindow.xul.
+#include doctype.inc
+
+
+<window id="topwindow" windowtype="app" title="Mozilla Apps Runtime" width="1024" height="800"
+        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        xmlns:svg="http://www.w3.org/2000/svg"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        sizemode="normal" resizable="true">
 
   <commandset id="main_command_set">
     <command id="new_window_command" />
@@ -12,24 +23,9 @@
   </commandset>
 
   <menubar id="main_menu_bar">
-    <menu id="file_menu" label="File">
-      <menupopup id="file_menu_main_popup">
-        <menuitem id="new_window_menu_item" label="New Window" command="new_window_command" />
-        <menuitem id="quit_menu_item" label="Quit" command="quit_command" />
-      </menupopup>
-    </menu>
-    <menu id="edit_menu" label="Edit">
-      <menupopup id="edit_menu_main_popup">
-        <menuitem id="copy_menu_item" label="Copy" command="copy_command" />
-        <menuitem id="cut_menu_item" label="Cut" command="cut_command" />
-        <menuitem id="paste_menu_item" label="Paste" command="paste_command" />
-      </menupopup>
-    </menu>
-    <menu id="help_menu" label="Help">
-      <menupopup id="help_menu_main_popup">
-        <menuitem id="about_menu_item" label="About..." command="about_command" />
-      </menupopup>
-    </menu>
+# The entire main menubar is placed into browser-menubar.inc, so that it can be shared by
+# hiddenWindow.xul.
+#include menubar.inc
   </menubar>
 
   <script id="windowjs" type="application/javascript" src="chrome://webapp/content/window.js"/>
