@@ -6,3 +6,5 @@ webapprt.jar:
         content/window.js                             (content/window.js)
 *       content/window.xul                            (content/window.xul)
 *       content/baseMenuOverlay.xul                   (content/baseMenuOverlay.xul)
+*       content/macMenuOverlay.xul                    (content/macMenuOverlay.xul)
+

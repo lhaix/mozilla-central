@@ -41,7 +41,7 @@
 # ***** END LICENSE BLOCK *****
 
 #ifdef XP_MACOSX
-<?xul-overlay href="chrome://browser/content/macBrowserOverlay.xul"?>
+<?xul-overlay href="chrome://webapp/content/macMenuOverlay.xul"?>
 
 <window id="main-window"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
