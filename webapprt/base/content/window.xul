@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<?xul-overlay href="chrome://webapp/content/baseMenuOverlay.xul"?>
+<?xul-overlay href="chrome://webapp/content/macMenuOverlay.xul"?>
 
 # All DTD information is stored in a separate file so that it can be shared by
 # hiddenWindow.xul.
@@ -22,11 +22,7 @@
     <command id="about_command" />
   </commandset>
 
-  <menubar id="main_menu_bar">
-# The entire main menubar is placed into browser-menubar.inc, so that it can be shared by
-# hiddenWindow.xul.
-#include menubar.inc
-  </menubar>
+#include mountPoints.inc
 
   <script id="windowjs" type="application/javascript" src="chrome://webapp/content/window.js"/>
 </window>
