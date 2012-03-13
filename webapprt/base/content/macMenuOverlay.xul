@@ -66,7 +66,9 @@
 
   <commandset id="mainCommandSet">
 
+    <command id="cmd_close" oncommand="BrowserCloseTabOrWindow()"/>
     <command id="cmd_quitApplication" oncommand="goQuitApplication()"/>
+
     <commandset id="editMenuCommands"/>
 
     <command id="View:FullScreen" oncommand="BrowserFullScreen();"/>
@@ -76,11 +78,8 @@
 
 
   <keyset id="mainKeyset">
-    <key id="key_newNavigator"
-         key="&newNavigatorCmd.key;"
-         command="cmd_newNavigator"
-         modifiers="accel"/>
 
+    <key id="key_closeWindow" key="&closeCmd.key;" command="cmd_closeWindow" modifiers="accel,shift"/>
     <key id="key_undo"
          key="&undoCmd.key;"
          modifiers="accel"/>
@@ -100,13 +99,7 @@
     <key id="key_fullScreen" key="&fullScreenCmd.macCommandKey;" command="View:FullScreen" modifiers="accel,shift"/>
     <key keycode="VK_F11" command="View:FullScreen"/>
 
-    <key id="key_fullZoomReduce"  key="&fullZoomReduceCmd.commandkey;"   command="cmd_fullZoomReduce"  modifiers="accel"/>
-    <key                          key="&fullZoomReduceCmd.commandkey2;"  command="cmd_fullZoomReduce"  modifiers="accel"/>
-    <key id="key_fullZoomEnlarge" key="&fullZoomEnlargeCmd.commandkey;"  command="cmd_fullZoomEnlarge" modifiers="accel"/>
-    <key                          key="&fullZoomEnlargeCmd.commandkey2;" command="cmd_fullZoomEnlarge" modifiers="accel"/>
-    <key                          key="&fullZoomEnlargeCmd.commandkey3;" command="cmd_fullZoomEnlarge" modifiers="accel"/>
-    <key id="key_fullZoomReset"   key="&fullZoomResetCmd.commandkey;"    command="cmd_fullZoomReset"   modifiers="accel"/>
-    <key                          key="&fullZoomResetCmd.commandkey2;"   command="cmd_fullZoomReset"   modifiers="accel"/>
+    <key id="key_close" key="&closeCmd.key;" command="cmd_close" modifiers="accel"/>
 
 
     <key id="key_quitApplication" key="&quitApplicationCmdMac.key;" command="cmd_quitApplication" modifiers="accel"/>
@@ -124,28 +117,6 @@
                                   this.setAttribute('openedwithkey',
                                                     event.target.parentNode.openedWithKey);"
                 style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
- <!--           <menu id="file-menu" label="&fileMenu.label;"
-                  accesskey="&fileMenu.accesskey;">
-              <menupopup id="menu_FilePopup">
-                <menuitem id="menu_newNavigator"
-                          label="&newNavigatorCmd.label;"
-                          accesskey="&newNavigatorCmd.accesskey;"
-                          key="key_newNavigator"
-                          command="cmd_newNavigator"/>
-                <menuitem id="menu_openFile"
-                          label="&openFileCmd.label;"
-                          command="Browser:OpenFile"
-                          key="openFileKb"
-                          accesskey="&openFileCmd.accesskey;"/>
-                <menuitem id="menu_closeWindow"
-                          class="show-only-for-keyboard"
-                          hidden="true"
-                          command="cmd_closeWindow"
-                          key="key_closeWindow"
-                          label="&closeWindow.label;"
-                          accesskey="&closeWindow.accesskey;"/>
-              </menupopup>
-            </menu> -->
 
             <menu id="edit-menu" label="&editMenu.label;"
                   accesskey="&editMenu.accesskey;">
@@ -190,10 +161,16 @@
                           accesskey="&selectAllCmd.accesskey;"
                           command="cmd_selectAll"/>
               </menupopup>
+            <!-- hiding this here.  it seems to work... -->
+                <menuitem id="menu_FileQuitItem"
+                          label="Quit"
+                          key="key_quitApplication"
+                          command="cmd_quitApplication"/>
+
             </menu>
 
 
-          <menu id="windowMenu" />
+ <!--          <menu id="windowMenu" /> -->
  <!--         <menu id="helpMenu" /> -->
         </menubar>
 
@@ -202,7 +179,7 @@
   <menupopup id="menu_mac_dockmenu">
     <!-- The command cannot be cmd_newNavigator because we need to activate
          the application. -->
-    <!-- <menuitem label="&newNavigatorCmd.label;" oncommand="OpenBrowserWindowFromDockMenu();" /> -->
+   <!-- <menuitem label="&newNavigatorCmd.label;" oncommand="OpenBrowserWindowFromDockMenu();" /> -->
   </menupopup>
 </popupset>
 
