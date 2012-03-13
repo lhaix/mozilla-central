@@ -1,10 +1,6 @@
-Build Instructions
-==================
-- Build Firefox using the normal mechanism.
-
 Windows Native App Installation Flow
 ====================================
-**PORT** Create an app-specific directory according
+**DONE** Create an app-specific directory according
 to the origin of the app.
 
   - Location: `%APPDATA%`
@@ -15,7 +11,7 @@ to the origin of the app.
 
 The app-specific directory will be referred to as `${InstallDir}`.
 
-**TODO** Create the file `${InstallDir}/config.json` with contents:
+**DONE** Create the file `${InstallDir}/config.json` with contents:
 
   - "profile" : A string containing the full path to the
   FF profile that purchased the app.  This is the currently
@@ -24,17 +20,14 @@ The app-specific directory will be referred to as `${InstallDir}`.
   - "origin" : A string containing the origin of the app.
   e.g. `http://www.phoboslab.org` or `http://127.0.0.1:1234`
 
-**TODO** Create the directory `${InstallDir}\bin`.
-
-`${InstallDir}\bin` will be referred to as `${AppDir}`.  
 The dir of the currently running Firefox will be referred to as `${Firefox}`.  
 The name of the app will be referred to as `${AppDisplayName}`.  
 The name of the app, sanitized to work as a Windows filename,
 will be referred to as `${AppFilename}`.  
 
-**TODO** Copy `${Firefox}\webapprt.exe` to `${AppDir}\${AppFilename}.exe`.
+**DONE** Copy `${Firefox}\webapprt.exe` to `${InstallDir}\${AppFilename}.exe`.
 
-**TODO** Create the file `${AppDir}\application.ini`
+**TODO** Create the file `${InstallDir}\application.ini`
 according to this template (IMPL NOTE: See
 [nsIINIParserWriter](https://mxr.mozilla.org/mozilla-central/source/xpcom/ds/nsIINIParser.idl#63)
 and
@@ -52,13 +45,18 @@ and
     # Full path to directory of currently running Firefox
     # e.g. C:\program files\Nightly
     FirefoxDir=${Firefox}
+    Filename=${AppFilename}
+    
+    [Branding]
+    BrandFullName=${AppDisplayName}
+    BrandShortName=${AppDisplayName}
 
-**PORT** Retrieve the largest icon specified in the app's manifest.  
-**PORT** Convert the icon to .ICO format  
-**PORT** Write the converted icon to
+**DONE** Retrieve the largest icon specified in the app's manifest.  
+**DONE** Convert the icon to .ICO format  
+**DONE** Write the converted icon to
 `${InstallDir}\chrome\icons\default\topwindow.ico`.
 
-**TODO** Embed the icon in `${AppDir}\${AppFilename}.exe`.
+**DONE** Embed the icon in `${InstallDir}\${AppFilename}.exe`.
 
   - Initially, we may want to accomplish this by using **redit.exe**.
 Originally designed as a utility to aid in the deployment of xulrunner apps,
@@ -69,7 +67,32 @@ with Firefox.
   - Longer term, we may want to consider porting redit.exe to javascript
 using js-ctypes.
 
-**PORT** Write the uninstall registry key and its values.
+**TODO** Create `${AppFilename}.lnk`, a shortcut to the app,
+on the user's Desktop and Start Menu.
+To accomplish this, call the `setShortcut` function available in
+`webapprt\modules\WindowsShortcutService.jsm`.
+
+**TODO** Create the directory `${InstallDir}\uninstall`.  This directory
+will be referred to as ${UninstallDir}.
+
+**TODO** Copy `${Firefox}\webapp-uninstaller.exe` to
+`${UninstallDir}`.
+
+**TODO** Create the file `${UninstallDir}\shortcuts_log.ini`
+according to this template:
+
+    # ==== shortcuts_log.ini template ====
+    [STARTMENU]
+    Shortcut0=${AppFilename}.lnk
+    [DESKTOP]
+    Shortcut0=${AppFilename}.lnk
+    [TASKBAR]
+    Migrated=true
+
+**TODO** Copy `${Firefox}\webapp-uninstall.log` to
+`${UninstallDir}\uninstall.log`
+
+**TODO** Write the uninstall registry key and its values.
 The uninstall registry key is the full origin of the app, including port
 (or -1 if default). For example:
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\http://www.myexample.com:-1`.
@@ -80,17 +103,7 @@ Specifically, we'll want to make sure we write the following values:
   - **InstallLocation** (String) Full path to `${InstallDir}`
   - **NoModify** (Int) 1
   - **NoRepair** (Int) 1
-  - **AppFilename** (String) `${AppFilename}`
-  - **UninstallString** See the addon implementation for how to generate this
-
-**TODO** Create `${AppDir}\${AppFilename}.lnk`, a shortcut to the app.
-To accomplish this, call the `setShortcut` function available in
-`webapprt\modules\WindowsShortcutService.jsm`.
-
-**TODO** Copy `${AppDir}\${AppFilename}.lnk`
-to the user's Desktop and Start Menu
-
-**TODO** Copy `${Firefox}\webapp-uninstaller.exe` to ${AppDir}\uninstall.exe`
+  - **UninstallString** (String) `${UninstallDir}\webapp-uninstaller.exe`
 
 Mac Native Installation Flow
 ============================
