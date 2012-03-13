@@ -169,9 +169,12 @@ Step 2:  note: all folder and file names are case-sensitive!
     	            <key>CFBundleSignature</key>  
     	            <string>MOZB</string>  
     	            <key>CFBundleVersion</key>  
-    	            <string>${firefoxversion}</string>    
-                   <key>FirefoxBinary</key>    
-	                <string>$EMPTY | org.mozilla.${aurora|auroradebug|nightly|nightdebug|etc}</string>    
+    	            <string>${firefoxversion}</string>   
+    	            
+    	            OPTIONAL FOR DEVELOPERS:
+                    <key>FirefoxBinary</key>    
+	            <string>$EMPTY | org.mozilla.${aurora|auroradebug|nightly|nightdebug|etc}</string>   
+	            
                 </dict>  
                 </plist>
 
