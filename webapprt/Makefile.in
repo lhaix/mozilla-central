@@ -48,12 +48,14 @@ PARALLEL_DIRS = \
   modules \
   $(NULL)
 
+DIRS = $(NULL)
+
 ifneq (,$(filter WINNT,$(OS_ARCH)))
-DIRS = win
+DIRS += win
 PARALLEL_DIRS += tools/redit
 else
 ifeq ($(OS_ARCH),Darwin)
-DIRS = mac
+DIRS += mac
 endif # mac
 endif # windows
 
