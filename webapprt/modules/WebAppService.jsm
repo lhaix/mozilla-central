@@ -1,3 +1,10 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+// XXX Refactor with Webapps.jsm so there's only one API for accessing install
+// records.
+
 const EXPORTED_SYMBOLS = ["getInstallRecord"];
 
 const Cc = Components.classes;
@@ -5,11 +12,6 @@ const Cu = Components.utils;
 const Ci = Components.interfaces;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "Services", function() {
-  Cu.import("resource://gre/modules/Services.jsm");
-  return Services;
-});
 
 XPCOMUtils.defineLazyGetter(this, "NetUtil", function() {
   Cu.import("resource://gre/modules/NetUtil.jsm");
@@ -22,82 +24,67 @@ XPCOMUtils.defineLazyGetter(this, "FileUtils", function() {
 });
 
 const configFile = FileUtils.getFile("AppRegD", ["config.json"]);
-var installRecord = null;
 
-function onConfigFileFetched(callback) {
-  return function(inputStream, status) {
-    if (!Components.isSuccessCode(status)) {
-        // Handle error!
-        dump("ERROR: " + status + ". "
-           + "Failed to read file: " + configFile
-           + ".\n");
-        return;
-    }
-
-    let db;
-    let stmt;
+function getJSONFile(file, callback) {
+  let channel = NetUtil.newChannel(file);
+  channel.contentType = "application/json";
+  NetUtil.asyncFetch(channel, function(stream, result) {
     try {
-      let data = NetUtil.readInputStreamToString(inputStream,
-                                                 inputStream.available());
-      let config = JSON.parse(data);
-
-      //open the database and look for the install record
-      let dbFile = Cc["@mozilla.org/file/local;1"]
-                   .createInstance(Ci.nsILocalFile);
-      dbFile.initWithPath(config.profile);
-      dbFile.append("applications.sqlite");
-
-      db = Services.storage.openUnsharedDatabase(dbFile);
-
-      stmt = db.createStatement("SELECT data "
-                              + "FROM app "
-                              + "WHERE key = '" + config.origin + "'");
-
-      if (!stmt.executeStep()) {
-        dump("ERROR: App install record was not found. "
-           + "Was this app uninstalled?\n");
-        return;
-      }
-
-      installRecord = JSON.parse(stmt.getString(0));
-    } catch(e) {
-      dump("ERROR: Exception while trying to obtain install record:\n"
-          + e + "\n");
-      return;
-    } finally {
-      try{ inputStream.close(); } catch(e) { }
-      try{ stmt.finalize(); } catch(e) { }
-      try{ db.close(); } catch(e) { }
+      if (!Components.isSuccessCode(result))
+        throw("couldn't read from JSON file " + file.path + ": " + result);
+      callback(JSON.parse(NetUtil.readInputStreamToString(stream,
+                                                          stream.available())));
     }
-
-    try {
-      callback(installRecord);
-    } catch(e) {
-      throw("Exception in callback passed to getInstallRecord: " + e);
+    finally {
+      stream.close();
     }
-  };
+  });
 }
 
-function invokeCallback(callback) {
-  return function() {
-    if(callback) {
-      callback(installRecord);
-    }
-  };
-}
-
+let installRecord;
 function getInstallRecord(callback) {
+  dump("getting install record\n");
+
   if (installRecord) {
-    dump("Getting install record (cached)");
-    //we use a timer here to make sure it is always async
-    var timer = Cc["@mozilla.org/timer;1"]
-                .createInstance(Ci.nsITimer);
-    timer.initWithCallback({"notify": invokeCallback(callback)},
-                           0,
-                           timer.TYPE_ONE_SHOT);
+    dump("returning cached install record\n");
+
+    // we use a timer here to make sure it is always async
+    let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+    timer.initWithCallback({ "notify": function() callback(installRecord) },
+                           0, timer.TYPE_ONE_SHOT);
     return;
   }
 
-  dump("Getting install record");
-  NetUtil.asyncFetch(configFile, onConfigFileFetched(callback));
+  getJSONFile(configFile, function(config) {
+    dump("got config file: " + JSON.stringify(config) + "\n");
+    let appsDir = Cc["@mozilla.org/file/local;1"].
+                  createInstance(Ci.nsILocalFile);
+    appsDir.initWithPath(config.profile);
+    appsDir.append("webapps");
+    let appsFile = appsDir.clone();
+    appsFile.append("webapps.json");
+    getJSONFile(appsFile, function(apps) {
+      dump("got apps file: " + JSON.stringify(apps) + "\n");
+      let appID;
+      for (let id in apps) {
+        if (apps[id].origin == config.origin) {
+          appID = id;
+          break;
+        }
+      }
+
+      if (!appID)
+        throw "app ID not found";
+
+      let manifestFile = appsDir.clone();
+      manifestFile.append(appID);
+      manifestFile.append("manifest.json");
+      getJSONFile(manifestFile, function(manifest) {
+        dump("got manifest: " + JSON.stringify(manifest) + "\n");
+        installRecord = apps[appID];
+        installRecord.manifest = manifest;
+        callback(installRecord);
+      })
+    });
+  });
 }
