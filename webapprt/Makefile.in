@@ -40,10 +40,6 @@ topsrcdir = @top_srcdir@
 srcdir    = @srcdir@
 VPATH     = @srcdir@
 
-MODULE = webapprt
-XPIDL_MODULE = webapprt
-GRE_MODULE = 1
-
 include $(topsrcdir)/config/config.mk
 
 PARALLEL_DIRS = \
