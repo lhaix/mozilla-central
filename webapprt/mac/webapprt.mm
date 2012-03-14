@@ -78,7 +78,7 @@ const char *INFO_FILE_PATH = "/Contents/Info.plist";
 
 void execNewBinary(NSString* launchPath);
 
-NSString *pathToNewestFirefox(NSString* identifier);
+NSString *pathToWebRT(NSString* alternateBinaryID);
 
 NSException* makeException(NSString* name, NSString* message);
 
@@ -134,8 +134,8 @@ XRE_mainType XRE_main;
 int main(int argc, char **argv)
 {
   int i;
-  NSString *firefoxPath = NULL;   
-  NSString *bundleID = NULL;
+  NSString *firefoxPath = nil;   
+  NSString *alternateBinaryID = nil;
 
   for (i=1;i < argc;i++)
   {
@@ -143,7 +143,7 @@ int main(int argc, char **argv)
       gVerbose = 1;
     } else if (!strcmp(argv[i], "-b")) {
       if (i+1 < argc) {
-        bundleID = [NSString stringWithFormat: @"%s", argv[i+1]];
+        alternateBinaryID = [NSString stringWithFormat: @"%s", argv[i+1]];
         i++;
       }
     }
@@ -152,12 +152,45 @@ int main(int argc, char **argv)
 
   NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];  
 
-  @try {
+  //I need to look in our bundle first, before deciding what firefox binary to use
+  NSString* myBundlePath = [[NSBundle mainBundle] bundlePath];
+  NSString* myInfoFilePath = [NSString stringWithFormat:@"%@%s", myBundlePath, INFO_FILE_PATH];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:myInfoFilePath]) {
+    //get out of here, I don't have a bundle file?
+    NSLog(@"webapp bundle file not found at path: %@", myInfoFilePath);
+    @throw makeException(@"Invalid App Package", @"This App appears to be damaged, please reinstall it");
+  }
+  //get writable copy of my Info.plist file as a dictionary
+  NSData *myAppData = [[NSData alloc] initWithContentsOfFile:myInfoFilePath];
 
+  NSError *errorDesc = nil;
+  NSMutableDictionary* myAppInfo = 
+          (NSMutableDictionary *)[NSPropertyListSerialization propertyListWithData: myAppData 
+                                                              options: NSPropertyListMutableContainersAndLeaves
+                                                              format: NULL 
+                                                              error: &errorDesc];
+  if (errorDesc != nil) {
+    //we failed to deserialize the property list, so we likely need to bail
+    NSLog(@"unable to deserialize webapp property list: %@", errorDesc);
+    @throw makeException(@"Unable To Read App Version", @"This App appears to be damaged, please reinstall it");
+  }
+
+  //see if the Info.plist file specifies a different Firefox to use
+  alternateBinaryID = [myAppInfo objectForKey:@"FirefoxBinary"];
+  NSLog(@"found override firefox binary: %@", alternateBinaryID);
+
+  //ok now read my version string
+  NSString* myVersion = [myAppInfo objectForKey:@"CFBundleVersion"];
+  NSLog(@"WebappRT version found: %@", myVersion);
+  [myAppData release];
+  //Finished getting my current version
+
+  @try {
   if (!firefoxPath) {
-    firefoxPath = pathToNewestFirefox(bundleID); // XXX developer feature to specify other firefox here
+    firefoxPath = pathToWebRT(alternateBinaryID); // specify an alternate firefox to use in the Info.plist file
     if (!firefoxPath) {
       // Launch a dialog to explain to the user that there's no compatible web runtime
+      NSLog(@"unable to find a valid webrt parth");
       @throw makeException(@"Missing Web Runtime", @"Web Applications require Firefox to be installed");
     }
   }  
@@ -166,7 +199,6 @@ int main(int argc, char **argv)
   //Get the version number from my Info.plist.  This is more complicated that you might think; the information isn't meant for us,
   // it's meant for the OS.  We're supposed to know our version number.  I am reading the file and parsing into a mutable
   // dictionary object so that we can update it if necessary with the current version number and write it out again.
-  NSString* myBundlePath = [[NSBundle mainBundle] bundlePath];
 
   NSString *myWebRTPath = [NSString stringWithFormat: @"%@%s%s", myBundlePath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
   NSLog(@"my webrt path: %@", myWebRTPath);
@@ -192,45 +224,18 @@ int main(int argc, char **argv)
   NSLog(@"Set DYLD_FALLBACK_LIBRARY_PATH to: %s", libEnv);
 
 
-  NSString* myInfoFilePath = [NSString stringWithFormat:@"%@%s", myBundlePath, INFO_FILE_PATH];
-  if (![[NSFileManager defaultManager] fileExistsAtPath:myInfoFilePath]) {
-    //get out of here, I don't have a bundle file?
-    NSLog(@"webapp bundle file not found at path: %@", myInfoFilePath);
-    @throw makeException(@"Invalid App Package", @"This App appears to be damaged, please reinstall it");
-  }
-  //get writable copy of my Info.plist file as a dictionary
-  NSData *myAppData = [[NSData alloc] initWithContentsOfFile:myInfoFilePath];
-
-  NSError *errorDesc = nil;
-  NSMutableDictionary* myAppInfo = 
-          (NSMutableDictionary *)[NSPropertyListSerialization propertyListWithData: myAppData 
-                                                              options: NSPropertyListMutableContainersAndLeaves
-                                                              format: NULL 
-                                                              error: &errorDesc];
-  if (errorDesc != nil) {
-    //we failed to deserialize the property list, so we likely need to bail
-    NSLog(@"unable to deserialize webapp property list: %@", errorDesc);
-    @throw makeException(@"Unable To Read App Version", @"This App appears to be damaged, please reinstall it");
-  }
-  //ok now read my version string
-  NSString* myVersion = [myAppInfo objectForKey:@"CFBundleVersion"];
-  NSLog(@"WebappRT version found: %@", myVersion);
-  [myAppData release];
-  //Finished getting my current version
-
-
   //now get Firefox version, but read-only, which is much simpler.
   NSString* firefoxInfoFile = [NSString stringWithFormat:@"%@%s", firefoxPath, INFO_FILE_PATH];
   if (![[NSFileManager defaultManager] fileExistsAtPath:firefoxInfoFile]) {
     //get out of here, I don't have a bundle file?
-    NSLog(@"Firefox webapprt bundle file not found at path: %@", firefoxInfoFile);
-    @throw makeException(@"Missing WebRT Files", @"This version of Firefox cannot run web applications, because it is not recent enough or damaged");
+    NSLog(@"Firefox bundle file not found at path: %@", firefoxInfoFile);
+    @throw makeException(@"Missing Application File", @"This copy of Firefox appears to be damaged (unable to locate Info.plist)");
   }
 
   //get read-only copy of FF Info.plist file
   NSDictionary *firefoxAppInfo = [NSDictionary dictionaryWithContentsOfFile:firefoxInfoFile];
   if (!firefoxAppInfo) {
-    @throw makeException(@"Unreadable Info File", @"This version of Firefox cannot run web applications, because it is not recent enough or damaged");
+    @throw makeException(@"Unreadable Info File", @"This copy of Firefox appears to be damaged (Info.plist Unreadable)");
   }
   NSString* firefoxVersion = [firefoxAppInfo objectForKey:@"CFBundleVersion"];
   //Finished getting Firefox version
@@ -246,7 +251,8 @@ int main(int argc, char **argv)
     NSString *newWebRTPath = [NSString stringWithFormat: @"%@%s%s", firefoxPath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
     NSLog(@"firefox webrt path: %@", newWebRTPath);
     if (![[NSFileManager defaultManager] fileExistsAtPath:newWebRTPath]) {
-      @throw makeException(@"Missing WebRT Files", @"This version of Firefox cannot run web applications, because it is not recent enough or damaged");
+      NSString* msg = [NSString stringWithFormat: @"This version of Firefox (%@) cannot run web applications, because it is not recent enough or damaged", firefoxVersion];
+      @throw makeException(@"Missing WebRT Files", msg);
     }
 
         //unlink my binary file
@@ -409,19 +415,24 @@ void displayErrorAlert(NSString* title, NSString* message)
 
 
 /* Find the currently installed Firefox, if any, and return
- * an absolute path to it. */
-NSString *pathToNewestFirefox(NSString* identifier)
+ * an absolute path to it. may return nil */
+NSString *pathToWebRT(NSString* alternateBinaryID)
 {
   //default is firefox
-  NSString* appIdent = @"org.mozilla.nightlydebug";
-  if (identifier != NULL) appIdent = identifier;
+  NSString *defaultBinary = @"org.mozilla.firefox";
+  NSString *binaryPath = nil;
 
-  NSString *firefoxRoot = [[NSWorkspace sharedWorkspace] absolutePathForAppBundleWithIdentifier:appIdent];
-  if (firefoxRoot) {
-    return firefoxRoot;
-  } else {
-    return NULL;
+  //if they provided an override, try to find it
+  if (alternateBinaryID != nil && ([alternateBinaryID length] > 0)) {
+    binaryPath = [[NSWorkspace sharedWorkspace] absolutePathForAppBundleWithIdentifier:alternateBinaryID];
   }
+
+  //if it isn't found, use firefox default instead
+  if (binaryPath == nil || [binaryPath length] == 0) {
+    binaryPath = [[NSWorkspace sharedWorkspace] absolutePathForAppBundleWithIdentifier:defaultBinary];
+  }
+
+  return binaryPath;
 }
 
 
