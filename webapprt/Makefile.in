@@ -42,12 +42,6 @@ VPATH     = @srcdir@
 
 include $(topsrcdir)/config/config.mk
 
-PARALLEL_DIRS = \
-  base \
-  components \
-  modules \
-  $(NULL)
-
 DIRS = $(NULL)
 
 ifneq (,$(filter WINNT,$(OS_ARCH)))
