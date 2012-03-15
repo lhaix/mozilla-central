@@ -59,15 +59,11 @@ DIRS += mac
 endif # mac
 endif # windows
 
-# This switches $(INSTALL) to copy mode, like $(SYSINSTALL), so things that
-# shouldn't get 755 perms need $(IFLAGS1) for either way of calling nsinstall.
-NSDISTMODE = copy
-
 include $(topsrcdir)/config/rules.mk
 
 libs:: prefs.js
 	$(MKDIR) -p $(DIST)/bin/defaults/pref/webapprt@mozilla.org
-	$(INSTALL) $(IFLAGS1) $^ $(DIST)/bin/defaults/pref/webapprt@mozilla.org
+	$(INSTALL) $^ $(DIST)/bin/defaults/pref/webapprt@mozilla.org
 # XXX need install:: for prefs.js?
 
 # XXX Factor out with copies in browser/app/profile/extensions/webapprtext@mozilla.org/Makefile.in and config/Makefile.in.
@@ -86,7 +82,7 @@ webapprt.ini: webapprt.ini.in $(APP_INI_DEPS)
 	$(PYTHON) $(topsrcdir)/config/Preprocessor.py $(DEFINES) $< > $@
 
 libs:: webapprt.ini
-	$(INSTALL) $(IFLAGS1) webapprt.ini $(DIST)/bin
+	$(INSTALL) webapprt.ini $(DIST)/bin
 
 install:: webapprt.ini
 	$(SYSINSTALL) $(IFLAGS1) webapprt.ini $(DESTDIR)$(mozappdir)
