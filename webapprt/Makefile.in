@@ -59,6 +59,10 @@ DIRS += mac
 endif # mac
 endif # windows
 
+EXTRA_PP_COMPONENTS = \
+  WebappShellComponents.manifest \
+  $(NULL)
+
 include $(topsrcdir)/config/rules.mk
 
 libs:: prefs.js
