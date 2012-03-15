@@ -1,5 +1,0 @@
-<?xml version="1.0"?>
-<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<window id="main" title="main" hidden="true" width="0" height="0" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-  <script id="mainjs" type="application/javascript" src="chrome://webapp/content/main.js"/>
-</window>
