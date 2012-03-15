@@ -21,3 +21,8 @@ contract @mozilla.org/uriloader/content-handler;1?type=application/http-index-fo
 category command-line-handler m-browser @mozilla.org/browser/clh;1 application=webapprt@mozilla.org
 category command-line-handler x-default @mozilla.org/browser/final-clh;1 application=webapprt@mozilla.org
 category command-line-validator b-browser @mozilla.org/browser/clh;1 application=webapprt@mozilla.org
+
+# WebappRTDirectoryProvider.js
+component {e1799fda-4b2f-4457-b671-e0641d95698d} WebappRTDirectoryProvider.js application=webapprt@mozilla.org
+contract @mozilla.org/webapprt/directory-provider;1 {e1799fda-4b2f-4457-b671-e0641d95698d} application=webapprt@mozilla.org
+category xpcom-directory-providers webapprt-directory-provider @mozilla.org/webapprt/directory-provider;1 application=webapprt@mozilla.org

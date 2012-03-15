@@ -11,7 +11,7 @@ ID=webapprt@mozilla.org
 Vendor=Mozilla
 Name=Webapp Runtime
 Version=@GRE_MILESTONE@
-BuildID=@APP_BUILDID@
+BuildID=@GRE_BUILDID@
 
 [Gecko]
 MinVersion=@GRE_MILESTONE@
