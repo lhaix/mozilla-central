@@ -62,7 +62,7 @@ endif # windows
 include $(topsrcdir)/config/rules.mk
 
 libs:: prefs.js
-	$(MKDIR) -p $(DIST)/bin/defaults/pref/webapprt@mozilla.org
+	$(NSINSTALL) -D $(DIST)/bin/defaults/pref/webapprt@mozilla.org
 	$(INSTALL) $^ $(DIST)/bin/defaults/pref/webapprt@mozilla.org
 # XXX need install:: for prefs.js?
 
