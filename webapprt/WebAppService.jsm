@@ -2,89 +2,40 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// XXX Refactor with Webapps.jsm so there's only one API for accessing install
-// records.
-
-const EXPORTED_SYMBOLS = ["getInstallRecord"];
+const EXPORTED_SYMBOLS = ["Webapp"];
 
 const Cc = Components.classes;
-const Cu = Components.utils;
 const Ci = Components.interfaces;
+const Cu = Components.utils;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "NetUtil", function() {
-  Cu.import("resource://gre/modules/NetUtil.jsm");
-  return NetUtil;
-});
 
 XPCOMUtils.defineLazyGetter(this, "FileUtils", function() {
   Cu.import("resource://gre/modules/FileUtils.jsm");
   return FileUtils;
 });
 
-const configFile = FileUtils.getFile("AppRegD", ["config.json"]);
+// WebappRTDirectoryProvider needs to access the profile path synchronously,
+// so we load the configuration file that way.
+let Webapp = {
+  get origin() {
+    return this._config.origin;
+  },
 
-function getJSONFile(file, callback) {
-  let channel = NetUtil.newChannel(file);
-  channel.contentType = "application/json";
-  NetUtil.asyncFetch(channel, function(stream, result) {
-    try {
-      if (!Components.isSuccessCode(result))
-        throw("couldn't read from JSON file " + file.path + ": " + result);
-      callback(JSON.parse(NetUtil.readInputStreamToString(stream,
-                                                          stream.available())));
-    }
-    finally {
-      stream.close();
-    }
-  });
-}
+  get profile() {
+    return this._config.profile;
+  },
 
-let installRecord;
-function getInstallRecord(callback) {
-  dump("getting install record\n");
+  get _config() {
+    let configFile = FileUtils.getFile("AppRegD", ["config.json"]);
+    let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
+                      createInstance(Ci.nsIFileInputStream);
+    inputStream.init(configFile, -1, 0, 0);
+    let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
+    let config = json.decodeFromStream(inputStream, configFile.fileSize);
 
-  if (installRecord) {
-    dump("returning cached install record\n");
-
-    // we use a timer here to make sure it is always async
-    let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
-    timer.initWithCallback({ "notify": function() callback(installRecord) },
-                           0, timer.TYPE_ONE_SHOT);
-    return;
+    delete this._config;
+    return this._config = config;
   }
 
-  getJSONFile(configFile, function(config) {
-    dump("got config file: " + JSON.stringify(config) + "\n");
-    let appsDir = Cc["@mozilla.org/file/local;1"].
-                  createInstance(Ci.nsILocalFile);
-    appsDir.initWithPath(config.profile);
-    appsDir.append("webapps");
-    let appsFile = appsDir.clone();
-    appsFile.append("webapps.json");
-    getJSONFile(appsFile, function(apps) {
-      dump("got apps file: " + JSON.stringify(apps) + "\n");
-      let appID;
-      for (let id in apps) {
-        if (apps[id].origin == config.origin) {
-          appID = id;
-          break;
-        }
-      }
-
-      if (!appID)
-        throw "app ID not found";
-
-      let manifestFile = appsDir.clone();
-      manifestFile.append(appID);
-      manifestFile.append("manifest.json");
-      getJSONFile(manifestFile, function(manifest) {
-        dump("got manifest: " + JSON.stringify(manifest) + "\n");
-        installRecord = apps[appID];
-        installRecord.manifest = manifest;
-        callback(installRecord);
-      })
-    });
-  });
-}
+};

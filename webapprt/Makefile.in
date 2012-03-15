@@ -55,6 +55,7 @@ endif # windows
 
 EXTRA_PP_COMPONENTS = \
   WebappShellComponents.manifest \
+  WebappRTDirectoryProvider.js \
   $(NULL)
 
 EXTRA_JS_MODULES = \
