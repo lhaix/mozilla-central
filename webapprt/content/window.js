@@ -7,7 +7,7 @@ const Ci = Components.interfaces;
 const Cu = Components.utils;
 
 Cu.import("resource://gre/modules/Webapps.jsm");
-Cu.import("resource://gre/modules/WebAppService.jsm");
+Cu.import("resource://gre/modules/WebappRT.jsm");
 
 function parameterizeAppWindow(installRecord, manifest) {
   //now configure the page

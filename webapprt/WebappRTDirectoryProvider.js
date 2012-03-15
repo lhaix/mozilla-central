@@ -9,7 +9,7 @@ const Cu = Components.utils;
 const WEBAPP_SOURCE_PROFILE_DIR = "WebappSrcProfD";
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/WebAppService.jsm");
+Cu.import("resource://gre/modules/WebappRT.jsm");
 
 function DirectoryProvider() {}
 

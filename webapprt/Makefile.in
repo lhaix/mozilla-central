@@ -59,7 +59,7 @@ EXTRA_PP_COMPONENTS = \
   $(NULL)
 
 EXTRA_JS_MODULES = \
-	WebAppService.jsm \
+	WebappRT.jsm \
 	WindowsShortcutService.jsm \
 	$(NULL)
 
