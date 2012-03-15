@@ -2363,7 +2363,7 @@ NS_IMETHODIMP nsDOMStorageEvent::GetStorageArea(nsIDOMStorage * *aStorageArea)
 {
   NS_ENSURE_ARG_POINTER(aStorageArea);
 
-  NS_ADDREF(*aStorageArea = mStorageArea);
+  NS_IF_ADDREF(*aStorageArea = mStorageArea);
   return NS_OK;
 }
 
@@ -2396,8 +2396,6 @@ nsDOMStorageEvent::InitFromCtor(const nsAString& aType,
                                 JSContext* aCx, jsval* aVal)
 {
   mozilla::dom::StorageEventInit d;
-  d.oldValue.SetIsVoid(true);
-  d.newValue.SetIsVoid(true);
   nsresult rv = d.Init(aCx, aVal);
   NS_ENSURE_SUCCESS(rv, rv);
   return InitStorageEvent(aType, d.bubbles, d.cancelable, d.key, d.oldValue,
