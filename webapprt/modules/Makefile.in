@@ -51,6 +51,7 @@ include $(topsrcdir)/config/config.mk
 
 EXTRA_JS_MODULES = \
 	WebAppService.jsm \
+	WindowsIconEmbeddingService.jsm \
 	WindowsShortcutService.jsm \
 	$(NULL)
 
