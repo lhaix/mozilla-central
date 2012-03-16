@@ -9,9 +9,6 @@ VPATH     = @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
-APP_VERSION = $(shell cat $(srcdir)/../config/version.txt)
-DEFINES += -DAPP_VERSION="$(APP_VERSION)"
-
 # Build a binary bootstrapping with XRE_main
 PROGRAM   = webapprt$(BIN_SUFFIX)
 
