@@ -454,24 +454,25 @@ LoadDirsIntoArray(nsCOMArray<nsIFile>& aSourceDirs,
                   const char *const* aAppendList,
                   nsCOMArray<nsIFile>& aDirectories)
 {
-  nsCOMPtr<nsIFile> curDir;
+  nsCOMPtr<nsIFile> appended;
   bool exists;
 
   for (PRInt32 i = 0; i < aSourceDirs.Count(); ++i) {
-    aSourceDirs[i]->Clone(getter_AddRefs(curDir));
-    if (!curDir)
+    aSourceDirs[i]->Clone(getter_AddRefs(appended));
+    if (!appended)
       continue;
 
     nsCAutoString leaf;
-    curDir->GetNativeLeafName(leaf);
+    appended->GetNativeLeafName(leaf);
     if (!Substring(leaf, leaf.Length() - 4).Equals(NS_LITERAL_CSTRING(".xpi"))) {
-      LoadDirIntoArray(curDir,
-		       aAppendList,
-		       aDirectories);
+      LoadDirIntoArray(appended,
+                       aAppendList,
+                       aDirectories);
     }
     else {
-      if (NS_SUCCEEDED(curDir->Exists(&exists)) && exists)
-	aDirectories.AppendObject(curDir);
+      if (NS_SUCCEEDED(appended->Exists(&exists)) && exists) {
+        aDirectories.AppendObject(appended);
+      }
     }
   }
 }
