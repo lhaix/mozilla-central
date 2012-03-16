@@ -5,7 +5,7 @@
    - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
 
 #ifdef XP_MACOSX
-<?xul-overlay href="chrome://webapp/content/macMenuOverlay.xul"?>
+<?xul-overlay href="chrome://webapprt/content/macMenuOverlay.xul"?>
 
 <window id="main-window"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -14,7 +14,7 @@
 #include mountPoints.inc
 
   <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
-  <script id="windowjs" type="application/javascript" src="chrome://webapp/content/main.js"/>
+  <script id="windowjs" type="application/javascript" src="chrome://webapprt/content/main.js"/>
 
 </window>
 

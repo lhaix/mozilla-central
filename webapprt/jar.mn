@@ -1,5 +1,5 @@
 webapprt.jar:
-%  content webapp %content/
+%  content webapprt %content/
 *       content/hiddenWindow.xul                      (content/hiddenWindow.xul)
         content/main.js                               (content/main.js)
 *       content/window.js                             (content/window.js)

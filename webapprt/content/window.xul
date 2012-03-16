@@ -5,7 +5,7 @@
    - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
 
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<?xul-overlay href="chrome://webapp/content/macMenuOverlay.xul"?>
+<?xul-overlay href="chrome://webapprt/content/macMenuOverlay.xul"?>
 
 # All DTD information is stored in a separate file so that it can be shared by
 # hiddenWindow.xul.
@@ -30,5 +30,5 @@
 #include mountPoints.inc
 
   <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
-  <script id="windowjs" type="application/javascript" src="chrome://webapp/content/window.js"/>
+  <script id="windowjs" type="application/javascript" src="chrome://webapprt/content/window.js"/>
 </window>
