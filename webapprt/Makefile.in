@@ -21,7 +21,7 @@ endif # mac
 endif # windows
 
 EXTRA_PP_COMPONENTS = \
-  WebappShellComponents.manifest \
+  WebappRTComponents.manifest \
   WebappRTCommandLineHandler.js \
   WebappRTDirectoryProvider.js \
   $(NULL)
