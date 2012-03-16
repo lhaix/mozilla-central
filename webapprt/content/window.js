@@ -32,12 +32,3 @@ let installRecord = DOMApplicationRegistry.getApp(Webapp.origin);
 DOMApplicationRegistry.getManifestFor(Webapp.origin, function(manifest) {
   parameterizeAppWindow(installRecord, manifest);
 });
-
-window.addEventListener("click", function(e) {
-    // Make sure clicks remain in our context
-    // TODO check to see if we are in same origin?
-    if (e.target.nodeName == "A") {
-        e.preventDefault();
-        window.location = e.target.href;
-    }
-}, false);
