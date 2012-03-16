@@ -22,6 +22,7 @@ endif # windows
 
 EXTRA_PP_COMPONENTS = \
   WebappShellComponents.manifest \
+  WebappRTCommandLineHandler.js \
   WebappRTDirectoryProvider.js \
   $(NULL)
 
