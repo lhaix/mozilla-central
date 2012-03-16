@@ -7,14 +7,13 @@
 #ifdef XP_MACOSX
 <?xul-overlay href="chrome://webapprt/content/macMenuOverlay.xul"?>
 
-<window id="main-window"
-        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+<window xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
 #include mountPoints.inc
 
   <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
-  <script id="windowjs" type="application/javascript" src="chrome://webapprt/content/main.js"/>
+  <script type="application/javascript" src="chrome://webapprt/content/main.js"/>
 
 </window>
 

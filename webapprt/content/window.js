@@ -9,29 +9,22 @@ const Cu = Components.utils;
 Cu.import("resource://gre/modules/Webapps.jsm");
 Cu.import("resource://gre/modules/WebappRT.jsm");
 
-function parameterizeAppWindow(installRecord, manifest) {
-  //now configure the page
-  let topwindow = document.getElementById("topwindow");
-  topwindow.setAttribute("title", manifest.name);
+function onLoad() {
+  window.removeEventListener("load", onLoad, false);
+  let installRecord = DOMApplicationRegistry.getApp(Webapp.origin);
+  DOMApplicationRegistry.getManifestFor(Webapp.origin, function(manifest) {
+    // Set the title of the window to the name of the webapp.
+    // XXX Set it to the webapp page's title, then update it when that changes.
+    document.documentElement.setAttribute("title", manifest.name);
 
-  //embed the actual content browser frame,
-  //pointing at the origin+launch path
-  let contentThing = document.createElement("browser");
-  contentThing.setAttribute("id", "appContent");
-  contentThing.setAttribute("type", "content");
-
-  let url = installRecord.origin;
-  if (manifest.launch_path)
-    url += manifest.launch_path;
-  contentThing.setAttribute("src", url);
-  contentThing.setAttribute("flex", "1");
-  topwindow.appendChild(contentThing);
+    // Load the webapp's launch path.
+    let url = installRecord.origin;
+    if (manifest.launch_path)
+      url += manifest.launch_path;
+    document.getElementById("content").setAttribute("src", url);
+  });
 }
-
-let installRecord = DOMApplicationRegistry.getApp(Webapp.origin);
-DOMApplicationRegistry.getManifestFor(Webapp.origin, function(manifest) {
-  parameterizeAppWindow(installRecord, manifest);
-});
+window.addEventListener("load", onLoad, false);
 
 function updateEditUIVisibility() {
 #ifndef XP_MACOSX

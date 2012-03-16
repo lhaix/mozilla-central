@@ -12,7 +12,7 @@
 #include doctype.inc
 
 
-<window id="topwindow" windowtype="app" title="Mozilla Apps Runtime" width="1024" height="800"
+<window windowtype="app" title="Mozilla Apps Runtime" width="1024" height="800"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         xmlns:svg="http://www.w3.org/2000/svg"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
@@ -30,5 +30,7 @@
 #include mountPoints.inc
 
   <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
-  <script id="windowjs" type="application/javascript" src="chrome://webapprt/content/window.js"/>
+  <script type="application/javascript" src="chrome://webapprt/content/window.js"/>
+
+  <browser type="content" id="content" flex="1"/>
 </window>
