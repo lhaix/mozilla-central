@@ -24,5 +24,6 @@
 
 #include mountPoints.inc
 
+  <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
   <script id="windowjs" type="application/javascript" src="chrome://webapp/content/window.js"/>
 </window>

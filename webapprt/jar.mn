@@ -2,7 +2,7 @@ webapprt.jar:
 %  content webapp %content/
 *       content/hiddenWindow.xul                      (content/hiddenWindow.xul)
         content/main.js                               (content/main.js)
-        content/window.js                             (content/window.js)
+*       content/window.js                             (content/window.js)
 *       content/window.xul                            (content/window.xul)
 *       content/baseMenuOverlay.xul                   (content/baseMenuOverlay.xul)
 *       content/macMenuOverlay.xul                    (content/macMenuOverlay.xul)
