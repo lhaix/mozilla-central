@@ -203,7 +203,6 @@ int main(int argc, char **argv)
     //we are ready to load XUL and such, and go go go
 
       NSLog(@"This Application has the newest webrt.  Launching!");
-      bool isGreLoaded = false;
 
       int result = 0;
       char rtINIPath[MAXPATHLEN];
@@ -214,7 +213,7 @@ int main(int argc, char **argv)
       if (setenv("XUL_APP_FILE", appEnv, 1)) 
       {
         NSLog(@"Couldn't set XUL_APP_FILE to: %s", appEnv);
-        return 255;
+        @throw makeException(@"Error", @"Unable to set application INI file.");
       }
       NSLog(@"Set XUL_APP_FILE to: %s", appEnv);
 
@@ -223,10 +222,7 @@ int main(int argc, char **argv)
       //CONSTRUCT GREDIR AND CALL XPCOMGLUE WITH IT
       char greDir[MAXPATHLEN];
       snprintf(greDir, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH);
-      isGreLoaded = NS_SUCCEEDED(AttemptGRELoad(greDir));
-
-
-      if(!isGreLoaded) 
+      if(!NS_SUCCEEDED(AttemptGRELoad(greDir))) 
       {
           @throw makeException(@"Error", @"Unable to load XUL files for application startup");
       }
@@ -258,27 +254,27 @@ int main(int argc, char **argv)
         if(NS_FAILED(XRE_GetFileFromPath(rtINIPath, getter_AddRefs(rtINI)))) 
         {
           NSLog(@"Runtime INI path not recognized: '%s'\n", rtINIPath);
-          return 255;
+          @throw makeException(@"Error", @"Incorrect path to base INI file.");
         }
 
         if(!rtINI) 
         {
           NSLog(@"Error: missing webapprt.ini");
-          return 255;
+          @throw makeException(@"Error", @"Missing base INI file.");
         }
 
         nsXREAppData *webShellAppData;
         if (NS_FAILED(XRE_CreateAppData(rtINI, &webShellAppData))) 
         {
           NSLog(@"Couldn't read webapprt.ini: %s", rtINIPath);
-          return 255;
+          @throw makeException(@"Error", @"Unable to parse base INI file.");
         }
 
         char profile[MAXPATHLEN];
         if(NS_FAILED(parser.GetString("App", "Profile", profile, MAXPATHLEN))) 
         {
           NSLog(@"Unable to retrieve profile from web app INI file");
-          return 255;
+          @throw makeException(@"Error", @"Unable to retrieve installation profile.");
         }
         SetAllocatedString(webShellAppData->profile, profile);
 
@@ -286,14 +282,14 @@ int main(int argc, char **argv)
         if(NS_FAILED(XRE_GetFileFromPath(greDir, getter_AddRefs(directory)))) 
         {
           NSLog(@"Unable to open app dir");
-          return 255;
+          @throw makeException(@"Error", @"Unable to open application directory.");
         }
 
         nsCOMPtr<nsILocalFile> xreDir;
         if(NS_FAILED(XRE_GetFileFromPath(greDir, getter_AddRefs(xreDir)))) 
         {
           NSLog(@"Unable to open XRE dir");
-          return 255;
+          @throw makeException(@"Error", @"Unable to open application XRE directory.");
         }
 
         xreDir.forget(&webShellAppData->xreDirectory);
