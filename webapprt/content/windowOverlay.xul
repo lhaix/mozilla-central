@@ -4,6 +4,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this file,
    - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
 
+<!-- This file contains the code common to both the cross-platform window.xul
+   - and the Mac-specific hiddenWindow.xul. -->
+
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
 
 <?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
@@ -40,6 +43,7 @@
 <script type="application/javascript" src="chrome://global/content/viewZoomOverlay.js"/>
 <script type="application/javascript" src="chrome://global/content/inlineSpellCheckUI.js"/>
 <script type="application/javascript" src="chrome://global/content/viewSourceUtils.js"/>
+<script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
 
   <stringbundleset id="stringbundleset">
     <stringbundle id="bundle_brand" src="chrome://branding/locale/brand.properties"/>
