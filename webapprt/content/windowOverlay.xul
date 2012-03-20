@@ -101,6 +101,27 @@
                              this.setAttribute('openedwithkey',
                                                event.target.parentNode.openedWithKey);"
            style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
+    <menu id="file-menu" label="&fileMenu.label;"
+          accesskey="&fileMenu.accesskey;">
+      <menupopup id="menu_FilePopup">
+        <menuitem id="menu_FileQuitItem"
+#ifdef XP_WIN
+                  label="&quitApplicationCmdWin.label;"
+                  accesskey="&quitApplicationCmdWin.accesskey;"
+#else
+#ifdef XP_MACOSX
+                  label="&quitApplicationCmdMac.label;"
+#else
+                  label="&quitApplicationCmd.label;"
+                  accesskey="&quitApplicationCmd.accesskey;"
+#endif
+#ifdef XP_UNIX
+                  key="key_quitApplication"
+#endif
+#endif
+                  command="cmd_quitApplication"/>
+      </menupopup>
+    </menu>
     <menu id="edit-menu" label="&editMenu.label;"
           accesskey="&editMenu.accesskey;">
       <menupopup id="menu_EditPopup"
@@ -144,11 +165,6 @@
                   accesskey="&selectAllCmd.accesskey;"
                   command="cmd_selectAll"/>
       </menupopup>
-      <!-- hiding this here.  it seems to work... -->
-      <menuitem id="menu_FileQuitItem"
-                label="Quit"
-                key="key_quitApplication"
-                command="cmd_quitApplication"/>
     </menu>
   </menubar>
 
