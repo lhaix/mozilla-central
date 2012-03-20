@@ -3,14 +3,8 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <stringbundleset id="stringbundleset"/>
-
 <commandset id="mainCommandSet"/>
 <commandset id="baseMenuCommandSet"/>
-<commandset id="placesCommands"/>
-
-<broadcasterset id="mainBroadcasterSet"/>
-
 <keyset id="mainKeyset"/>
 <keyset id="baseMenuKeyset"/>
-
 <menubar id="main-menubar"/>

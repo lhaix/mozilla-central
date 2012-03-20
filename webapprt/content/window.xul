@@ -13,18 +13,9 @@
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         sizemode="normal" resizable="true">
 
-  <commandset id="main_command_set">
-    <command id="new_window_command" />
-    <command id="quit_command" />
-    <command id="copy_command" />
-    <command id="cut_command" />
-    <command id="paste_command" />
-    <command id="about_command" />
-  </commandset>
+  <script type="application/javascript" src="chrome://webapprt/content/window.js"/>
 
 #include mountPoints.inc
-
-  <script type="application/javascript" src="chrome://webapprt/content/window.js"/>
 
   <browser type="content" id="content" flex="1"/>
 </window>
