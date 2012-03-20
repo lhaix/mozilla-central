@@ -24,7 +24,7 @@
 <!ENTITY % textcontextDTD SYSTEM "chrome://global/locale/textcontext.dtd" >
 %textcontextDTD;
 <!ENTITY % customizeToolbarDTD SYSTEM "chrome://global/locale/customizeToolbar.dtd">
-  %customizeToolbarDTD;
+%customizeToolbarDTD;
 <!ENTITY % safebrowsingDTD SYSTEM "chrome://browser/locale/safebrowsing/phishing-afterload-warning-message.dtd">
 %safebrowsingDTD;
 <!ENTITY % aboutHomeDTD SYSTEM "chrome://browser/locale/aboutHome.dtd">
@@ -33,17 +33,15 @@
 %debuggerDTD;
 ]>
 
-
 <overlay id="hidden-overlay"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
-
-<script type="application/javascript" src="chrome://global/content/printUtils.js"/>
-<script type="application/javascript" src="chrome://global/content/viewZoomOverlay.js"/>
-<script type="application/javascript" src="chrome://global/content/inlineSpellCheckUI.js"/>
-<script type="application/javascript" src="chrome://global/content/viewSourceUtils.js"/>
-<script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
+  <script type="application/javascript" src="chrome://global/content/printUtils.js"/>
+  <script type="application/javascript" src="chrome://global/content/viewZoomOverlay.js"/>
+  <script type="application/javascript" src="chrome://global/content/inlineSpellCheckUI.js"/>
+  <script type="application/javascript" src="chrome://global/content/viewSourceUtils.js"/>
+  <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
 
   <stringbundleset id="stringbundleset">
     <stringbundle id="bundle_brand" src="chrome://branding/locale/brand.properties"/>
@@ -52,21 +50,17 @@
   </stringbundleset>
 
   <commandset id="mainCommandSet">
-
     <command id="cmd_close" oncommand="BrowserCloseTabOrWindow()"/>
     <command id="cmd_quitApplication" oncommand="goQuitApplication()"/>
-
     <commandset id="editMenuCommands"/>
-
     <command id="View:FullScreen" oncommand="BrowserFullScreen();"/>
   </commandset>
 
-
-
-
   <keyset id="mainKeyset">
-
-    <key id="key_closeWindow" key="&closeCmd.key;" command="cmd_closeWindow" modifiers="accel,shift"/>
+    <key id="key_closeWindow"
+         key="&closeCmd.key;"
+         command="cmd_closeWindow"
+         modifiers="accel,shift"/>
     <key id="key_undo"
          key="&undoCmd.key;"
          modifiers="accel"/>
@@ -82,92 +76,89 @@
          modifiers="accel"/>
     <key id="key_delete" keycode="VK_DELETE" command="cmd_delete"/>
     <key id="key_selectAll" key="&selectAllCmd.key;" modifiers="accel"/>
-
-    <key id="key_fullScreen" key="&fullScreenCmd.macCommandKey;" command="View:FullScreen" modifiers="accel,shift"/>
+    <key id="key_fullScreen"
+         key="&fullScreenCmd.macCommandKey;"
+         command="View:FullScreen"
+         modifiers="accel,shift"/>
     <key keycode="VK_F11" command="View:FullScreen"/>
-
-    <key id="key_close" key="&closeCmd.key;" command="cmd_close" modifiers="accel"/>
-
-
-    <key id="key_quitApplication" key="&quitApplicationCmdMac.key;" command="cmd_quitApplication" modifiers="accel"/>
-
-
+    <key id="key_close"
+         key="&closeCmd.key;"
+         command="cmd_close"
+         modifiers="accel"/>
+    <key id="key_quitApplication"
+         key="&quitApplicationCmdMac.key;"
+         command="cmd_quitApplication"
+         modifiers="accel"/>
   </keyset>
 
-  <commandset id="baseMenuCommandSet" />
-  <keyset id="baseMenuKeyset" />
+  <commandset id="baseMenuCommandSet"/>
 
+  <keyset id="baseMenuKeyset"/>
 
-       <menubar id="main-menubar"
-                onpopupshowing="if (event.target.parentNode.parentNode == this &amp;&amp;
-                                    !('@mozilla.org/widget/nativemenuservice;1' in Cc))
-                                  this.setAttribute('openedwithkey',
-                                                    event.target.parentNode.openedWithKey);"
-                style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
+  <menubar id="main-menubar"
+          onpopupshowing="if (event.target.parentNode.parentNode == this &amp;&amp;
+                              !('@mozilla.org/widget/nativemenuservice;1' in Cc))
+                            this.setAttribute('openedwithkey',
+                                              event.target.parentNode.openedWithKey);"
+          style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
+      <menu id="edit-menu" label="&editMenu.label;"
+            accesskey="&editMenu.accesskey;">
+        <menupopup id="menu_EditPopup"
+                   onpopupshowing="updateEditUIVisibility()"
+                   onpopuphidden="updateEditUIVisibility()">
+          <menuitem id="menu_undo"
+                    label="&undoCmd.label;"
+                    key="key_undo"
+                    accesskey="&undoCmd.accesskey;"
+                    command="cmd_undo"/>
+          <menuitem id="menu_redo"
+                    label="&redoCmd.label;"
+                    key="key_redo"
+                    accesskey="&redoCmd.accesskey;"
+                    command="cmd_redo"/>
+          <menuseparator/>
+          <menuitem id="menu_cut"
+                    label="&cutCmd.label;"
+                    key="key_cut"
+                    accesskey="&cutCmd.accesskey;"
+                    command="cmd_cut"/>
+          <menuitem id="menu_copy"
+                    label="&copyCmd.label;"
+                    key="key_copy"
+                    accesskey="&copyCmd.accesskey;"
+                    command="cmd_copy"/>
+          <menuitem id="menu_paste"
+                    label="&pasteCmd.label;"
+                    key="key_paste"
+                    accesskey="&pasteCmd.accesskey;"
+                    command="cmd_paste"/>
+          <menuitem id="menu_delete"
+                    label="&deleteCmd.label;"
+                    key="key_delete"
+                    accesskey="&deleteCmd.accesskey;"
+                    command="cmd_delete"/>
+          <menuseparator/>
+          <menuitem id="menu_selectAll"
+                    label="&selectAllCmd.label;"
+                    key="key_selectAll"
+                    accesskey="&selectAllCmd.accesskey;"
+                    command="cmd_selectAll"/>
+        </menupopup>
+      <!-- hiding this here.  it seems to work... -->
+          <menuitem id="menu_FileQuitItem"
+                    label="Quit"
+                    key="key_quitApplication"
+                    command="cmd_quitApplication"/>
+      </menu>
+  </menubar>
 
-            <menu id="edit-menu" label="&editMenu.label;"
-                  accesskey="&editMenu.accesskey;">
-              <menupopup id="menu_EditPopup"
-                         onpopupshowing="updateEditUIVisibility()"
-                         onpopuphidden="updateEditUIVisibility()">
-                <menuitem id="menu_undo"
-                          label="&undoCmd.label;"
-                          key="key_undo"
-                          accesskey="&undoCmd.accesskey;"
-                          command="cmd_undo"/>
-                <menuitem id="menu_redo"
-                          label="&redoCmd.label;"
-                          key="key_redo"
-                          accesskey="&redoCmd.accesskey;"
-                          command="cmd_redo"/>
-                <menuseparator/>
-                <menuitem id="menu_cut"
-                          label="&cutCmd.label;"
-                          key="key_cut"
-                          accesskey="&cutCmd.accesskey;"
-                          command="cmd_cut"/>
-                <menuitem id="menu_copy"
-                          label="&copyCmd.label;"
-                          key="key_copy"
-                          accesskey="&copyCmd.accesskey;"
-                          command="cmd_copy"/>
-                <menuitem id="menu_paste"
-                          label="&pasteCmd.label;"
-                          key="key_paste"
-                          accesskey="&pasteCmd.accesskey;"
-                          command="cmd_paste"/>
-                <menuitem id="menu_delete"
-                          label="&deleteCmd.label;"
-                          key="key_delete"
-                          accesskey="&deleteCmd.accesskey;"
-                          command="cmd_delete"/>
-                <menuseparator/>
-                <menuitem id="menu_selectAll"
-                          label="&selectAllCmd.label;"
-                          key="key_selectAll"
-                          accesskey="&selectAllCmd.accesskey;"
-                          command="cmd_selectAll"/>
-              </menupopup>
-            <!-- hiding this here.  it seems to work... -->
-                <menuitem id="menu_FileQuitItem"
-                          label="Quit"
-                          key="key_quitApplication"
-                          command="cmd_quitApplication"/>
-
-            </menu>
-
-
- <!--          <menu id="windowMenu" /> -->
- <!--         <menu id="helpMenu" /> -->
-        </menubar>
-
-<!-- Dock menu -->
-<popupset>
-  <menupopup id="menu_mac_dockmenu">
-    <!-- The command cannot be cmd_newNavigator because we need to activate
-         the application. -->
-   <!-- <menuitem label="&newNavigatorCmd.label;" oncommand="OpenBrowserWindowFromDockMenu();" /> -->
-  </menupopup>
-</popupset>
+  <!-- Dock menu -->
+  <popupset>
+    <menupopup id="menu_mac_dockmenu">
+      <!-- The command cannot be cmd_newNavigator because we need to activate
+           the application. -->
+     <!-- <menuitem label="&newNavigatorCmd.label;" oncommand="OpenBrowserWindowFromDockMenu();" /> -->
+    </menupopup>
+  </popupset>
 
 </overlay>
