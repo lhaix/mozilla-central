@@ -101,6 +101,17 @@
                              this.setAttribute('openedwithkey',
                                                event.target.parentNode.openedWithKey);"
            style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
+
+#ifndef XP_MACOSX
+    <!-- On Mac, the Quit item gets moved to the Application menu by nsMenuBarX.
+       - And right now it's the only item in the File menu.  So if we put it
+       - into that menu on Mac, the File menu shows up empty on that OS.
+       - To work around that problem, we put the item in the Edit menu on Mac
+       - (from which nsMenuBarX still moves it properly) and don't create
+       - the File menu in the first place on that OS.
+       -
+       - XXX Remove this hack after adding the first item that shows up
+       - in the File menu on Mac. -->
     <menu id="file-menu" label="&fileMenu.label;"
           accesskey="&fileMenu.accesskey;">
       <menupopup id="menu_FilePopup">
@@ -109,24 +120,31 @@
                   label="&quitApplicationCmdWin.label;"
                   accesskey="&quitApplicationCmdWin.accesskey;"
 #else
-#ifdef XP_MACOSX
-                  label="&quitApplicationCmdMac.label;"
-#else
                   label="&quitApplicationCmd.label;"
                   accesskey="&quitApplicationCmd.accesskey;"
 #endif
 #ifdef XP_UNIX
                   key="key_quitApplication"
 #endif
-#endif
                   command="cmd_quitApplication"/>
       </menupopup>
     </menu>
+#endif
+
     <menu id="edit-menu" label="&editMenu.label;"
           accesskey="&editMenu.accesskey;">
       <menupopup id="menu_EditPopup"
                  onpopupshowing="updateEditUIVisibility()"
                  onpopuphidden="updateEditUIVisibility()">
+
+#ifdef XP_MACOSX
+        <!-- See the comment on the File menu above for why this is here. -->
+        <menuitem id="menu_FileQuitItem"
+                  label="&quitApplicationCmdMac.label;"
+                  key="key_quitApplication"
+                  command="cmd_quitApplication"/>
+#endif
+
         <menuitem id="menu_undo"
                   label="&undoCmd.label;"
                   key="key_undo"
