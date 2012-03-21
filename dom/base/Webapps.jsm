@@ -345,6 +345,28 @@ let DOMApplicationRegistry = {
     });
   },
 
+  /**
+   * Get a manifest synchronously.
+   *
+   * Added to support the webapp runtime, which needs to load the manifest
+   * at a certain stage in the startup process in order to use its information
+   * to configure the shell.
+   *
+   * In general, you should not use this method.  Use getManifestFor instead!
+   */
+  getManifestSync: function(aOrigin) {
+    let id = this._appId(aOrigin);
+
+    let file =
+      FileUtils.getFile(PROF_D, ["webapps", id, "manifest.json"], true);
+    let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
+                      createInstance(Ci.nsIFileInputStream);
+    inputStream.init(file, -1, 0, 0);
+    // XXX Factor out this reference with other references to nsIJSON.
+    let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
+    return json.decodeFromStream(inputStream, file.fileSize);
+  },
+
   /** added to support the sync engine */
 
   getAppById: function(aId) {

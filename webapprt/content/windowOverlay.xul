@@ -140,7 +140,7 @@
 #ifdef XP_MACOSX
         <!-- See the comment on the File menu above for why this is here. -->
         <menuitem id="menu_FileQuitItem"
-                  label="&quitApplicationCmdMac.label;"
+                  label="&quitApplicationCmd.label;"
                   key="key_quitApplication"
                   command="cmd_quitApplication"/>
 #endif
@@ -195,4 +195,5 @@
     </menupopup>
   </popupset>
 
+  <script type="application/javascript" src="chrome://webapprt/content/windowOverlay.js"/>
 </overlay>
