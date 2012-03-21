@@ -20,13 +20,16 @@ RequestExecutionLevel user
 !addplugindir ./
 
 ; prevents compiling of the reg write logging.
-; TODO: Ask Robert what this means
 !define NO_LOG
 
 ; Variables
 Var AppFilename
-Var ProfileDir
+
+; Variables used by common.nsh
 Var TmpVal
+Var BrandFullName
+Var BrandFullNameDA
+Var BrandShortName
 
 ; Other included files may depend upon these includes!
 ; The following includes are provided by NSIS.
@@ -53,7 +56,7 @@ Var TmpVal
 
 !define CompanyName           "Mozilla Corporation"
 !define UninstallerName       "Mozilla Webapp Runtime App Uninstaller"
-!define UninstallerFilename   "webapp-uninstaller"
+!define UninstallerFilename   "webapp-uninstaller.exe"
 
 VIProductVersion "1.0.0.0"
 VIAddVersionKey "ProductName"     "${UninstallerName}"
@@ -62,69 +65,24 @@ VIAddVersionKey "LegalCopyright"  "${CompanyName}"
 VIAddVersionKey "FileVersion"     "${AppVersion}"
 VIAddVersionKey "ProductVersion"  "${AppVersion}"
 VIAddVersionKey "FileDescription" "${UninstallerName}"
-VIAddVersionKey "OriginalFilename" "${UninstallerFilename}.exe"
+VIAddVersionKey "OriginalFilename" "${UninstallerFilename}"
 
-!insertmacro un.ChangeMUIHeaderImage
-!insertmacro un.CheckForFilesInUse
-!insertmacro un.DeleteRelativeProfiles
 !insertmacro un.DeleteShortcuts
 !insertmacro un.RegCleanUninstall
-!insertmacro un.ManualCloseAppPrompt
 !insertmacro un.ParseUninstallLog
-!insertmacro un.SetBrandNameVars
-
-; These are callbacks that are called in the macros inserted below
-!define HideShortcuts ""
-!define ShowShortcuts ""
-!define SetAsDefaultAppUser ""
-!define SetAsDefaultAppGlobal ""
-!define PostUpdate ""
-
-; These macros require that the above callbacks are defined
-!insertmacro un.OnEndCommon
-!insertmacro un.UninstallUnOnInitCommon
 
 Name "${UninstallerName}"
-OutFile "${UninstallerFilename}-creator.exe"
+OutFile "${UninstallerFilename}"
 ShowUnInstDetails nevershow
 
 ################################################################################
 # Modern User Interface - MUI
 
-!define MUI_ABORTWARNING
-!define MUI_ICON setup.ico
 !define MUI_UNICON setup.ico
-!define MUI_WELCOMEPAGE_TITLE_3LINES
-!define MUI_HEADERIMAGE
-!define MUI_HEADERIMAGE_RIGHT
-#!define MUI_UNWELCOMEFINISHPAGE_BITMAP wizWatermark.bmp
 
-; Use a right to left header image when the language is right to left
-;!ifdef ${AB_CD}_rtl
-;!define MUI_HEADERIMAGE_BITMAP_RTL wizHeaderRTL.bmp
-;!else
-;!define MUI_HEADERIMAGE_BITMAP wizHeader.bmp
-;!endif
-
-/**
- * Uninstall Pages
- */
-; Welcome Page
-!define MUI_PAGE_CUSTOMFUNCTION_PRE un.preWelcome
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.leaveWelcome
-!insertmacro MUI_UNPAGE_WELCOME
-
-; Custom Uninstall Confirm Page
-UninstPage custom un.preConfirm un.leaveConfirm
-
-; Remove Files Page
+; Uninstall Pages
+UninstPage custom un.PreConfirm
 !insertmacro MUI_UNPAGE_INSTFILES
-
-; Finish Page
-!insertmacro MUI_UNPAGE_FINISH
-
-; Use the default dialog for IDD_VERIFY for a simple Banner
-ChangeUI IDD_VERIFY "${NSISDIR}\Contrib\UIs\default.exe"
 
 ################################################################################
 # Install Sections
@@ -138,27 +96,25 @@ SectionEnd
 # Uninstall Sections
 
 Section "Uninstall"
-  SetDetailsPrint textonly
-  DetailPrint $(STATUS_UNINSTALL_MAIN)
-  SetDetailsPrint none
 
   ; Delete the app exe to prevent launching the app while we are uninstalling.
   ClearErrors
   ${DeleteFile} "$INSTDIR\${FileMainEXE}"
   ${If} ${Errors}
-    ; If the user closed the application it can take several seconds for it to
-    ; shut down completely. If the application is being used by another user we
-    ; can still delete the files when the system is restarted.
-    Sleep 5000
-    ${DeleteFile} "$INSTDIR\${FileMainEXE}"
+    Push $0
+    Push $1
+
+    ; If the app is running, rename the EXE out of the way
+    GetTempFilename $0
+    StrCpy $1 "$INSTDIR\${FileMainEXE}"
+    System::Call "kernel32::MoveFileEx(t, t, i) i ('$1', '$0', 0x1)"
+
+    Pop $0
+    Pop $1
+
     ClearErrors
   ${EndIf}
 
-  ${MUI_INSTALLOPTIONS_READ} $0 "unconfirm.ini" "Field 3" "State"
-  ${If} "$0" == "1"
-    ${un.DeleteRelativeProfiles} "$ProfileDir"
-    RmDir "$APPDATA\$ProfileDir"
-  ${EndIf}
 
   SetShellVarContext current  ; Set SHCTX to HKCU
   ${un.RegCleanUninstall}
@@ -170,23 +126,11 @@ Section "Uninstall"
   ${RemoveDir} "$INSTDIR\chrome"
 
   ; Remove the uninstall directory that we control
-  RmDir /r /REBOOTOK "$INSTDIR\uninstall"
+  RmDir /r "$INSTDIR\uninstall"
+  ${RemoveDir} "$INSTDIR\uninstall"
 
   ; Remove the installation directory if it is empty
   ${RemoveDir} "$INSTDIR"
-
-  ; If FileMainEXE was successfully deleted yet we still need to restart to
-  ; remove other files create a dummy FileMainEXE.exe.moz-delete to prevent the
-  ; installer from allowing an install without restart when it is required
-  ; to complete an uninstall.
-  ${If} ${RebootFlag}
-    ${Unless} ${FileExists} "$INSTDIR\${FileMainEXE}.moz-delete"
-      FileOpen $0 "$INSTDIR\${FileMainEXE}.moz-delete" w
-      FileWrite $0 "Will be deleted on restart"
-      Delete /REBOOTOK "$INSTDIR\${FileMainEXE}.moz-delete"
-      FileClose $0
-    ${EndUnless}
-  ${EndIf}
 
   ; Refresh desktop icons otherwise the start menu internet item won't be
   ; removed and other ugly things will happen like recreation of the app's
@@ -194,9 +138,6 @@ Section "Uninstall"
   System::Call "shell32::SHChangeNotify(i, i, i, i) v (0x08000000, 0, 0, 0)"
 
 SectionEnd
-
-################################################################################
-# Helper Functions
 
 ################################################################################
 # Language
@@ -214,168 +155,63 @@ BrandingText " "
 
 ################################################################################
 # Page pre, show, and leave functions
+Function un.PreConfirm
+  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Settings" NumFields "1"
 
-Function un.preWelcome
-FunctionEnd
-
-Function un.leaveWelcome
-  ${If} ${FileExists} "$INSTDIR\${FileMainEXE}"
-    Banner::show /NOUNLOAD "$(BANNER_CHECK_EXISTING)"
-
-    ; If the message window has been found previously give the app an additional
-    ; five seconds to close.
-    ${If} "$TmpVal" == "FoundMessageWindow"
-      Sleep 5000
-    ${EndIf}
-
-    ; The files to check if they are in use during (un)install so the restart is
-    ; required message is displayed. All files must be located in the $INSTDIR
-    ; directory.
-    ; The first string to be pushed onto the stack MUST be "end" to indicate
-    ; that there are no more files to check in $INSTDIR and the last string
-    ; should be ${FileMainEXE} so if it is in use the CheckForFilesInUse macro
-    ; returns after the first check.
-    Push "end"
-    Push "${FileMainEXE}"
-
-    ${un.CheckForFilesInUse} $TmpVal
-
-    Banner::destroy
-
-    ; If there are files in use $TmpVal will be "true"
-    ${If} "$TmpVal" == "true"
-      ; If the message window is found the call to ManualCloseAppPrompt will
-      ; abort leaving the value of $TmpVal set to "FoundMessageWindow".
-      StrCpy $TmpVal "FoundMessageWindow"
-      ${un.ManualCloseAppPrompt} "${WindowClass}" "$(WARN_MANUALLY_CLOSE_APP_UNINSTALL)"
-      ; If the message window is not found set $TmpVal to "true" so the restart
-      ; required message is displayed.
-      StrCpy $TmpVal "true"
-    ${EndIf}
-  ${EndIf}
-FunctionEnd
-
-Function un.preConfirm
-  ${un.ChangeMUIHeaderImage} "$PLUGINSDIR\modern-header.bmp"
-
-  ; Setup the unconfirm.ini file for the Custom Uninstall Confirm Page
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Settings" NumFields "5"
-
+  ; We have to write something to this file or else the page will not be shown
   WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Type   "label"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Text   "$(UN_CONFIRM_UNINSTALLED_FROM)"
+  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Text   "$(UN_CONFIRM_CLICK)"
   WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Left   "0"
   WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Right  "-1"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Top    "5"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Bottom "15"
-
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 2" Type   "text"
-  ; The contents of this control must be set as follows in the pre function
-  ; ${MUI_INSTALLOPTIONS_READ} $1 "unconfirm.ini" "Field 2" "HWND"
-  ; SendMessage $1 ${WM_SETTEXT} 0 "STR:$INSTDIR"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 2" State  ""
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 2" Left   "0"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 2" Right  "-1"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 2" Top    "17"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 2" Bottom "30"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 2" flags  "READONLY"
-
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" Type   "checkbox"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" Text   "$(UN_REMOVE_PROFILES)"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" Left   "0"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" Right  "-1"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" Top    "40"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" Bottom "50"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" State  "0"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" flags  "NOTIFY"
-
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 4" Type   "text"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 4" State   "$(UN_REMOVE_PROFILES_DESC)"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 4" Left   "0"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 4" Right  "-1"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 4" Top    "52"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 4" Bottom "120"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 4" flags  "MULTILINE|READONLY"
-
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 5" Type   "label"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 5" Text   "$(UN_CONFIRM_CLICK)"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 5" Left   "0"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 5" Right  "-1"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 5" Top    "130"
-  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 5" Bottom "150"
-
-  ${If} "$TmpVal" == "true"
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 6" Type   "label"
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 6" Text   "$(SUMMARY_REBOOT_REQUIRED_UNINSTALL)"
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 6" Left   "0"
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 6" Right  "-1"
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 6" Top    "35"
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 6" Bottom "45"
-
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Settings" NumFields "6"
-
-    ; To insert this control reset Top / Bottom for controls below this one
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" Top    "55"
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 3" Bottom "65"
-    WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 4" Top    "67"
-  ${EndIf}
+  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Top    "130"
+  WriteINIStr "$PLUGINSDIR\unconfirm.ini" "Field 1" Bottom "150"
 
   !insertmacro MUI_HEADER_TEXT "$(UN_CONFIRM_PAGE_TITLE)" "$(UN_CONFIRM_PAGE_SUBTITLE)"
-  ; The Summary custom page has a textbox that will automatically receive
-  ; focus. This sets the focus to the Install button instead.
   !insertmacro MUI_INSTALLOPTIONS_INITDIALOG "unconfirm.ini"
-  GetDlgItem $0 $HWNDPARENT 1
-  ${MUI_INSTALLOPTIONS_READ} $1 "unconfirm.ini" "Field 4" "HWND"
-  SetCtlColors $1 0x000000 0xFFFFEE
-  ShowWindow $1 ${SW_HIDE}
-  System::Call "user32::SetFocus(i r0, i 0x0007, i,i)i"
-  ${MUI_INSTALLOPTIONS_READ} $1 "unconfirm.ini" "Field 2" "HWND"
-  SendMessage $1 ${WM_SETTEXT} 0 "STR:$INSTDIR"
   !insertmacro MUI_INSTALLOPTIONS_SHOW
-FunctionEnd
-
-Function un.leaveConfirm
-  ${MUI_INSTALLOPTIONS_READ} $0 "unconfirm.ini" "Settings" "State"
-  StrCmp $0 "3" +1 continue
-  ${MUI_INSTALLOPTIONS_READ} $0 "unconfirm.ini" "Field 3" "State"
-  ${MUI_INSTALLOPTIONS_READ} $1 "unconfirm.ini" "Field 4" "HWND"
-  StrCmp $0 1 +1 +3
-  ShowWindow $1 ${SW_SHOW}
-  Abort
-
-  ShowWindow $1 ${SW_HIDE}
-  Abort
-
-  continue:
-
-  ; Try to delete the app executable and if we can't delete it try to find the
-  ; app's message window and prompt the user to close the app. This allows
-  ; running an instance that is located in another directory. If for whatever
-  ; reason there is no message window we will just rename the app's files and
-  ; then remove them on restart if they are in use.
-  ClearErrors
-  ${DeleteFile} "$INSTDIR\${FileMainEXE}"
-  ${If} ${Errors}
-    ${un.ManualCloseAppPrompt} "${WindowClass}" "$(WARN_MANUALLY_CLOSE_APP_UNINSTALL)"
-  ${EndIf}
 FunctionEnd
 
 ################################################################################
 # Initialization Functions
 Function .onInit
-  WriteUninstaller "$EXEDIR\${UninstallerFilename}.exe"
+  Push $0 ; Temp directory
+  Push $1 ; Temp uninstaller location
+  Push $2 ; Command line
+
+  GetTempFileName $0
+  Delete $0
+  CreateDirectory $0
+
+  StrCpy $1 "$0\${UninstallerFilename}"
+  WriteUninstaller "$1"
+
+  ${GetParameters} $2
+  StrCpy $2 "_?=$EXEDIR $2"
+  Exec '"$1" $2'
+
+  Pop $2
+  Pop $1
+  Pop $0
 FunctionEnd
 
 Function un.onInit
   StrCpy $LANGUAGE 0
-  ${un.UninstallUnOnInitCommon}
+
+  ${un.GetParent} "$INSTDIR" $INSTDIR
+  ${un.GetLongPath} "$INSTDIR" $INSTDIR
+
+  !ifdef HAVE_64BIT_OS
+    SetRegView 64
+  !endif
+
   !insertmacro InitInstallOptionsFile "unconfirm.ini"
 
-  ReadINIStr $AppFilename "$INSTDIR\webapp.ini" "Webapp" "Executable"
-  ReadINIStr $ProfileDir "$INSTDIR\webapp.ini" "Webapp" "Profile"
+  ReadINIStr $AppFilename "$INSTDIR\webapp.ini" "WebappRT" "Executable"
+  ReadINIStr $BrandFullName "$INSTDIR\webapp.ini" "Webapp" "Name"
 
-  ${un.SetBrandNameVars} "$INSTDIR\webapp.ini"
+  StrCpy $BrandFullNameDA "$BrandFullName"
+  StrCpy $BrandShortName "$BrandFullName"
 FunctionEnd
 
 Function un.onGUIEnd
-  ${un.OnEndCommon}
 FunctionEnd
