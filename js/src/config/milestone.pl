@@ -52,6 +52,10 @@ use vars qw(
             $opt_debug
             $opt_template
             $opt_uaversion
+            $opt_majorversion
+            $opt_minorversion
+            $opt_miniversion
+            $opt_microversion
             $opt_help
             );
 
@@ -61,7 +65,7 @@ push(@INC,$SCRIPTDIR);
 
 require "Moz/Milestone.pm";
 
-&GetOptions('topsrcdir=s' => \$TOPSRCDIR, 'srcdir=s' => \$SRCDIR, 'objdir=s' => \$OBJDIR, 'debug', 'help', 'template', 'uaversion');
+&GetOptions('topsrcdir=s' => \$TOPSRCDIR, 'srcdir=s' => \$SRCDIR, 'objdir=s' => \$OBJDIR, 'debug', 'help', 'template', 'uaversion', 'majorversion', 'minorversion', 'miniversion', 'microversion');
 
 if (defined($opt_help)) {
     &usage();
@@ -107,6 +111,26 @@ if (defined(@TEMPLATE_FILE)) {
   # strip off trailing pre-release indicators
   $uaversion =~ s/[a-z]+\d*$//;
   print "$uaversion\n";
+} elsif(defined($opt_majorversion)) {
+  my $majorversion = Moz::Milestone::getMilestoneMajor($milestone);
+  # strip off trailing pre-release indicators
+  $majorversion =~ s/[a-z]+\d*$//;
+  print "$majorversion\n";
+} elsif(defined($opt_minorversion)) {
+  my $minorversion = Moz::Milestone::getMilestoneMinor($milestone);
+  # strip off trailing pre-release indicators
+  $minorversion =~ s/[a-z]+\d*$//;
+  print "$minorversion\n";
+} elsif(defined($opt_miniversion)) {
+  my $miniversion = Moz::Milestone::getMilestoneMini($milestone);
+  # strip off trailing pre-release indicators
+  $miniversion =~ s/[a-z]+\d*$//;
+  print "$miniversion\n";
+} elsif(defined($opt_microversion)) {
+  my $microversion = Moz::Milestone::getMilestoneMicro($milestone);
+  # strip off trailing pre-release indicators
+  $microversion =~ s/[a-z]+\d*$//;
+  print "$microversion\n";
 } else {
   print "$milestone\n";
 }

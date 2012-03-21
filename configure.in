@@ -2339,6 +2339,10 @@ fi
 dnl Get mozilla version from central milestone file
 MOZILLA_VERSION=`$PERL $srcdir/config/milestone.pl -topsrcdir $srcdir`
 MOZILLA_UAVERSION=`$PERL $srcdir/config/milestone.pl -topsrcdir $srcdir -uaversion`
+MOZILLA_MAJOR_VERSION=`$PERL $srcdir/config/milestone.pl -topsrcdir $srcdir -majorversion`
+MOZILLA_MINOR_VERSION=`$PERL $srcdir/config/milestone.pl -topsrcdir $srcdir -minorversion`
+MOZILLA_MINI_VERSION=`$PERL $srcdir/config/milestone.pl -topsrcdir $srcdir -miniversion`
+MOZILLA_MICRO_VERSION=`$PERL $srcdir/config/milestone.pl -topsrcdir $srcdir -microversion`
 
 dnl Get version of various core apps from the version files.
 FIREFOX_VERSION=`cat $_topsrcdir/browser/config/version.txt`
@@ -2350,6 +2354,10 @@ fi
 AC_DEFINE_UNQUOTED(MOZILLA_VERSION,"$MOZILLA_VERSION")
 AC_DEFINE_UNQUOTED(MOZILLA_VERSION_U,$MOZILLA_VERSION)
 AC_DEFINE_UNQUOTED(MOZILLA_UAVERSION,"$MOZILLA_UAVERSION")
+AC_DEFINE_UNQUOTED(MOZILLA_MAJOR_VERSION,$MOZILLA_MAJOR_VERSION)
+AC_DEFINE_UNQUOTED(MOZILLA_MINOR_VERSION,$MOZILLA_MINOR_VERSION)
+AC_DEFINE_UNQUOTED(MOZILLA_MINI_VERSION,$MOZILLA_MINI_VERSION)
+AC_DEFINE_UNQUOTED(MOZILLA_MICRO_VERSION,$MOZILLA_MICRO_VERSION)
 
 MOZ_DOING_LTO(lto_is_enabled)
 
