@@ -13,7 +13,6 @@ DIRS = $(NULL)
 
 ifneq (,$(filter WINNT,$(OS_ARCH)))
 DIRS += win
-PARALLEL_DIRS += tools/redit
 else
 ifeq ($(OS_ARCH),Darwin)
 DIRS += mac
