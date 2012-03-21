@@ -5,7 +5,11 @@
    - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
 
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<?xul-overlay href="chrome://webapprt/content/windowOverlay.xul"?>
+
+<?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
+<?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
+
+#include doctype.inc
 
 <window windowtype="app" title="Mozilla Apps Runtime" width="1024" height="800"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -13,9 +17,13 @@
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         sizemode="normal" resizable="true">
 
+#include scripts.inc
   <script type="application/javascript" src="chrome://webapprt/content/window.js"/>
 
-#include mountPoints.inc
+#include sets.inc
+
+#include menubar.inc
 
   <browser type="content" id="content" flex="1"/>
+
 </window>

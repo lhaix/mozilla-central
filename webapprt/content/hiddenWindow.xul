@@ -4,12 +4,21 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this file,
    - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
 
-<?xul-overlay href="chrome://webapprt/content/windowOverlay.xul"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+
+<?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
+<?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
+
+#include doctype.inc
 
 <window xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
-#include mountPoints.inc
+#include scripts.inc
+
+#include sets.inc
+
+#include menubar.inc
 
   <script type="application/javascript" src="chrome://webapprt/content/main.js"/>
 
