@@ -46,8 +46,8 @@
 
 #ifdef XP_MACOSX
       <!-- See the comment on the File menu above for why this menuitem is here,
-         - and see the JavaScript code below that dynamically updates its label.
-         -->
+         - and note that JavaScript code dynamically updates its label,
+         - since Mac apps include the name of the app in the Quit menuitem. -->
       <menuitem id="menu_FileQuitItem"
                 label="&quitApplicationCmd.label;"
                 key="key_quitApplication"
@@ -94,23 +94,3 @@
     </menupopup>
   </menu>
 </menubar>
-
-#ifdef XP_MACOSX
-<script type="application/javascript">
-// On Mac, we dynamically create the label for the Quit menuitem, using
-// a string property to inject the name of the webapp into it.
-window.addEventListener("load", function onLoadUpdateQuitMenuItem() {
-  window.removeEventListener("load", onLoadUpdateQuitMenuItem, false);
-  Components.utils.import("resource://gre/modules/Services.jsm");
-  Components.utils.import("resource://gre/modules/WebappRT.jsm");
-  Components.utils.import("resource://gre/modules/Webapps.jsm");
-  let installRecord = DOMApplicationRegistry.getApp(Webapp.origin);
-  let manifest = DOMApplicationRegistry.getManifestSync(Webapp.origin);
-  let bundle =
-    Services.strings.createBundle("chrome://webapprt/locale/window.properties");
-  let quitLabel = bundle.formatStringFromName("quitApplicationCmdMac.label",
-                                              [manifest.name], 1);
-  document.getElementById("menu_FileQuitItem").setAttribute("label", quitLabel);
-}, false);
-</script>
-#endif
