@@ -5,34 +5,19 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // System headers (alphabetical)
-#include <aclapi.h>
 #include <fcntl.h>
 #include <io.h>
 #include <share.h>
-#include <shellapi.h>
-#include <shlwapi.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <windows.h>
-#include <wchar.h>
 
 // Mozilla headers (alphabetical)
-#include "nsComponentManagerUtils.h"
-#include "nsCOMPtr.h"
 #include "nsILocalFile.h"
 #include "nsINIParser.h"
-#include "nsStringGlue.h"
 #include "nsWindowsWMain.cpp"            // we want a wmain entry point
 #include "nsXPCOMGlue.h"
 #include "nsXPCOMPrivate.h"              // for MAXPATHLEN and XPCOM_DLL
 #include "nsXULAppAPI.h"
-#include "plstr.h"
-#include "prenv.h"
-#include "prprf.h"
 
 // This header relies on a bunch of other headers being included before it
 #include "BinaryPath.h"
@@ -531,7 +516,7 @@ namespace {
                        NULL,             // Use parent's starting directory 
                        &si,
                        &pi)) {
-      return GetLastError();
+      return NS_ERROR_FAILURE;
     }
 
     // Wait until child process exits.
@@ -546,7 +531,7 @@ namespace {
     CloseHandle( pi.hProcess );
     CloseHandle( pi.hThread );
 
-    return exitCode;
+    return NS_OK;
   }
 
   nsresult
