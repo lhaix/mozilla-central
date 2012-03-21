@@ -18,7 +18,7 @@
         sizemode="normal" resizable="true">
 
 #include scripts.inc
-  <script type="application/javascript" src="chrome://webapprt/content/window.js"/>
+  <script type="application/javascript" src="chrome://webapprt/content/webappWindow.js"/>
 
 #include sets.inc
 

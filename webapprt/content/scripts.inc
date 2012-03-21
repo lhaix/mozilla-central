@@ -7,3 +7,6 @@
 <script type="application/javascript" src="chrome://global/content/inlineSpellCheckUI.js"/>
 <script type="application/javascript" src="chrome://global/content/viewSourceUtils.js"/>
 <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
+
+<!-- Code that is common to both webappWindow.xul and hiddenWindow.xul. -->
+<script type="application/javascript" src="chrome://webapprt/content/window.js"/>

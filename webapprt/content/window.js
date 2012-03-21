@@ -9,24 +9,6 @@ const Cu = Components.utils;
 Cu.import("resource://gre/modules/Webapps.jsm");
 Cu.import("resource://gre/modules/WebappRT.jsm");
 
-function onLoad() {
-  window.removeEventListener("load", onLoad, false);
-
-  let installRecord = DOMApplicationRegistry.getApp(Webapp.origin);
-  let manifest = DOMApplicationRegistry.getManifestSync(Webapp.origin);
-
-  // Set the title of the window to the name of the webapp.
-  // XXX Set it to the webapp page's title, then update it when that changes.
-  document.documentElement.setAttribute("title", manifest.name);
-
-  // Load the webapp's launch path.
-  let url = installRecord.origin;
-  if (manifest.launch_path)
-    url += manifest.launch_path;
-  document.getElementById("content").setAttribute("src", url);
-}
-window.addEventListener("load", onLoad, false);
-
 function updateEditUIVisibility() {
 #ifndef XP_MACOSX
   let editMenuPopupState = document.getElementById("menu_EditPopup").state;
