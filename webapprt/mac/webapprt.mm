@@ -240,6 +240,7 @@ int main(int argc, char **argv)
 
       // NOTE: The GRE has successfully loaded, so we can use XPCOM now
 
+      NS_LogInit();
       { // Scope for any XPCOM stuff we create
           nsINIParser parser;
           if(NS_FAILED(parser.Init(appEnv))) 
@@ -311,6 +312,7 @@ int main(int argc, char **argv)
 
         XRE_FreeAppData(webShellAppData);
       }
+      NS_LogTerm();
       XPCOMGlueShutdown();
       return result;
   }
