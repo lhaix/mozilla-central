@@ -39,7 +39,6 @@ const char WEBRTINI_NAME[] = "webapprt.ini";
 
 //need the correct relative path here
 const char WEBAPPRT_PATH[] = "/Contents/MacOS/"; 
-const char INFO_FILE_PATH[] = "/Contents/Info.plist";
 
 void execNewBinary(NSString* launchPath);
 
@@ -50,7 +49,7 @@ NSException* makeException(NSString* name, NSString* message);
 void displayErrorAlert(NSString* title, NSString* message);
 
 //this is our version, to be compared with the version of the binary we are asked to use
-NSString* myVersion = [NSString stringWithFormat:@"%s", NS_STRINGIFY(GRE_MILESTONE)];
+NSString* myVersion = [NSString stringWithFormat:@"%s", NS_STRINGIFY(GRE_BUILDID)];
 
 //we look for these flavors of Firefox, in this order
 NSArray* launchBinarySearchList = [NSArray arrayWithObjects: @"org.mozilla.nightly", 
@@ -115,7 +114,7 @@ int main(int argc, char **argv)
   NSString *firefoxPath = nil;   
   NSString *alternateBinaryID = nil;
 
-  NSLog(@"MY WEBAPPRT VERSION: %@", myVersion);
+  NSLog(@"MY WEBAPPRT BUILDID: %@", myVersion);
 
   NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];  
 
@@ -152,13 +151,25 @@ int main(int argc, char **argv)
       exit(0);
     }
 
-    //now get the version of the specified firefox
-    NSBundle* firefoxBundle = [NSBundle bundleWithPath: firefoxPath];
-    if (!firefoxBundle) {
-      @throw makeException(@"Firefox", @"Cannot determine version of specified Firefox");
+    NSString *firefoxINIFilePath = [NSString stringWithFormat:@"%@%s%s", firefoxPath, WEBAPPRT_PATH, APPINI_NAME];
+    nsINIParser ffparser;
+    NSLog(@"Looking for firefox ini file here: %@", firefoxINIFilePath);
+
+    if(NS_FAILED(ffparser.Init([firefoxINIFilePath UTF8String]))) 
+    {
+      NSLog(@"Unable to locate Firefox application.ini");
+      @throw makeException(@"Error", @"Unable to parse environment files for application startup");
     }
-    NSString* firefoxVersion = [firefoxBundle objectForInfoDictionaryKey:@"CFBundleVersion"];
-    NSLog(@"Firefox Version: %@", firefoxVersion);
+
+    char ffVersChars[MAXPATHLEN];
+    if(NS_FAILED(ffparser.GetString("App", "BuildID", ffVersChars, MAXPATHLEN))) 
+    {
+      NSLog(@"Unable to retrieve Firefox BuildID");
+      @throw makeException(@"Error", @"Unable to determine Firefox version.");
+    }
+    NSString* firefoxVersion = [NSString stringWithFormat:@"%s", ffVersChars];
+
+    NSLog(@"FIREFOX WEBAPPRT BUILDID: %@", firefoxVersion);
 
     //compare them
     if ([myVersion compare: firefoxVersion] != NSOrderedSame) 
