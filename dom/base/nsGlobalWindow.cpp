@@ -64,6 +64,12 @@
 #include "nsDOMOfflineResourceList.h"
 #include "nsDOMError.h"
 
+#ifdef XP_WIN
+#ifdef GetClassName
+#undef GetClassName
+#endif // GetClassName
+#endif // XP_WIN
+
 // Helper Classes
 #include "nsXPIDLString.h"
 #include "nsJSUtils.h"
@@ -809,7 +815,7 @@ nsOuterWindowProxy::finalize(JSContext *cx, JSObject *proxy)
   if (global) {
     nsWrapperCache *cache;
     CallQueryInterface(global, &cache);
-    cache->ClearWrapperIfProxy();
+    cache->ClearWrapper();
   }
 }
 
@@ -1306,6 +1312,10 @@ nsGlobalWindow::FreeInnerObjects()
     mNavigator = nsnull;
   }
 
+  if (mScreen) {
+    mScreen = nsnull;
+  }
+
   if (mDocument) {
     NS_ASSERTION(mDoc, "Why is mDoc null?");
 
@@ -1402,7 +1412,7 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsGlobalWindow)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsGlobalWindow)
 
 static PLDHashOperator
-MarkXBLHandlers(const void* aKey, JSObject* aData, void* aClosure)
+MarkXBLHandlers(nsXBLPrototypeHandler* aKey, JSObject* aData, void* aClosure)
 {
   xpc_UnmarkGrayObject(aData);
   return PL_DHASH_NEXT;
@@ -1520,7 +1530,7 @@ struct TraceData
 };
 
 static PLDHashOperator
-TraceXBLHandlers(const void* aKey, JSObject* aData, void* aClosure)
+TraceXBLHandlers(nsXBLPrototypeHandler* aKey, JSObject* aData, void* aClosure)
 {
   TraceData* data = static_cast<TraceData*>(aClosure);
   data->callback(nsIProgrammingLanguage::JAVASCRIPT, aData,
@@ -2140,6 +2150,13 @@ nsGlobalWindow::SetNewDocument(nsIDocument* aDocument,
       }
     }
 
+    // Enter the new global's compartment.
+    JSAutoEnterCompartment ac;
+    if (!ac.enter(cx, mJSObject)) {
+      NS_ERROR("unable to enter a compartment");
+      return NS_ERROR_FAILURE;
+    }
+
     // If we created a new inner window above, we need to do the last little bit
     // of initialization now that the dust has settled.
     if (createdInnerWindow) {
@@ -2151,12 +2168,6 @@ nsGlobalWindow::SetNewDocument(nsIDocument* aDocument,
       NS_ABORT_IF_FALSE(wrapper, "bad wrapper");
       rv = wrapper->FinishInitForWrappedGlobal();
       NS_ENSURE_SUCCESS(rv, rv);
-    }
-
-    JSAutoEnterCompartment ac;
-    if (!ac.enter(cx, mJSObject)) {
-      NS_ERROR("unable to enter a compartment");
-      return NS_ERROR_FAILURE;
     }
 
     // XXX Not sure if this is needed.
@@ -2447,8 +2458,6 @@ nsGlobalWindow::SetDocShell(nsIDocShell* aDocShell)
 
   if (mFrames)
     mFrames->SetDocShell(aDocShell);
-  if (mScreen)
-    mScreen->SetDocShell(aDocShell);
 
   if (!mDocShell) {
     MaybeForgiveSpamCount();
@@ -2956,14 +2965,14 @@ nsGlobalWindow::GetNavigator(nsIDOMNavigator** aNavigator)
 NS_IMETHODIMP
 nsGlobalWindow::GetScreen(nsIDOMScreen** aScreen)
 {
-  FORWARD_TO_OUTER(GetScreen, (aScreen), NS_ERROR_NOT_INITIALIZED);
+  FORWARD_TO_INNER(GetScreen, (aScreen), NS_ERROR_NOT_INITIALIZED);
 
   *aScreen = nsnull;
 
-  if (!mScreen && mDocShell) {
-    mScreen = new nsScreen(mDocShell);
+  if (!mScreen) {
+    mScreen = nsScreen::Create(this);
     if (!mScreen) {
-      return NS_ERROR_OUT_OF_MEMORY;
+      return NS_ERROR_UNEXPECTED;
     }
   }
 

@@ -101,6 +101,7 @@
 #include "jsscopeinlines.h"
 #include "jsscriptinlines.h"
 
+#include "vm/ObjectImpl-inl.h"
 #include "vm/RegExpObject-inl.h"
 #include "vm/RegExpStatics-inl.h"
 #include "vm/Stack-inl.h"
@@ -3086,10 +3087,6 @@ JS_ConvertStub(JSContext *cx, JSObject *obj, JSType type, jsval *vp)
     JS_ASSERT(obj);
     return DefaultValue(cx, obj, type, vp);
 }
-
-JS_PUBLIC_API(void)
-JS_FinalizeStub(JSContext *cx, JSObject *obj)
-{}
 
 JS_PUBLIC_API(JSObject *)
 JS_InitClass(JSContext *cx, JSObject *obj, JSObject *parent_proto,

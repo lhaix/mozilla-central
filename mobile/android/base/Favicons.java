@@ -51,6 +51,7 @@ import android.util.Log;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.io.IOException;
 import java.net.URLConnection;
 import java.net.HttpURLConnection;
@@ -256,12 +257,16 @@ public class Favicons {
 
         // Runs in background thread
         private void saveFaviconToDb(BitmapDrawable favicon) {
-            Log.d(LOGTAG, "Saving favicon on browser database for URL = " + mPageUrl);
-            ContentResolver resolver = mContext.getContentResolver();
-            BrowserDB.updateFaviconForUrl(resolver, mPageUrl, favicon);
+            // since the Async task can run this on any number of threads in the
+            // pool, we need to protect against inserting the same url twice
+            synchronized(mDbHelper) {
+                Log.d(LOGTAG, "Saving favicon on browser database for URL = " + mPageUrl);
+                ContentResolver resolver = mContext.getContentResolver();
+                BrowserDB.updateFaviconForUrl(resolver, mPageUrl, favicon);
 
-            Log.d(LOGTAG, "Saving favicon URL for URL = " + mPageUrl);
-            mDbHelper.setFaviconUrlForPageUrl(mPageUrl, mFaviconUrl);
+                Log.d(LOGTAG, "Saving favicon URL for URL = " + mPageUrl);
+                mDbHelper.setFaviconUrlForPageUrl(mPageUrl, mFaviconUrl);
+            }
         }
 
         // Runs in background thread
@@ -290,7 +295,17 @@ public class Favicons {
                     image = (BitmapDrawable) Drawable.createFromStream(byteStream, "src");
                 }
             } catch (Exception e) {
-                Log.d(LOGTAG, "Error downloading favicon: " + e);
+                // Trying to read icons from nested jar files will fail
+                if (mFaviconUrl.startsWith("jar:jar:")) {
+                    InputStream stream = GeckoJarReader.getStream(mFaviconUrl);
+                    if (stream != null) {
+                        image = new BitmapDrawable(stream);
+                    } else {
+                        Log.d(LOGTAG, "Error getting favicon from jar: " + e);
+                    }
+                } else {
+                    Log.d(LOGTAG, "Error downloading favicon: " + e);
+                }
             } finally {
                 if (urlConnection != null && urlConnection instanceof HttpURLConnection) {
                     HttpURLConnection httpConnection = (HttpURLConnection) urlConnection;

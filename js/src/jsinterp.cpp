@@ -463,7 +463,7 @@ js::RunScript(JSContext *cx, JSScript *script, StackFrame *fp)
         return false;
 
     if (status == mjit::Compile_Okay)
-        return mjit::JaegerShot(cx, false);
+        return mjit::JaegerStatusToSuccess(mjit::JaegerShot(cx, false));
 #endif
 
     return Interpret(cx, fp);
@@ -1744,8 +1744,9 @@ check_backedge:
         void *ncode =
             script->nativeCodeForPC(regs.fp()->isConstructing(), regs.pc);
         JS_ASSERT(ncode);
-        mjit::JaegerStatus status =
-            mjit::JaegerShotAtSafePoint(cx, ncode, true);
+        mjit::JaegerStatus status = mjit::JaegerShotAtSafePoint(cx, ncode, true);
+        if (status == mjit::Jaeger_ThrowBeforeEnter)
+            goto error;
         CHECK_PARTIAL_METHODJIT(status);
         interpReturnOK = (status == mjit::Jaeger_Returned);
         if (entryFrame != regs.fp())
@@ -2728,7 +2729,7 @@ BEGIN_CASE(JSOP_FUNCALL)
         if (status == mjit::Compile_Okay) {
             mjit::JaegerStatus status = mjit::JaegerShot(cx, true);
             CHECK_PARTIAL_METHODJIT(status);
-            interpReturnOK = (status == mjit::Jaeger_Returned);
+            interpReturnOK = mjit::JaegerStatusToSuccess(status);
             CHECK_INTERRUPT_HANDLER();
             goto jit_return;
         }
@@ -3391,13 +3392,8 @@ BEGIN_CASE(JSOP_NEWINIT)
         gc::AllocKind kind = GuessObjectGCKind(0);
         obj = NewBuiltinClassInstance(cx, &ObjectClass, kind);
     }
-    if (!obj)
+    if (!obj || !SetInitializerObjectType(cx, script, regs.pc, obj))
         goto error;
-
-    TypeObject *type = TypeScript::InitObject(cx, script, regs.pc, (JSProtoKey) i);
-    if (!type)
-        goto error;
-    obj->setType(type);
 
     PUSH_OBJECT(*obj);
     CHECK_INTERRUPT_HANDLER();
@@ -3408,13 +3404,8 @@ BEGIN_CASE(JSOP_NEWARRAY)
 {
     unsigned count = GET_UINT24(regs.pc);
     JSObject *obj = NewDenseAllocatedArray(cx, count);
-    if (!obj)
+    if (!obj || !SetInitializerObjectType(cx, script, regs.pc, obj))
         goto error;
-
-    TypeObject *type = TypeScript::InitObject(cx, script, regs.pc, JSProto_Array);
-    if (!type)
-        goto error;
-    obj->setType(type);
 
     PUSH_OBJECT(*obj);
     CHECK_INTERRUPT_HANDLER();
@@ -3425,12 +3416,8 @@ BEGIN_CASE(JSOP_NEWOBJECT)
 {
     JSObject *baseobj = script->getObject(GET_UINT32_INDEX(regs.pc));
 
-    TypeObject *type = TypeScript::InitObject(cx, script, regs.pc, JSProto_Object);
-    if (!type)
-        goto error;
-
-    JSObject *obj = CopyInitializerObject(cx, baseobj, type);
-    if (!obj)
+    JSObject *obj = CopyInitializerObject(cx, baseobj);
+    if (!obj || !SetInitializerObjectType(cx, script, regs.pc, obj))
         goto error;
 
     PUSH_OBJECT(*obj);

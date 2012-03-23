@@ -234,6 +234,7 @@ var BrowserApp = {
     PermissionsHelper.init();
     CharacterEncoding.init();
     SearchEngines.init();
+    ActivityObserver.init();
 
     // Init LoginManager
     Cc["@mozilla.org/login-manager;1"].getService(Ci.nsILoginManager);
@@ -324,6 +325,29 @@ var BrowserApp = {
         "value": Services.prefs.getBoolPref("gfx.show_checkerboard_pattern")
       }
     });
+
+    if (this.isAppUpdated())
+      this.onUpdate();
+  },
+
+  isAppUpdated: function() {
+    let savedmstone = null;
+    try {
+      savedmstone = Services.prefs.getCharPref("browser.startup.homepage_override.mstone");
+    } catch (e) {
+    }
+#expand    let ourmstone = "__MOZ_APP_VERSION__";
+    if (ourmstone != savedmstone) {
+      Services.prefs.setCharPref("browser.startup.homepage_override.mstone", ourmstone);
+      return savedmstone ? "upgrade" : "new";
+    }
+    return "";
+  },
+
+  onAppUpdated: function() {
+    // initialize the form history and passwords databases on upgrades
+    Services.obs.notifyObservers(null, "FormHistory:Init", "");
+    Services.obs.notifyObservers(null, "Passwords:Init", "");
   },
 
   _showTelemetryPrompt: function _showTelemetryPrompt() {
@@ -914,16 +938,16 @@ var BrowserApp = {
     } else if (aTopic == "SearchEngines:Get") {
       this.getSearchEngines();
     } else if (aTopic == "Passwords:Init") {
-      var storage = Components.classes["@mozilla.org/login-manager/storage/mozStorage;1"].  
-        getService(Components.interfaces.nsILoginManagerStorage);
+      // Force creation/upgrade of signons.sqlite
+      let storage = Cc["@mozilla.org/login-manager/storage/mozStorage;1"].getService(Ci.nsILoginManagerStorage);
       storage.init();
 
       sendMessageToJava({gecko: { type: "Passwords:Init:Return" }});
       Services.obs.removeObserver(this, "Passwords:Init", false);
     } else if (aTopic == "FormHistory:Init") {
-      var fh = Components.classes["@mozilla.org/satchel/form-history;1"].  
-        getService(Components.interfaces.nsIFormHistory2);
-      var db = fh.DBConnection;
+      let fh = Cc["@mozilla.org/satchel/form-history;1"].getService(Ci.nsIFormHistory2);
+      // Force creation/upgrade of formhistory.sqlite
+      let db = fh.DBConnection;
       sendMessageToJava({gecko: { type: "FormHistory:Init:Return" }});
       Services.obs.removeObserver(this, "FormHistory:Init", false);
     } else if (aTopic == "sessionstore-state-purge-complete") {
@@ -1492,6 +1516,7 @@ Tab.prototype = {
     this.browser.addEventListener("DOMWindowClose", this, true);
     this.browser.addEventListener("DOMWillOpenModalDialog", this, true);
     this.browser.addEventListener("scroll", this, true);
+    this.browser.addEventListener("MozScrolledAreaChanged", this, true);
     this.browser.addEventListener("PluginClickToPlay", this, true);
     this.browser.addEventListener("pagehide", this, true);
     this.browser.addEventListener("pageshow", this, true);
@@ -1539,6 +1564,7 @@ Tab.prototype = {
     this.browser.removeEventListener("DOMWillOpenModalDialog", this, true);
     this.browser.removeEventListener("scroll", this, true);
     this.browser.removeEventListener("PluginClickToPlay", this, true);
+    this.browser.removeEventListener("MozScrolledAreaChanged", this, true);
     this.browser.removeEventListener("pagehide", this, true);
     this.browser.removeEventListener("pageshow", this, true);
 
@@ -1566,6 +1592,10 @@ Tab.prototype = {
       this.browser.setAttribute("type", "content-targetable");
       this.browser.docShellIsActive = false;
     }
+  },
+
+  getActive: function getActive() {
+      return this.browser.docShellIsActive;
   },
 
   setDisplayPort: function(aViewportX, aViewportY, aDisplayPortRect) {
@@ -1610,6 +1640,23 @@ Tab.prototype = {
     }
   },
 
+  getPageSize: function(aDocument, aDefaultWidth, aDefaultHeight) {
+    if (aDocument instanceof SVGDocument) {
+      let rect = aDocument.rootElement.getBoundingClientRect();
+      // we need to add rect.left and rect.top twice so that the SVG is drawn
+      // centered on the page; if we add it only once then the SVG will be
+      // on the bottom-right of the page and if we don't add it at all then
+      // we end up with a cropped SVG (see bug 712065)
+      return [Math.ceil(rect.left + rect.width + rect.left),
+              Math.ceil(rect.top + rect.height + rect.top)];
+    } else {
+      let body = aDocument.body || { scrollWidth: aDefaultWidth, scrollHeight: aDefaultHeight };
+      let html = aDocument.documentElement || { scrollWidth: aDefaultWidth, scrollHeight: aDefaultHeight };
+      return [Math.max(body.scrollWidth, html.scrollWidth),
+              Math.max(body.scrollHeight, html.scrollHeight)];
+    }
+  },
+
   getViewport: function() {
     let viewport = {
       width: gScreenWidth,
@@ -1629,21 +1676,7 @@ Tab.prototype = {
 
     let doc = this.browser.contentDocument;
     if (doc != null) {
-      let pageWidth = viewport.width, pageHeight = viewport.height;
-      if (doc instanceof SVGDocument) {
-        let rect = doc.rootElement.getBoundingClientRect();
-        // we need to add rect.left and rect.top twice so that the SVG is drawn
-        // centered on the page; if we add it only once then the SVG will be
-        // on the bottom-right of the page and if we don't add it at all then
-        // we end up with a cropped SVG (see bug 712065)
-        pageWidth = Math.ceil(rect.left + rect.width + rect.left);
-        pageHeight = Math.ceil(rect.top + rect.height + rect.top);
-      } else {
-        let body = doc.body || { scrollWidth: pageWidth, scrollHeight: pageHeight };
-        let html = doc.documentElement || { scrollWidth: pageWidth, scrollHeight: pageHeight };
-        pageWidth = Math.max(body.scrollWidth, html.scrollWidth);
-        pageHeight = Math.max(body.scrollHeight, html.scrollHeight);
-      }
+      let [pageWidth, pageHeight] = this.getPageSize(doc, viewport.width, viewport.height);
 
       /* Transform the page width and height based on the zoom factor. */
       pageWidth *= viewport.zoom;
@@ -1663,17 +1696,16 @@ Tab.prototype = {
     return viewport;
   },
 
-  sendViewportUpdate: function() {
+  sendViewportUpdate: function(aPageSizeUpdate) {
     let message;
-    if (BrowserApp.selectedTab == this) {
-      // for foreground tabs, send the viewport update unless the document
-      // displayed is different from the content document
-      if (!BrowserApp.isBrowserContentDocumentDisplayed())
-        return;
+    // for foreground tabs, send the viewport update unless the document
+    // displayed is different from the content document. In that case, just
+    // calculate the display port.
+    if (BrowserApp.selectedTab == this && BrowserApp.isBrowserContentDocumentDisplayed()) {
       message = this.getViewport();
-      message.type = "Viewport:Update";
+      message.type = aPageSizeUpdate ? "Viewport:PageSize" : "Viewport:Update";
     } else {
-      // for bcakground tabs, request a new display port calculation, so that
+      // for background tabs, request a new display port calculation, so that
       // when we do switch to that tab, we have the correct display port and
       // don't need to draw twice (once to allow the first-paint viewport to
       // get to java, and again once java figures out the display port).
@@ -1699,7 +1731,7 @@ Tab.prototype = {
         // event fires; it's not clear that doing so is worth the effort.
         var backgroundColor = null;
         try {
-          let browser = this.selectedBrowser;
+          let browser = BrowserApp.selectedBrowser;
           if (browser) {
             let { contentDocument, contentWindow } = browser;
             let computedStyle = contentWindow.getComputedStyle(contentDocument.body);
@@ -1830,6 +1862,17 @@ Tab.prototype = {
         if (this.userScrollPos.x != win.scrollX || this.userScrollPos.y != win.scrollY) {
           this.sendViewportUpdate();
         }
+        break;
+      }
+
+      case "MozScrolledAreaChanged": {
+        // This event is only fired for root scroll frames, and only when the
+        // scrolled area has actually changed, so no need to check for that.
+        // Just make sure it's the event for the correct root scroll frame.
+        if (aEvent.originalTarget != this.browser.contentDocument)
+          return;
+
+        this.sendViewportUpdate(true);
         break;
       }
 
@@ -2085,11 +2128,21 @@ Tab.prototype = {
     }
 
     // Make sure the viewport height is not shorter than the window when
-    // the page is zoomed out to show its full width.
-    let minScale = this.getPageZoomLevel();
-    viewportH = Math.max(viewportH, screenH / minScale);
-
+    // the page is zoomed out to show its full width. Note that before
+    // we set the viewport width, the "full width" of the page isn't properly
+    // defined, so that's why we have to call setBrowserSize twice - once
+    // to set the width, and the second time to figure out the height based
+    // on the layout at that width.
     let oldBrowserWidth = this.browserWidth;
+    this.setBrowserSize(viewportW, viewportH);
+    let minScale = 1.0;
+    if (this.browser.contentDocument) {
+      // this may get run during a Viewport:Change message while the document
+      // has not yet loaded, so need to guard against a null document.
+      let [pageWidth, pageHeight] = this.getPageSize(this.browser.contentDocument, viewportW, viewportH);
+      minScale = gScreenWidth / pageWidth;
+    }
+    viewportH = Math.max(viewportH, screenH / minScale);
     this.setBrowserSize(viewportW, viewportH);
 
     // Avoid having the scroll position jump around after device rotation.
@@ -2112,15 +2165,6 @@ Tab.prototype = {
     let zoomScale = (screenW * oldBrowserWidth) / (aOldScreenWidth * viewportW);
     this.setResolution(this._zoom * zoomScale, false);
     this.sendViewportUpdate();
-  },
-
-  getPageZoomLevel: function getPageZoomLevel() {
-    // This may get called during a Viewport:Change message while the document
-    // has not loaded yet.
-    if (!this.browser.contentDocument || !this.browser.contentDocument.body)
-      return 1.0;
-
-    return gScreenWidth / this.browser.contentDocument.body.clientWidth;
   },
 
   setBrowserSize: function(aWidth, aHeight) {
@@ -2167,11 +2211,12 @@ Tab.prototype = {
           // and then use the metadata to figure out how it needs to be updated
           ViewportHandler.updateMetadata(this);
 
-          // The document element must have a display port on it whenever we are about to
-          // paint. This is the point just before the first paint, so we set the display port
-          // to a default value here. Once Java is aware of this document it will overwrite
-          // it with a better-calculated display port.
-          this.setDisplayPort(0, 0, {left: 0, top: 0, right: gScreenWidth, bottom: gScreenHeight });
+          // If we draw without a display-port, things can go wrong. While it's
+          // almost certain a display-port has been set via the
+          // MozScrolledAreaChanged event, make sure by sending a viewport
+          // update here. As it's the first paint, this will end up being a
+          // display-port request only.
+          this.sendViewportUpdate();
 
           BrowserApp.displayedDocumentChanged();
           this.contentDocumentIsDisplayed = true;
@@ -4378,5 +4423,28 @@ var SearchEngines = {
         }
       }
     });
+  }
+};
+
+var ActivityObserver = {
+  init: function ao_init() {
+    Services.obs.addObserver(this, "application-background", false);
+    Services.obs.addObserver(this, "application-foreground", false);
+  },
+
+  observe: function ao_observe(aSubject, aTopic, aData) {
+    let isForeground = false
+    switch (aTopic) {
+      case "application-background" :
+        isForeground = false;
+        break;
+      case "application-foreground" :
+        isForeground = true;
+        break;
+    }
+
+    if (BrowserApp.selectedTab.getActive() != isForeground) {
+      BrowserApp.selectedTab.setActive(isForeground);
+    }
   }
 };

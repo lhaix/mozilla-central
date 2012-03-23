@@ -56,6 +56,7 @@
 #include "nsIDOMHTMLImageElement.h"
 #include "nsISelectionController.h"
 #include "nsIFileChannel.h"
+#include "nsIPrivateDOMEvent.h"
 
 #include "nsIDocumentObserver.h"
 #include "nsIDocumentStateListener.h"
@@ -75,8 +76,6 @@
 #include "nsIDOMDocumentFragment.h"
 #include "nsIPresShell.h"
 #include "nsPresContext.h"
-#include "nsIParser.h"
-#include "nsParserCIID.h"
 #include "nsXPCOM.h"
 #include "nsISupportsPrimitives.h"
 #include "nsLinebreakConverter.h"
@@ -126,12 +125,11 @@
 #include "nsIDocShellTreeItem.h"
 #include "nsContentUtils.h"
 #include "mozilla/Preferences.h"
+#include "nsIParserUtils.h"
 
 using namespace mozilla;
 
 const PRUnichar nbsp = 160;
-
-static NS_DEFINE_CID(kCParserCID,     NS_PARSER_CID);
 
 #define kInsertCookie  "_moz_Insert Here_moz_"
 
@@ -2370,7 +2368,9 @@ nsresult nsHTMLEditor::ParseFragment(const nsAString & aFragStr,
                                         false,
                                         true);
   if (!aTrustedInput) {
-    nsTreeSanitizer sanitizer(!!aContextLocalName, !aContextLocalName);
+    nsTreeSanitizer sanitizer(aContextLocalName ?
+                              nsIParserUtils::SanitizerAllowStyle :
+                              nsIParserUtils::SanitizerAllowComments);
     sanitizer.Sanitize(fragment);
   }
   *outNode = do_QueryInterface(frag);
