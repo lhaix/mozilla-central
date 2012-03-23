@@ -11,11 +11,14 @@
 
 #include doctype.inc
 
-<window windowtype="app" title="Mozilla Apps Runtime" width="1024" height="800"
+<window windowtype="webapprt:webapp"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         xmlns:svg="http://www.w3.org/2000/svg"
-        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        sizemode="normal" resizable="true">
+        width="1024"
+        height="800"
+        sizemode="normal"
+        resizable="true">
 
 #include scripts.inc
   <script type="application/javascript" src="chrome://webapprt/content/webappWindow.js"/>

@@ -11,8 +11,9 @@
 
 #include doctype.inc
 
-<window xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+<window windowtype="webapprt:hidden"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
 
 #include scripts.inc
   <script type="application/javascript" src="chrome://webapprt/content/hiddenWindow.js"/>
