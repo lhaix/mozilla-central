@@ -14,9 +14,9 @@ Cu.import("resource://gre/modules/FileUtils.jsm");
 
 const WEBAPP_RUNTIME = Services.appinfo.ID == "webapprt@mozilla.org";
 
-// If we're executing in the context of the webapp runtime, the data
-// is in a different directory (currently the Firefox profile that installed
-// the webapp); otherwise, it's in the current profile.
+// If we're executing in the context of the webapp runtime, the data files
+// are in a different directory (currently the Firefox profile that installed
+// the webapp); otherwise, they're in the current profile.
 const DATA_D = WEBAPP_RUNTIME ? "WebappRegD" : "ProfD";
 
 XPCOMUtils.defineLazyGetter(this, "NetUtil", function() {

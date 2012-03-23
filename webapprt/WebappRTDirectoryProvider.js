@@ -21,7 +21,7 @@ DirectoryProvider.prototype = {
   getFile: function(prop, persistent) {
     if (prop == WEBAPP_REGISTRY_DIR) {
       let dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
-      dir.initWithPath(WebappRT.webapp.registryDir);
+      dir.initWithPath(WebappRT.config.registryDir);
       return dir;
     }
 
