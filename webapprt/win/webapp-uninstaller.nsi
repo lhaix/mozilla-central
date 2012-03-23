@@ -42,8 +42,8 @@ Var TmpVal
 !define WindowClass           "Webapp RuntimeMessageWindow"
 
 ; These values are used in uninstall text
-!define BrandFullNameInternal "Mozilla Web App Runtime Native App"
-!define BrandFullName         "Mozilla Web App Runtime Native App"
+!define BrandFullNameInternal "Mozilla Webapp Runtime Native App"
+!define BrandFullName         "Mozilla Webapp Runtime Native App"
 !define BrandShortName        "Mozilla WebAppRT Native App"
 
 ; The following includes are custom.
@@ -52,7 +52,7 @@ Var TmpVal
 !include "locales.nsi"
 
 !define CompanyName           "Mozilla Corporation"
-!define UninstallerName       "Mozilla Web App Runtime App Uninstaller"
+!define UninstallerName       "Mozilla Webapp Runtime App Uninstaller"
 !define UninstallerFilename   "webapp-uninstaller"
 
 VIProductVersion "1.0.0.0"
@@ -370,10 +370,10 @@ Function un.onInit
   ${un.UninstallUnOnInitCommon}
   !insertmacro InitInstallOptionsFile "unconfirm.ini"
 
-  ReadINIStr $AppFilename "$INSTDIR\application.ini" "WebAppRT" "Filename"
-  ReadINIStr $ProfileDir "$INSTDIR\application.ini" "App" "Profile"
+  ReadINIStr $AppFilename "$INSTDIR\webapp.ini" "Webapp" "Executable"
+  ReadINIStr $ProfileDir "$INSTDIR\webapp.ini" "Webapp" "Profile"
 
-  ${un.SetBrandNameVars} "$INSTDIR\application.ini"
+  ${un.SetBrandNameVars} "$INSTDIR\webapp.ini"
 FunctionEnd
 
 Function un.onGUIEnd
