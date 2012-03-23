@@ -19,12 +19,12 @@ let WebappRT = {};
 
 Object.defineProperty(WebappRT, "webapp", {
   get: function getWebapp() {
-    let configFile = FileUtils.getFile("AppRegD", ["config.json"]);
+    let webappFile = FileUtils.getFile("AppRegD", ["webapp.json"]);
     let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
                       createInstance(Ci.nsIFileInputStream);
-    inputStream.init(configFile, -1, 0, 0);
+    inputStream.init(webappFile, -1, 0, 0);
     let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
-    let webapp = json.decodeFromStream(inputStream, configFile.fileSize);
+    let webapp = json.decodeFromStream(inputStream, webappFile.fileSize);
 
     // Memoize the getter, freezing the webapp object in the meantime so
     // consumers don't inadvertently (or intentionally) change it, as the object

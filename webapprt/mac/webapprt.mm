@@ -34,7 +34,8 @@
 
 
 const char WEBAPPRT_EXECUTABLE[] = "webapprt";
-const char APPINI_NAME[] = "application.ini";
+const char FXAPPINI_NAME[] = "application.ini";
+const char WEBAPPINI_NAME[] = "webapp.ini";
 const char WEBRTINI_NAME[] = "webapprt.ini";
 
 //need the correct relative path here
@@ -151,7 +152,7 @@ int main(int argc, char **argv)
       exit(0);
     }
 
-    NSString *firefoxINIFilePath = [NSString stringWithFormat:@"%@%s%s", firefoxPath, WEBAPPRT_PATH, APPINI_NAME];
+    NSString *firefoxINIFilePath = [NSString stringWithFormat:@"%@%s%s", firefoxPath, WEBAPPRT_PATH, FXAPPINI_NAME];
     nsINIParser ffparser;
     NSLog(@"Looking for firefox ini file here: %@", firefoxINIFilePath);
 
@@ -218,13 +219,13 @@ int main(int argc, char **argv)
       int result = 0;
       char rtINIPath[MAXPATHLEN];
 
-      // Set up our environment to know where application.ini was loaded from.
+      // Set up our environment to know where webapp.ini was loaded from.
       char appEnv[MAXPATHLEN];
-      snprintf(appEnv, MAXPATHLEN, "%s%s%s", [myBundlePath UTF8String], WEBAPPRT_PATH, APPINI_NAME);
+      snprintf(appEnv, MAXPATHLEN, "%s%s%s", [myBundlePath UTF8String], WEBAPPRT_PATH, WEBAPPINI_NAME);
       if (setenv("XUL_APP_FILE", appEnv, 1)) 
       {
         NSLog(@"Couldn't set XUL_APP_FILE to: %s", appEnv);
-        @throw makeException(@"Error", @"Unable to set application INI file.");
+        @throw makeException(@"Error", @"Unable to set webapp INI file.");
       }
       NSLog(@"Set XUL_APP_FILE to: %s", appEnv);
 
@@ -283,7 +284,7 @@ int main(int argc, char **argv)
         }
 
         char profile[MAXPATHLEN];
-        if(NS_FAILED(parser.GetString("App", "Profile", profile, MAXPATHLEN))) 
+        if(NS_FAILED(parser.GetString("Webapp", "Profile", profile, MAXPATHLEN))) 
         {
           NSLog(@"Unable to retrieve profile from web app INI file");
           @throw makeException(@"Error", @"Unable to retrieve installation profile.");
@@ -365,7 +366,7 @@ NSString *pathToWebRT(NSString* alternateBinaryID)
     binaryPath = [[NSWorkspace sharedWorkspace] absolutePathForAppBundleWithIdentifier:alternateBinaryID];
     if (binaryPath == nil || [binaryPath length] == 0) 
     {
-      @throw makeException(@"WebAppRT Not Found", 
+      @throw makeException(@"WebappRT Not Found", 
                             [NSString stringWithFormat:@"Failed to locate specified override runtime with signature '%@'", alternateBinaryID]);
     }
     return binaryPath;

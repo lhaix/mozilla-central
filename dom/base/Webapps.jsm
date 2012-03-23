@@ -14,10 +14,10 @@ Cu.import("resource://gre/modules/FileUtils.jsm");
 
 const WEBAPP_RUNTIME = Services.appinfo.ID == "webapprt@mozilla.org";
 
-// If we're executing in the context of the webapp runtime, the datastore is in
-// the Firefox profile that installed the webapp, not the profile for the webapp
-// itself, so we retrieve it from the Firefox profile.
-const PROF_D = WEBAPP_RUNTIME ? "WebappSrcProfD" : "ProfD";
+// If we're executing in the context of the webapp runtime, the datastore
+// is in a different directory (currently the Firefox profile that installed
+// the webapp); otherwise, it's in the current profile.
+const DATA_D = WEBAPP_RUNTIME ? "WebappRTDataD" : "ProfD";
 
 XPCOMUtils.defineLazyGetter(this, "NetUtil", function() {
   Cu.import("resource://gre/modules/NetUtil.jsm");
@@ -43,8 +43,8 @@ let DOMApplicationRegistry = {
 
     Services.obs.addObserver(this, "xpcom-shutdown", false);
 
-    let appsDir = FileUtils.getDir(PROF_D, ["webapps"], true, true);
-    this.appsFile = FileUtils.getFile(PROF_D, ["webapps", "webapps.json"], true);
+    let appsDir = FileUtils.getDir(DATA_D, ["webapps"], true, true);
+    this.appsFile = FileUtils.getFile(DATA_D, ["webapps", "webapps.json"], true);
 
     if (!this.appsFile.exists())
       return;
@@ -169,7 +169,7 @@ let DOMApplicationRegistry = {
 
     // install an application again is considered as an update
     if (id) {
-      let dir = FileUtils.getDir(PROF_D, ["webapps", id], true, true);
+      let dir = FileUtils.getDir(DATA_D, ["webapps", id], true, true);
       try {
         dir.remove(true);
       } catch(e) {
@@ -180,7 +180,7 @@ let DOMApplicationRegistry = {
       id = uuidGenerator.generateUUID().toString();
     }
 
-    let dir = FileUtils.getDir(PROF_D, ["webapps", id], true, true);
+    let dir = FileUtils.getDir(DATA_D, ["webapps", id], true, true);
 
     let manFile = dir.clone();
     manFile.append("manifest.json");
@@ -224,7 +224,7 @@ let DOMApplicationRegistry = {
 
     let index = aIndex || 0;
     let id = aData[index].id;
-    let file = FileUtils.getFile(PROF_D, ["webapps", id, "manifest.json"], true);
+    let file = FileUtils.getFile(DATA_D, ["webapps", id, "manifest.json"], true);
     this._loadJSONAsync(file, (function(aJSON) {
       aData[index].manifest = aJSON;
       if (index == aData.length - 1)
@@ -241,7 +241,7 @@ let DOMApplicationRegistry = {
       if (app.origin == aData.origin) {
         found = true;
         delete this.webapps[id];
-        let dir = FileUtils.getDir(PROF_D, ["webapps", id], true, true);
+        let dir = FileUtils.getDir(DATA_D, ["webapps", id], true, true);
         try {
           dir.remove(true);
         } catch (e) {
@@ -355,7 +355,7 @@ let DOMApplicationRegistry = {
           continue;
         let origin = this.webapps[record.id].origin;
         delete this.webapps[record.id];
-        let dir = FileUtils.getDir(PROF_D, ["webapps", record.id], true, true);
+        let dir = FileUtils.getDir(DATA_D, ["webapps", record.id], true, true);
         try {
           dir.remove(true);
         } catch (e) {
@@ -393,7 +393,7 @@ let DOMApplicationRegistry = {
     let ids = this.getAllIDs();
     for (let id in ids) {
       delete this.webapps[id];
-      let dir = FileUtils.getDir(PROF_D, ["webapps", id], true, true);
+      let dir = FileUtils.getDir(DATA_D, ["webapps", id], true, true);
       try {
         dir.remove(true);
       } catch (e) {

@@ -30,7 +30,7 @@ XRE_FreeAppDataType XRE_FreeAppData;
 XRE_mainType XRE_main;
 
 namespace {
-  const char kAPP_INI[] = "application.ini";
+  const char kAPP_INI[] = "webapp.ini";
   const char kAppEnvPrefix[] = "XUL_APP_FILE=";
   const char kRT_INI[] = "webapprt.ini";
   const char kAPP_RT[] = "webapprt.exe";
@@ -420,7 +420,7 @@ namespace {
     wchar_t msg[1024];
     _vsnwprintf_s(msg, _countof(msg), _countof(msg), fmt, ap);
 
-    MessageBoxW(NULL, msg, L"WebAppRT", MB_OK);
+    MessageBoxW(NULL, msg, L"WebappRT", MB_OK);
 
     va_end(ap);
   }
@@ -771,24 +771,24 @@ main(int argc, char* argv[])
     return 255;
   }
 
-  // Set up appIniPath with path to application.ini.
+  // Set up appIniPath with path to webapp.ini.
   // This should be in the same directory as the running executable.
   char appIniPath[MAXPATHLEN];
   if(NS_FAILED(joinPath(appIniPath, buffer, kAPP_INI, MAXPATHLEN))) {
-    Output("Path to application.ini could not be processed.");
+    Output("Path to webapp.ini could not be processed.");
     return 255;
   }
 
-  // Open application.ini as an INI file (as opposed to using the
-  // XRE application.ini-specific processing we do later)
+  // Open webapp.ini as an INI file (as opposed to using the
+  // XRE webapp.ini-specific processing we do later)
   nsINIParser parser;
   // XXX: Is nsINIParser able to open unicode (UTF-8) paths?
   if(NS_FAILED(parser.Init(appIniPath))) {
-    Output("Could not open application.ini");
+    Output("Could not open webapp.ini");
     return 255;
   }
 
-  // Set up our environment to know where application.ini was loaded from.
+  // Set up our environment to know where webapp.ini was loaded from.
   char appEnv[MAXPATHLEN + _countof(kAppEnvPrefix)];
   strcpy(appEnv, kAppEnvPrefix);
   strcpy(appEnv + _countof(kAppEnvPrefix) - 1, appIniPath);
@@ -797,8 +797,8 @@ main(int argc, char* argv[])
     return 255;
   }
 
-  // Get profile dir from application.ini
-  if(NS_FAILED(parser.GetString("App",
+  // Get profile dir from webapp.ini
+  if(NS_FAILED(parser.GetString("Webapp",
                                 "Profile",
                                 profile,
                                 MAXPATHLEN))) {
@@ -810,10 +810,10 @@ main(int argc, char* argv[])
 
   { // Scope for first attempt at loading Firefox binaries
 
-    // Get the location of Firefox from our application.ini
+    // Get the location of Firefox from our webapp.ini
     // XXX: This string better be UTF-8...
-    rv = parser.GetString("WebAppRT",
-                          "FirefoxDir",
+    rv = parser.GetString("WebappRT",
+                          "InstallDir",
                           firefoxDir,
                           MAXPATHLEN);
     if(NS_SUCCEEDED(rv)) {
@@ -830,7 +830,7 @@ main(int argc, char* argv[])
     if(NS_SUCCEEDED(rv)) {
       rv = AttemptLoadFromDir(firefoxDir, &result);
       if(NS_SUCCEEDED(rv)) {
-        // TODO: Write gre dir location to application.ini
+        // TODO: Write gre dir location to webapp.ini
         return result;
       }
     }
