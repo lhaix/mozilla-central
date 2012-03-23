@@ -39,7 +39,7 @@ const char WEBAPPINI_NAME[] = "webapp.ini";
 const char WEBRTINI_NAME[] = "webapprt.ini";
 
 //need the correct relative path here
-const char WEBAPPRT_PATH[] = "/Contents/MacOS/"; 
+const char APP_CONTENTS_PATH[] = "/Contents/MacOS/"; 
 
 void execNewBinary(NSString* launchPath);
 
@@ -137,22 +137,26 @@ int main(int argc, char **argv)
       @throw makeException(@"Missing WebRT Files", @"Cannot locate binary for this application");
     }
 
-    //Check to see if the DYLD_FALLBACK_LIBRARY_PATH is set. if not, set it, and relaunch ourselves
+    //CHECK DYLD_FALLBACK_LIBRARY_PATH
     char libEnv[MAXPATHLEN];
-    snprintf(libEnv, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH);
+    snprintf(libEnv, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], APP_CONTENTS_PATH);
 
     char* curVal = getenv("DYLD_FALLBACK_LIBRARY_PATH");
 
     if ((curVal == NULL) || strncmp(libEnv, curVal, MAXPATHLEN)) 
     {
+      //NOT SET! SET AND RELAUNCH
       NSLog(@"DYLD_FALLBACK_LIBRARY_PATH NOT SET!!");
       //they differ, so set it and relaunch
       setenv("DYLD_FALLBACK_LIBRARY_PATH", libEnv, 1);
       execNewBinary(myWebRTPath);
       exit(0);
     }
+    //HAVE DYLD_FALLBACK_LIBRARY_PATH
 
-    NSString *firefoxINIFilePath = [NSString stringWithFormat:@"%@%s%s", firefoxPath, WEBAPPRT_PATH, FXAPPINI_NAME];
+
+    //GET FIREFOX BUILD ID
+    NSString *firefoxINIFilePath = [NSString stringWithFormat:@"%@%s%s", firefoxPath, APP_CONTENTS_PATH, FXAPPINI_NAME];
     nsINIParser ffparser;
     NSLog(@"Looking for firefox ini file here: %@", firefoxINIFilePath);
 
@@ -171,8 +175,10 @@ int main(int argc, char **argv)
     NSString* firefoxVersion = [NSString stringWithFormat:@"%s", ffVersChars];
 
     NSLog(@"FIREFOX WEBAPPRT BUILDID: %@", firefoxVersion);
+    //GOT FIREFOX BUILD ID
 
-    //compare them
+
+    //COMPARE MY BUILD ID AND FIREFOX BUILD ID
     if ([myVersion compare: firefoxVersion] != NSOrderedSame) 
     {
       //we are going to assume that if they are different, we need to re-copy the webapprt, regardless of whether
@@ -180,7 +186,7 @@ int main(int argc, char **argv)
       NSLog(@"This Application has an old webrt. Updating it.");
 
       //we know the firefox path, so copy the new webapprt here
-      NSString *newWebRTPath = [NSString stringWithFormat: @"%@%s%s", firefoxPath, WEBAPPRT_PATH, WEBAPPRT_EXECUTABLE];
+      NSString *newWebRTPath = [NSString stringWithFormat: @"%@%s%s", firefoxPath, APP_CONTENTS_PATH, WEBAPPRT_EXECUTABLE];
       NSLog(@"firefox webrt path: %@", newWebRTPath);
       if (![[NSFileManager defaultManager] fileExistsAtPath:newWebRTPath]) 
       {
@@ -221,7 +227,7 @@ int main(int argc, char **argv)
 
       // Set up our environment to know where webapp.ini was loaded from.
       char appEnv[MAXPATHLEN];
-      snprintf(appEnv, MAXPATHLEN, "%s%s%s", [myBundlePath UTF8String], WEBAPPRT_PATH, WEBAPPINI_NAME);
+      snprintf(appEnv, MAXPATHLEN, "%s%s%s", [myBundlePath UTF8String], APP_CONTENTS_PATH, WEBAPPINI_NAME);
       if (setenv("XUL_APP_FILE", appEnv, 1)) 
       {
         NSLog(@"Couldn't set XUL_APP_FILE to: %s", appEnv);
@@ -233,7 +239,7 @@ int main(int argc, char **argv)
 
       //CONSTRUCT GREDIR AND CALL XPCOMGLUE WITH IT
       char greDir[MAXPATHLEN];
-      snprintf(greDir, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH);
+      snprintf(greDir, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], APP_CONTENTS_PATH);
       if(!NS_SUCCEEDED(AttemptGRELoad(greDir))) 
       {
           @throw makeException(@"Error", @"Unable to load XUL files for application startup");
@@ -253,7 +259,7 @@ int main(int argc, char **argv)
 
         // Get the path to the runtime's INI file.  This should be in the
         // same directory as the GRE.
-        snprintf(rtINIPath, MAXPATHLEN, "%s%s%s", [firefoxPath UTF8String], WEBAPPRT_PATH, WEBRTINI_NAME);
+        snprintf(rtINIPath, MAXPATHLEN, "%s%s%s", [firefoxPath UTF8String], APP_CONTENTS_PATH, WEBRTINI_NAME);
         NSLog(@"webapprt.ini path: %s", rtINIPath);
         if (![[NSFileManager defaultManager] fileExistsAtPath:[NSString stringWithFormat:@"%s", rtINIPath]]) 
         {
@@ -284,7 +290,7 @@ int main(int argc, char **argv)
         }
 
         char profile[MAXPATHLEN];
-        if(NS_FAILED(parser.GetString("Webapp", "Profile", profile, MAXPATHLEN))) 
+        if(NS_FAILED(parser.GetString("App", "Profile", profile, MAXPATHLEN))) 
         {
           NSLog(@"Unable to retrieve profile from web app INI file");
           @throw makeException(@"Error", @"Unable to retrieve installation profile.");
@@ -389,10 +395,7 @@ NSString *pathToWebRT(NSString* alternateBinaryID)
 
 void execNewBinary(NSString* launchPath)
 {
-
   NSLog(@" launching webrt at path: %@\n", launchPath);
-  // char binfile[500];
-  // sprintf(binfile, "%s/%s", WEBAPPRT_EXECUTABLE);
 
   const char *const newargv[] = {[launchPath UTF8String], NULL};
 
