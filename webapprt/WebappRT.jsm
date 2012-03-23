@@ -24,7 +24,7 @@ Object.defineProperty(WebappRT, "config", {
                       createInstance(Ci.nsIFileInputStream);
     inputStream.init(webappFile, -1, 0, 0);
     let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
-    let webapp = json.decodeFromStream(inputStream, webappFile.fileSize);
+    let config = json.decodeFromStream(inputStream, webappFile.fileSize);
 
     // Memoize the getter, freezing the `config` object in the meantime so
     // consumers don't inadvertently (or intentionally) change it, as the object
