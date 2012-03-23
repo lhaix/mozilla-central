@@ -2,6 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/**
+ * This script is loaded by both webappWindow.xul and hiddenWindow.xul.
+ * It defines some global symbols that other scripts use and configures
+ * the windows in ways they must both be configured.
+ *
+ * See webappWindow.js and hiddenWindow.js for code specific to each window.
+ */
+
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cu = Components.utils;
