@@ -49,19 +49,7 @@ let DOMApplicationRegistry = {
     if (!this.appsFile.exists())
       return;
 
-    // The webapp runtime accesses the app registry on startup, so we need to
-    // load the data from the datastore synchronously if we're executing in the
-    // context of the webapp runtime.
-    if (WEBAPP_RUNTIME) {
-      let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
-                        createInstance(Ci.nsIFileInputStream);
-      inputStream.init(this.appsFile, -1, 0, 0);
-      let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
-      this.webapps = json.decodeFromStream(inputStream, this.appsFile.fileSize);
-    }
-    else {
-      this._loadJSONAsync(this.appsFile, (function(aData) { this.webapps = aData; }).bind(this));
-    }
+    this._loadJSONAsync(this.appsFile, (function(aData) { this.webapps = aData; }).bind(this));
 
     try {
       let hosts = Services.prefs.getCharPref("dom.mozApps.whitelist")
@@ -343,28 +331,6 @@ let DOMApplicationRegistry = {
     this._readManifests([{ id: id }], function(aResult) {
       aCallback(aResult[0].manifest);
     });
-  },
-
-  /**
-   * Get a manifest synchronously.
-   *
-   * Added to support the webapp runtime, which needs to load the manifest
-   * at a certain stage in the startup process in order to use its information
-   * to configure the shell.
-   *
-   * In general, you should not use this method.  Use getManifestFor instead!
-   */
-  getManifestSync: function(aOrigin) {
-    let id = this._appId(aOrigin);
-
-    let file =
-      FileUtils.getFile(PROF_D, ["webapps", id, "manifest.json"], true);
-    let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
-                      createInstance(Ci.nsIFileInputStream);
-    inputStream.init(file, -1, 0, 0);
-    // XXX Factor out this reference with other references to nsIJSON.
-    let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
-    return json.decodeFromStream(inputStream, file.fileSize);
   },
 
   /** added to support the sync engine */

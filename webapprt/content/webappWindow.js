@@ -5,8 +5,8 @@
 function onLoad() {
   window.removeEventListener("load", onLoad, false);
 
-  let installRecord = DOMApplicationRegistry.getApp(Webapp.origin);
-  let manifest = DOMApplicationRegistry.getManifestSync(Webapp.origin);
+  let installRecord = Webapp.installRecord;
+  let manifest = Webapp.installRecord.manifest;
 
   // Set the title of the window to the name of the webapp.
   // XXX Set it to the webapp page's title, then update it when that changes.
@@ -14,6 +14,7 @@ function onLoad() {
 
   // Load the webapp's launch path.
   let url = installRecord.origin;
+  // XXX Resolve launch path relative to origin instead of merely concating 'em?
   if (manifest.launch_path)
     url += manifest.launch_path;
   document.getElementById("content").setAttribute("src", url);

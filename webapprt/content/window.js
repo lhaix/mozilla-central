@@ -6,7 +6,6 @@ const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cu = Components.utils;
 
-Cu.import("resource://gre/modules/Webapps.jsm");
 Cu.import("resource://gre/modules/WebappRT.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
@@ -15,8 +14,8 @@ Cu.import("resource://gre/modules/Services.jsm");
 // a string property to inject the name of the webapp into it.
 window.addEventListener("load", function onLoadUpdateQuitMenuItem() {
   window.removeEventListener("load", onLoadUpdateQuitMenuItem, false);
-  let installRecord = DOMApplicationRegistry.getApp(Webapp.origin);
-  let manifest = DOMApplicationRegistry.getManifestSync(Webapp.origin);
+  let installRecord = Webapp.installRecord;
+  let manifest = Webapp.installRecord.manifest;
   let bundle =
     Services.strings.createBundle("chrome://webapprt/locale/window.properties");
   let quitLabel = bundle.formatStringFromName("quitApplicationCmdMac.label",
