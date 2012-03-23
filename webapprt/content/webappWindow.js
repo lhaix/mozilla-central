@@ -5,8 +5,8 @@
 function onLoad() {
   window.removeEventListener("load", onLoad, false);
 
-  let installRecord = Webapp.installRecord;
-  let manifest = Webapp.installRecord.manifest;
+  let installRecord = WebappRT.webapp.installRecord;
+  let manifest = WebappRT.webapp.installRecord.manifest;
 
   // Set the title of the window to the name of the webapp.
   // XXX Set it to the webapp page's title, then update it when that changes.

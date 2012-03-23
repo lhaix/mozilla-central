@@ -14,8 +14,8 @@ Cu.import("resource://gre/modules/Services.jsm");
 // a string property to inject the name of the webapp into it.
 window.addEventListener("load", function onLoadUpdateQuitMenuItem() {
   window.removeEventListener("load", onLoadUpdateQuitMenuItem, false);
-  let installRecord = Webapp.installRecord;
-  let manifest = Webapp.installRecord.manifest;
+  let installRecord = WebappRT.webapp.installRecord;
+  let manifest = WebappRT.webapp.installRecord.manifest;
   let bundle =
     Services.strings.createBundle("chrome://webapprt/locale/window.properties");
   let quitLabel = bundle.formatStringFromName("quitApplicationCmdMac.label",

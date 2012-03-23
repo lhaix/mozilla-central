@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const EXPORTED_SYMBOLS = ["Webapp"];
+const EXPORTED_SYMBOLS = ["WebappRT"];
 
 const Cc = Components.classes;
 const Ci = Components.interfaces;
@@ -15,30 +15,42 @@ XPCOMUtils.defineLazyGetter(this, "FileUtils", function() {
   return FileUtils;
 });
 
-Object.defineProperty(this, "Webapp", {
+let WebappRT = {};
+
+Object.defineProperty(WebappRT, "webapp", {
   get: function getWebapp() {
     let configFile = FileUtils.getFile("AppRegD", ["config.json"]);
     let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
                       createInstance(Ci.nsIFileInputStream);
     inputStream.init(configFile, -1, 0, 0);
     let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
-    let Webapp = json.decodeFromStream(inputStream, configFile.fileSize);
-    delete this.Webapp;
-    return this.Webapp = deepFreeze(Webapp);
+    let webapp = json.decodeFromStream(inputStream, configFile.fileSize);
+
+    // Memoize the getter, freezing the webapp object in the meantime so
+    // consumers don't inadvertently (or intentionally) change it, as the object
+    // is meant to be a read-only representation of the webapp's configuration
+    // data.
+    delete this.webapp;
+    return this.webapp = deepFreeze(webapp);
   }
 });
 
 function deepFreeze(o) {
-  Object.freeze(o); // First freeze the object.
-  for (prop in o) {
-    if (!o.hasOwnProperty(prop) || !(typeof o === "object") || Object.isFrozen(o)) {
-      // If the object is on the prototype, not an object, or is already frozen,
-      // skip it. Note that this might leave an unfrozen reference somewhere in the
-      // object if there is an already frozen object containing an unfrozen object.
-      continue;
-    }
+  // First, freeze the object.
+  Object.freeze(o);
 
-    deepFreeze(o[prop]); // Recursively call deepFreeze.
+  // Then recursively call deepFreeze() to freeze its properties.
+  for (p in o) {
+    // If the object is on the prototype, not an object, or is already frozen,
+    // skip it.  Note that this might leave an unfrozen reference somewhere in
+    // the object if there is an already frozen object containing an unfrozen
+    // object.
+    if (!o.hasOwnProperty(p) || !(typeof o[p] == "object") ||
+        Object.isFrozen(o[p]))
+      continue;
+
+    deepFreeze(o[p]);
   }
+
   return o;
 }
