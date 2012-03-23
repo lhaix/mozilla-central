@@ -6,7 +6,7 @@ const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cu = Components.utils;
 
-const WEBAPPRT_DATA_DIR = "WebappRTDataD";
+const WEBAPP_REGISTRY_DIR = "WebappRegD";
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/WebappRT.jsm");
@@ -19,9 +19,9 @@ DirectoryProvider.prototype = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIDirectoryServiceProvider]),
 
   getFile: function(prop, persistent) {
-    if (prop == WEBAPPRT_DATA_DIR) {
+    if (prop == WEBAPP_REGISTRY_DIR) {
       let dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
-      dir.initWithPath(WebappRT.webapp.profile);
+      dir.initWithPath(WebappRT.webapp.registryDir);
       return dir;
     }
 
