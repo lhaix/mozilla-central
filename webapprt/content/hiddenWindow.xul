@@ -15,11 +15,10 @@
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
 #include scripts.inc
+  <script type="application/javascript" src="chrome://webapprt/content/hiddenWindow.js"/>
 
 #include sets.inc
 
 #include menubar.inc
-
-  <script type="application/javascript" src="chrome://webapprt/content/main.js"/>
 
 </window>
