@@ -1003,7 +1003,6 @@ static nsresult pref_InitInitialObjects()
   // In omni.jar case, we load the following prefs:
   // - jar:$gre/omni.jar!/greprefs.js
   // - jar:$gre/omni.jar!/defaults/pref/*.js
-
   // In non omni.jar case, we load:
   // - $gre/greprefs.js
   //
@@ -1025,8 +1024,8 @@ static nsresult pref_InitInitialObjects()
   // - jar:$gre/omni.jar!/defaults/pref/$WEBAPPRT_APPID/*.js
   // This allows WebappRT-specific prefs to override those of another app
   // with whom it shares an app dir (i.e. Firefox).
-  // (When we're running WebappRT but not in omni.jar case, nsXREDirProvider
-  // adds the WebappRT-specific prefs directory to its list of app pref dirs).
+  // (A $WEBAPPRT_APPID dir is similarly hardcoded into the app pref dir list
+  // in nsXREDirProvider for when we're running WebappRT in non omni.jar case.)
 
   nsZipFind *findPtr;
   nsAutoPtr<nsZipFind> find;
