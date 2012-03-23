@@ -15,10 +15,8 @@ XPCOMUtils.defineLazyGetter(this, "FileUtils", function() {
   return FileUtils;
 });
 
-let WebappRT = {};
-
-Object.defineProperty(WebappRT, "config", {
-  get: function getConfig() {
+let WebappRT = {
+  get config() {
     let webappFile = FileUtils.getFile("AppRegD", ["webapp.json"]);
     let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
                       createInstance(Ci.nsIFileInputStream);
@@ -29,10 +27,12 @@ Object.defineProperty(WebappRT, "config", {
     // Memoize the getter, freezing the `config` object in the meantime so
     // consumers don't inadvertently (or intentionally) change it, as the object
     // is meant to be a read-only representation of the webapp's configuration.
+    config = deepFreeze(config);
     delete this.config;
-    return this.config = deepFreeze(config);
+    Object.defineProperty(this, "config", { get: function getConfig() config });
+    return this.config;
   }
-});
+};
 
 function deepFreeze(o) {
   // First, freeze the object.
