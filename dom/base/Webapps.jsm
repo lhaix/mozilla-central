@@ -310,14 +310,6 @@ let DOMApplicationRegistry = {
     }).bind(this));
   },
 
-  getApp: function(aOrigin) {
-    for (let id in this.webapps) {
-      if (this.webapps[id].origin == aOrigin)
-        return this.webapps[id];
-    }
-    return null;
-  },
-
   getManifestFor: function(aOrigin, aCallback) {
     if (!aCallback)
       return;
