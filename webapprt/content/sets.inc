@@ -2,12 +2,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-<stringbundleset id="stringbundleset">
-  <stringbundle id="bundle_brand" src="chrome://branding/locale/brand.properties"/>
-  <stringbundle id="bundle_shell" src="chrome://browser/locale/shellservice.properties"/>
-  <stringbundle id="bundle_preferences" src="chrome://browser/locale/preferences/preferences.properties"/>
-</stringbundleset>
-
 <commandset id="mainCommandSet">
   <command id="cmd_close" oncommand="BrowserCloseTabOrWindow()"/>
   <command id="cmd_quitApplication" oncommand="goQuitApplication()"/>
