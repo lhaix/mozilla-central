@@ -290,7 +290,7 @@ int main(int argc, char **argv)
         }
 
         char profile[MAXPATHLEN];
-        if(NS_FAILED(parser.GetString("App", "Profile", profile, MAXPATHLEN))) 
+        if(NS_FAILED(parser.GetString("Webapp", "Profile", profile, MAXPATHLEN))) 
         {
           NSLog(@"Unable to retrieve profile from web app INI file");
           @throw makeException(@"Error", @"Unable to retrieve installation profile.");
