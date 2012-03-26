@@ -3,10 +3,8 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <commandset id="mainCommandSet">
-  <command id="cmd_close" oncommand="BrowserCloseTabOrWindow()"/>
   <command id="cmd_quitApplication" oncommand="goQuitApplication()"/>
   <commandset id="editMenuCommands"/>
-  <command id="View:FullScreen" oncommand="BrowserFullScreen();"/>
 </commandset>
 
 <keyset id="mainKeyset">
@@ -29,15 +27,6 @@
        modifiers="accel"/>
   <key id="key_delete" keycode="VK_DELETE" command="cmd_delete"/>
   <key id="key_selectAll" key="&selectAllCmd.key;" modifiers="accel"/>
-  <key id="key_fullScreen"
-       key="&fullScreenCmd.macCommandKey;"
-       command="View:FullScreen"
-       modifiers="accel,shift"/>
-  <key keycode="VK_F11" command="View:FullScreen"/>
-  <key id="key_close"
-       key="&closeCmd.key;"
-       command="cmd_close"
-       modifiers="accel"/>
   <key id="key_quitApplication"
        key="&quitApplicationCmdMac.key;"
        command="cmd_quitApplication"

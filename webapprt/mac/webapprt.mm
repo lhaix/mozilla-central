@@ -295,6 +295,7 @@ int main(int argc, char **argv)
           NSLog(@"Unable to retrieve profile from web app INI file");
           @throw makeException(@"Error", @"Unable to retrieve installation profile.");
         }
+        NSLog(@"setting app profile: %s", profile);
         SetAllocatedString(webShellAppData->profile, profile);
 
         nsCOMPtr<nsILocalFile> directory;
