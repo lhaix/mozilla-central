@@ -59,8 +59,10 @@ INSTALLER_FILES = \
 
 DEFINES += \
 	-DAB_CD=$(AB_CD) \
-	-DMOZILLA_VERSION=${MOZILLA_VERSION} \
 	$(NULL)
+
+GRE_BUILDID := $(shell cat $(DEPTH)/config/buildid)
+DEFINES += -DGRE_BUILDID=$(GRE_BUILDID)
 
 include $(topsrcdir)/config/config.mk
 
@@ -82,26 +84,27 @@ ifdef DEBUG
 RCFLAGS += -DDEBUG
 endif
 
-# Installer
+# Uninstaller
 ifdef LOCALE_MERGEDIR
 PPL_LOCALE_ARGS = \
-  --l10n-dir=$(LOCALE_MERGEDIR)/browser/installer \
-  --l10n-dir=$(call EXPAND_LOCALE_SRCDIR,browser/locales)/installer \
-  --l10n-dir=$(topsrcdir)/browser/locales/en-US/installer \
+  --l10n-dir=$(LOCALE_MERGEDIR)/webapprt/webapp-uninstaller \
+  --l10n-dir=$(call EXPAND_LOCALE_SRCDIR,webapprt/locales)/webapp-uninstaller \
+  --l10n-dir=$(topsrcdir)/webapprt/locales/en-US/webapp-uninstaller \
   $(NULL)
 else
-PPL_LOCALE_ARGS=$(call EXPAND_LOCALE_SRCDIR,browser/locales)/installer
+PPL_LOCALE_ARGS=$(call EXPAND_LOCALE_SRCDIR,webapprt/locales)/webapp-uninstaller
 endif
 
 libs::
 	$(RM) -r $(CONFIG_DIR)
 	$(MKDIR) $(CONFIG_DIR)
 	$(INSTALL) $(addprefix $(srcdir)/,$(INSTALLER_FILES)) $(CONFIG_DIR)
-	$(PYTHON) $(topsrcdir)/config/Preprocessor.py -Fsubstitution $(DEFINES) $(ACDEFINES) \
-	  $(srcdir)/defines.nsi.in > $(CONFIG_DIR)/defines.nsi
-	$(PYTHON) $(topsrcdir)/toolkit/mozapps/installer/windows/nsis/preprocess-locale.py \
-	  --preprocess-locale $(topsrcdir) \
-	  $(PPL_LOCALE_ARGS) $(AB_CD) $(CONFIG_DIR)
+	$(PYTHON) $(topsrcdir)/config/Preprocessor.py -Fsubstitution \
+		$(DEFINES) $(ACDEFINES) \
+		$(srcdir)/defines.nsi.in > $(CONFIG_DIR)/defines.nsi
+	$(PYTHON) \
+		$(topsrcdir)/toolkit/mozapps/installer/windows/nsis/preprocess-locale.py \
+		--preprocess-locale $(topsrcdir) $(PPL_LOCALE_ARGS) $(AB_CD) $(CONFIG_DIR)
 	$(MAKE) webapp_uninstaller
 
 GARBAGE_DIRS += instgen

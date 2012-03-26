@@ -5003,6 +5003,9 @@
     Function un.UninstallUnOnInitCommon
       ${un.GetParent} "$INSTDIR" $INSTDIR
       ${un.GetLongPath} "$INSTDIR" $INSTDIR
+      ${Unless} ${FileExists} "$INSTDIR\${FileMainEXE}"
+        Abort
+      ${EndUnless}
 
       !ifdef HAVE_64BIT_OS
         SetRegView 64

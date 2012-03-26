@@ -19,40 +19,27 @@
 #include "nsXPCOMPrivate.h"              // for MAXPATHLEN and XPCOM_DLL
 #include "nsXULAppAPI.h"
 
-// This header relies on a bunch of other headers being included before it
-#include "BinaryPath.h"
-
-#pragma comment(lib, "version.lib")
-
 XRE_GetFileFromPathType XRE_GetFileFromPath;
 XRE_CreateAppDataType XRE_CreateAppData;
 XRE_FreeAppDataType XRE_FreeAppData;
 XRE_mainType XRE_main;
 
 namespace {
-  const char kAPP_INI[] = "webapp.ini";
-  const char kAppEnvPrefix[] = "XUL_APP_FILE=";
-  const char kRT_INI[] = "webapprt.ini";
+  const char kAPP_INI[] = "application.ini";
+  const char kWEBAPP_INI[] = "webapp.ini";
+  const char kWEBAPPRT_INI[] = "webapprt.ini";
+  const char kAPP_ENV_PREFIX[] = "XUL_APP_FILE=";
   const char kAPP_RT[] = "webapprt.exe";
 
   const wchar_t kICON[] = L"chrome\\icons\\default\\topwindow.ico";
   const wchar_t kAPP_RT_BACKUP[] = L"webapprt.old";
-  const wchar_t kAPP_RT_NEWEXE[] = L"webapprt.new";
 
   wchar_t curExePath[MAXPATHLEN];
   wchar_t backupFilePath[MAXPATHLEN];
-  wchar_t newExeFilePath[MAXPATHLEN];
   wchar_t iconPath[MAXPATHLEN];
   char profile[MAXPATHLEN];
   int* pargc;
   char*** pargv;
-
-  struct Version {
-    int major,
-        minor,
-        mini,
-        micro;
-  };
 
   #pragma pack(push, 2)
   typedef struct
@@ -331,87 +318,6 @@ namespace {
     return NS_OK;
   }
 
-  /*
-  const Version runningVersion = { MOZILLA_MAJOR_VERSION,
-                                   MOZILLA_MINOR_VERSION,
-                                   MOZILLA_MINI_VERSION,
-                                   MOZILLA_MICRO_VERSION };
-  */
-  Version runningVersion;
-
-  int
-  CompareVersions(Version const& v1,
-                  Version const& v2) {
-    return((v1.major != v2.major) ? v2.major - v1.major
-         : (v1.minor != v2.minor) ? v2.minor - v1.minor
-         : (v1.mini != v2.mini) ? v2.mini - v1.mini
-         : v2.micro - v1.micro);
-  }
-
-  /**
-   * Obtains the version number from the specified PE file's version
-   * information
-   * Version Format: A.B.C.D (Example 10.0.0.300)
-   *
-   * @param  path The path of the file to check the version on
-   * @param  A    The first part of the version number
-   * @param  B    The second part of the version number
-   * @param  C    The third part of the version number
-   * @param  D    The fourth part of the version number
-   * @return true if successful
-   */
-  nsresult
-  GetVersionFromPath(wchar_t* path, Version& version) {
-    DWORD fileVersionInfoSize = GetFileVersionInfoSizeW(path, 0);
-    nsAutoArrayPtr<char> fileVersionInfo = new char[fileVersionInfoSize];
-    if (!GetFileVersionInfoW(path, 0, fileVersionInfoSize,
-                             fileVersionInfo.get())) {
-        return NS_ERROR_FAILURE;
-    }
-
-    VS_FIXEDFILEINFO *fixedFileInfo = 
-      reinterpret_cast<VS_FIXEDFILEINFO *>(fileVersionInfo.get());
-    UINT size;
-    if (!VerQueryValueW(fileVersionInfo.get(), L"\\", 
-      reinterpret_cast<LPVOID*>(&fixedFileInfo), &size)) {
-        return NS_ERROR_FAILURE;
-    }
-
-    version.major = HIWORD(fixedFileInfo->dwFileVersionMS);
-    version.minor = LOWORD(fixedFileInfo->dwFileVersionMS);
-    version.mini = HIWORD(fixedFileInfo->dwFileVersionLS);
-    version.micro = LOWORD(fixedFileInfo->dwFileVersionLS);
-    return NS_OK;
-  }
-
-  nsresult
-  GetVersionFromPath(char* utf8Path, Version& version) {
-    PRUnichar path[MAXPATHLEN];
-    if(0 == ::MultiByteToWideChar(CP_UTF8,
-                                  nsnull,
-                                  utf8Path,
-                                  -1,
-                                  path,
-                                  MAXPATHLEN)) {
-      return NS_ERROR_FAILURE;
-    }
-
-    return GetVersionFromPath(path, version);
-  }
-
-  nsresult
-  CompareRunningVersionToVersionIn(char* target,
-                                   int* out) {
-    Version foundVersion;
-    nsresult rv;
-
-    rv = GetVersionFromPath(target, foundVersion);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    *out = CompareVersions(runningVersion, foundVersion);
-    return NS_OK;
-  }
-
   void
   Output(const wchar_t *fmt, ... ) {
     va_list ap;
@@ -453,36 +359,9 @@ namespace {
       { nsnull, nsnull }
   };
 
-  // This function does the following
-  //   Copy the new webapp runtime stub to a temp file in the app's directory
-  //   Embed the app's icon in the new file
-  //   Rename the old executable to a temp filename
-  //   Rename the new executable to the old exe's name
-  //
-  // It could have been simplified to this
-  //   Rename the old executable
-  //   Move the new executable to the old exe's name
-  //   Embed the app's icon in the new exe
-  //
-  // Except that, inexplicably, when we embed an icon resource in a file whose
-  // path is the same as the path that we initially launched from, the file
-  // version of the file we are embedding in gets set to the file version of
-  // the running exe.
   nsresult
   AttemptCopyAndLaunch(wchar_t* src,
                        int* result) {
-
-    // Copy webapprt.exe from the Firefox dir to the app's dir
-    if(FALSE == ::CopyFileW(src,
-                            newExeFilePath,
-                            TRUE)) {
-      return NS_ERROR_FAILURE;
-    }
-
-    // Embed the app's icon in the new exe
-    embedIcon(iconPath,
-              newExeFilePath);
-
     // Rename the old app executable
     if(FALSE == ::MoveFileExW(curExePath,
                               backupFilePath,
@@ -490,14 +369,19 @@ namespace {
       return NS_ERROR_FAILURE;
     }
 
-    // Rename the new executable to the old exe's name
-    if(FALSE == ::MoveFileExW(newExeFilePath,
-                              curExePath,
-                              MOVEFILE_REPLACE_EXISTING)) {
+    // Copy webapprt.exe from the Firefox dir to the app's dir
+    if(FALSE == ::CopyFileW(src,
+                            curExePath,
+                            TRUE)) {
       // Try to move the old file back to its original location
       ::MoveFileW(backupFilePath,
                   curExePath);
+      return NS_ERROR_FAILURE;
     }
+
+    // Embed the app's icon in the new exe
+    embedIcon(iconPath,
+              curExePath);
 
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
@@ -586,7 +470,7 @@ namespace {
       // Get the path to the runtime's INI file.  This should be in the
       // same directory as the GRE.
       char rtIniPath[MAXPATHLEN];
-      rv = joinPath(rtIniPath, greDir, kRT_INI, MAXPATHLEN);
+      rv = joinPath(rtIniPath, greDir, kWEBAPPRT_INI, MAXPATHLEN);
       NS_ENSURE_SUCCESS(rv, rv);
 
       // Load the runtime's INI from its path.
@@ -629,16 +513,32 @@ namespace {
                      int* result) {
     nsresult rv;
 
-    char webAppRTExe[MAXPATHLEN];
-    joinPath(webAppRTExe, firefoxDir, kAPP_RT, MAXPATHLEN);
-
-    int compareResult;
-    rv = CompareRunningVersionToVersionIn(webAppRTExe, &compareResult);
+    // Here we're going to open Firefox's application.ini
+    char appIniPath[MAXPATHLEN];
+    rv = joinPath(appIniPath, firefoxDir, kAPP_INI, MAXPATHLEN);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    if(0 == compareResult) {
+    nsINIParser parser;
+    rv = parser.Init(appIniPath);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    // Get buildid of FF we're trying to load
+    char buildid[MAXPATHLEN]; // This isn't a path, so MAXPATHLEN doesn't
+                              // necessarily make sense, but it's a
+                              // convenient number to use.
+    rv = parser.GetString("App",
+                          "BuildID",
+                          buildid,
+                          MAXPATHLEN);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    if(0 == strcmp(buildid, NS_STRINGIFY(GRE_BUILDID))) {
       return AttemptGRELoadAndLaunch(firefoxDir, result);
     }
+
+    char webAppRTExe[MAXPATHLEN];
+    rv = joinPath(webAppRTExe, firefoxDir, kAPP_RT, MAXPATHLEN);
+    NS_ENSURE_SUCCESS(rv, rv);
 
     return AttemptCopyAndLaunch(webAppRTExe, result);
   }
@@ -720,9 +620,6 @@ main(int argc, char* argv[])
   }
   wcsncpy(curExePath, wbuffer, MAXPATHLEN);
 
-  // XXX: Remove this when we compile-in the version number
-  GetVersionFromPath(curExePath, runningVersion);
-
   // Get the current directory into wbuffer
   wchar_t* lastSlash = wcsrchr(wbuffer, L'\\');
   if(!lastSlash) {
@@ -749,15 +646,6 @@ main(int argc, char* argv[])
 
   *lastSlash = L'\0';
 
-  // Set up new EXE file path
-  if(wcslen(wbuffer) + _countof(kAPP_RT_NEWEXE) >= MAXPATHLEN) {
-    Output("Application directory path is too long (couldn't set up new file path).");
-  }
-  wcsncpy(lastSlash, kAPP_RT_NEWEXE, _countof(kAPP_RT_NEWEXE));
-  wcsncpy(newExeFilePath, wbuffer, MAXPATHLEN);
-
-  *lastSlash = L'\0';
-
   // Convert current directory to utf8 and stuff it in buffer
   if(0 == WideCharToMultiByte(CP_UTF8,
                               0,
@@ -774,7 +662,7 @@ main(int argc, char* argv[])
   // Set up appIniPath with path to webapp.ini.
   // This should be in the same directory as the running executable.
   char appIniPath[MAXPATHLEN];
-  if(NS_FAILED(joinPath(appIniPath, buffer, kAPP_INI, MAXPATHLEN))) {
+  if(NS_FAILED(joinPath(appIniPath, buffer, kWEBAPP_INI, MAXPATHLEN))) {
     Output("Path to webapp.ini could not be processed.");
     return 255;
   }
@@ -782,16 +670,15 @@ main(int argc, char* argv[])
   // Open webapp.ini as an INI file (as opposed to using the
   // XRE webapp.ini-specific processing we do later)
   nsINIParser parser;
-  // XXX: Is nsINIParser able to open unicode (UTF-8) paths?
   if(NS_FAILED(parser.Init(appIniPath))) {
     Output("Could not open webapp.ini");
     return 255;
   }
 
   // Set up our environment to know where webapp.ini was loaded from.
-  char appEnv[MAXPATHLEN + _countof(kAppEnvPrefix)];
-  strcpy(appEnv, kAppEnvPrefix);
-  strcpy(appEnv + _countof(kAppEnvPrefix) - 1, appIniPath);
+  char appEnv[MAXPATHLEN + _countof(kAPP_ENV_PREFIX)];
+  strcpy(appEnv, kAPP_ENV_PREFIX);
+  strcpy(appEnv + _countof(kAPP_ENV_PREFIX) - 1, appIniPath);
   if (putenv(appEnv)) {
     Output("Couldn't set up app environment");
     return 255;
@@ -830,7 +717,7 @@ main(int argc, char* argv[])
     if(NS_SUCCEEDED(rv)) {
       rv = AttemptLoadFromDir(firefoxDir, &result);
       if(NS_SUCCEEDED(rv)) {
-        // TODO: Write gre dir location to webapp.ini
+        // XXX: Write gre dir location to webapp.ini
         return result;
       }
     }
