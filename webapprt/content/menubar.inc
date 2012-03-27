@@ -2,8 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-<menubar id="main-menubar"
-         style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
+<menubar id="main-menubar">
 
 #ifndef XP_MACOSX
   <!-- On Mac, the Quit item gets moved to the Application menu by nsMenuBarX.
