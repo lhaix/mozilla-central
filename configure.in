@@ -4629,11 +4629,7 @@ case "${target}" in
         fi
 
         NSS_DISABLE_DBM=1
-<<<<<<< HEAD
-        MOZ_INSTALLER=
         MOZ_WEBAPP_RUNTIME=
-=======
->>>>>>> 0f227029b84c3d7ef6f9bbe3506b0d35b15c53c5
         NECKO_WIFI=
         MOZ_THEME_FASTSTRIPE=1
         MOZ_TREE_FREETYPE=1
