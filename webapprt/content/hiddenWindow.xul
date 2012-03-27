@@ -7,7 +7,6 @@
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
 
 <?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
-<?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
 
 <!DOCTYPE window [
 <!ENTITY % windowDTD SYSTEM "chrome://webapprt/locale/window.dtd" >

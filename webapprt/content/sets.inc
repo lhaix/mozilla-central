@@ -27,9 +27,10 @@
        key="&quitApplicationCmdMac.key;"
        command="cmd_quitApplication"
        modifiers="accel"/>
+  <key id="key_hideThisAppCmdMac"
+       key="&hideThisAppCmdMac.key;"
+       modifiers="accel"/>
+  <key id="key_hideOtherAppsCmdMac"
+       key="&hideOtherAppsCmdMac.key;"
+       modifiers="accel,alt"/>
 </keyset>
-
-<commandset id="baseMenuCommandSet"/>
-
-<keyset id="baseMenuKeyset"/>
-

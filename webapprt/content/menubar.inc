@@ -17,8 +17,8 @@
      - (from which nsMenuBarX still moves it properly), and we don't create
      - the File menu in the first place on that OS.
      -
-     - XXX Remove this hack after adding the first item that always shows up
-     - in the File menu on Mac. -->
+     - XXX Move the Mac Quit item back up here after adding the first item
+     - that always shows up in the File menu on Mac. -->
   <menu id="file-menu" label="&fileMenu.label;"
         accesskey="&fileMenu.accesskey;">
     <menupopup id="menu_FilePopup">
@@ -45,13 +45,22 @@
                onpopuphidden="updateEditUIVisibility()">
 
 #ifdef XP_MACOSX
-      <!-- See the comment on the File menu above for why this menuitem is here,
-         - and note that JavaScript code dynamically updates its label,
-         - since Mac apps include the name of the app in the Quit menuitem. -->
+      <!-- These items get moved to the Application menu by nsMenuBarX.
+         - They can live in any menu.
+         -
+         - See the comment on the File menu above for why the Quit item is here,
+         - and note that JavaScript code dynamically updates the labels
+         - of the Quit and Hide items, which include the name of the app. -->
       <menuitem id="menu_FileQuitItem"
                 label="&quitApplicationCmd.label;"
                 key="key_quitApplication"
                 command="cmd_quitApplication"/>
+      <menuitem id="menu_mac_hide_app"
+                key="key_hideThisAppCmdMac"/>
+      <menuitem id="menu_mac_hide_others"
+                label="&hideOtherAppsCmdMac.label;"
+                key="key_hideOtherAppsCmdMac"/>
+      <menuitem id="menu_mac_show_all" label="&showAllAppsCmdMac.label;"/>
 #endif
 
       <menuitem id="menu_undo"
