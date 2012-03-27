@@ -20,8 +20,8 @@ Cu.import("resource://gre/modules/Services.jsm");
 #ifdef XP_MACOSX
 // On Mac, we dynamically create the label for the Quit menuitem, using
 // a string property to inject the name of the webapp into it.
-window.addEventListener("load", function onLoadUpdateQuitMenuItem() {
-  window.removeEventListener("load", onLoadUpdateQuitMenuItem, false);
+window.addEventListener("load", function onLoadUpdateMenuItems() {
+  window.removeEventListener("load", onLoadUpdateMenuItems, false);
   let installRecord = WebappRT.config.app;
   let manifest = WebappRT.config.app.manifest;
   let bundle =
