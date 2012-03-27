@@ -9,7 +9,10 @@
 <?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
 <?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
 
-#include doctype.inc
+<!DOCTYPE window [
+<!ENTITY % windowDTD SYSTEM "chrome://webapprt/locale/window.dtd" >
+%windowDTD;
+]>
 
 <window windowtype="webapprt:webapp"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
