@@ -3,10 +3,6 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <menubar id="main-menubar"
-         onpopupshowing="if (event.target.parentNode.parentNode == this &amp;&amp;
-                            !('@mozilla.org/widget/nativemenuservice;1' in Cc))
-                           this.setAttribute('openedwithkey',
-                                             event.target.parentNode.openedWithKey);"
          style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
 
 #ifndef XP_MACOSX
