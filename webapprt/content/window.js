@@ -28,7 +28,10 @@ window.addEventListener("load", function onLoadUpdateQuitMenuItem() {
     Services.strings.createBundle("chrome://webapprt/locale/window.properties");
   let quitLabel = bundle.formatStringFromName("quitApplicationCmdMac.label",
                                               [manifest.name], 1);
+  let hideLabel = bundle.formatStringFromName("hideApplicationCmdMac.label",
+                                              [manifest.name], 1);
   document.getElementById("menu_FileQuitItem").setAttribute("label", quitLabel);
+  document.getElementById("menu_mac_hide_app").setAttribute("label", hideLabel);
 }, false);
 #endif
 

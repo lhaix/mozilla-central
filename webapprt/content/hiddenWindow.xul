@@ -7,7 +7,6 @@
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
 
 <?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
-<?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
 
 <!DOCTYPE window [
 <!ENTITY % windowDTD SYSTEM "chrome://webapprt/locale/window.dtd" >
@@ -15,8 +14,7 @@
 ]>
 
 <window windowtype="webapprt:hidden"
-        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
 #include scripts.inc
   <script type="application/javascript" src="chrome://webapprt/content/hiddenWindow.js"/>
