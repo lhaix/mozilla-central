@@ -7,9 +7,9 @@
  // open my bundle, check for an override binary signature
  // find the newest firefox. open its bundle, get the version number.
  // if the firefox version is different than ours:
- //   delete our own binary, (unlink)
- //   copy the newer binary and bundle file from Firefox
- //   execv it, and quit
+ //   delete our own binary,
+ //   copy the newer webapprt binary from Firefox
+ //   exec it, and quit
 
 
 #include <stdio.h>
@@ -183,33 +183,38 @@ int main(int argc, char **argv)
     {
       //we are going to assume that if they are different, we need to re-copy the webapprt, regardless of whether
       // it is newer or older.  If we don't find a webapprt, then the current Firefox must not be new enough to run webapps.
-      NSLog(@"This Application has an old webrt. Updating it.");
+      NSLog(@"### This Application has an old webrt. Updating it.");
+      NSLog(@"### My webapprt path: %@", myWebRTPath);
+
+      NSFileManager* fileClerk = [[NSFileManager alloc] init];
+      NSError *errorDesc = nil;
 
       //we know the firefox path, so copy the new webapprt here
       NSString *newWebRTPath = [NSString stringWithFormat: @"%@%s%s", firefoxPath, APP_CONTENTS_PATH, WEBAPPRT_EXECUTABLE];
-      NSLog(@"firefox webrt path: %@", newWebRTPath);
-      if (![[NSFileManager defaultManager] fileExistsAtPath:newWebRTPath]) 
+      NSLog(@"### Firefox webapprt path: %@", newWebRTPath);
+      if (![fileClerk fileExistsAtPath:newWebRTPath]) 
       {
         NSString* msg = [NSString stringWithFormat: @"This version of Firefox (%@) cannot run web applications, because it is not recent enough or damaged", firefoxVersion];
         @throw makeException(@"Missing WebRT Files", msg);
       }
 
-          //unlink my binary file
-      int err = unlink([myWebRTPath UTF8String]);
-      if (err) 
+      [fileClerk removeItemAtPath: myWebRTPath error: &errorDesc];
+      if (errorDesc != nil)
       {
-        NSLog(@"failed to unlink old binary file at path: %@", myWebRTPath);
+        NSLog(@"failed to unlink old binary file at path: %@ with error: %@", myWebRTPath, errorDesc);
         @throw makeException(@"Unable To Update", @"Failed preparation for runtime update");
       }
 
-      NSError *errorDesc = nil;
-      NSFileManager* clerk = [[NSFileManager alloc] init];
-      [clerk copyItemAtPath: newWebRTPath toPath: myWebRTPath error: &errorDesc];
-      [clerk release];
+      [fileClerk copyItemAtPath: newWebRTPath toPath: myWebRTPath error: &errorDesc];
+      [fileClerk release];
       if (errorDesc != nil) 
       {
-        NSLog(@"failed to copy new webrt file");
+        NSLog(@"failed to copy new webrt file: %@", errorDesc);
         @throw makeException(@"Unable To Update", @"Failed to update runtime");
+      }
+      else
+      {
+        NSLog(@"### Successfully updated webapprt, relaunching");
       }
 
     //execv the new binary, and ride off into the sunset
