@@ -99,7 +99,9 @@
 @BINPATH@/@MOZ_APP_NAME@
 #endif
 @BINPATH@/application.ini
+#ifdef MOZ_UPDATER
 @BINPATH@/update-settings.ini
+#endif
 @BINPATH@/platform.ini
 #ifndef XP_OS2
 @BINPATH@/@DLL_PREFIX@mozsqlite3@DLL_SUFFIX@
@@ -171,6 +173,7 @@
 @BINPATH@/components/dom_json.xpt
 @BINPATH@/components/dom_power.xpt
 @BINPATH@/components/dom_range.xpt
+@BINPATH@/components/dom_settings.xpt
 @BINPATH@/components/dom_sidebar.xpt
 @BINPATH@/components/dom_sms.xpt
 @BINPATH@/components/dom_storage.xpt
@@ -417,6 +420,8 @@
 @BINPATH@/components/TelemetryPing.manifest
 @BINPATH@/components/messageWakeupService.js
 @BINPATH@/components/messageWakeupService.manifest
+@BINPATH@/components/SettingsManager.js
+@BINPATH@/components/SettingsManager.manifest
 @BINPATH@/components/Webapps.js
 @BINPATH@/components/Webapps.manifest
 

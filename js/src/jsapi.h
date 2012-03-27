@@ -629,10 +629,11 @@ class Value
 #endif
     }
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__sparc)
   /* To make jsval binary compatible when linking across C and C++ with MSVC,
    * JS::Value needs to be POD. Otherwise, jsval will be passed in memory
    * in C++ but by value in C (bug 645111).
+   * Same issue for SPARC ABI. (bug 737344).
    */
   private:
 #endif
@@ -5367,12 +5368,12 @@ JS_IsConstructing(JSContext *cx, const jsval *vp)
 }
 
 /*
- * If a constructor does not have any static knowledge about the type of
- * object to create, it can request that the JS engine create a default new
- * 'this' object, as is done for non-constructor natives when called with new.
+ * A constructor can request that the JS engine create a default new 'this'
+ * object of the given class, using the callee to determine parentage and
+ * [[Prototype]].
  */
 extern JS_PUBLIC_API(JSObject *)
-JS_NewObjectForConstructor(JSContext *cx, const jsval *vp);
+JS_NewObjectForConstructor(JSContext *cx, JSClass *clasp, const jsval *vp);
 
 /************************************************************************/
 
@@ -5409,6 +5410,24 @@ JS_IsIdentifier(JSContext *cx, JSString *str, JSBool *isIdentifier);
 extern JS_PUBLIC_API(JSBool)
 JS_DescribeScriptedCaller(JSContext *cx, JSScript **script, unsigned *lineno);
 
+
+/*
+ * Encode/Decode interpreted scripts and functions to/from memory.
+ */
+
+extern JS_PUBLIC_API(void *)
+JS_EncodeScript(JSContext *cx, JSScript *script, uint32_t *lengthp);
+
+extern JS_PUBLIC_API(void *)
+JS_EncodeInterpretedFunction(JSContext *cx, JSObject *funobj, uint32_t *lengthp);
+
+extern JS_PUBLIC_API(JSScript *)
+JS_DecodeScript(JSContext *cx, const void *data, uint32_t length,
+                JSPrincipals *principals, JSPrincipals *originPrincipals);
+
+extern JS_PUBLIC_API(JSObject *)
+JS_DecodeInterpretedFunction(JSContext *cx, const void *data, uint32_t length,
+                             JSPrincipals *principals, JSPrincipals *originPrincipals);
 
 JS_END_EXTERN_C
 

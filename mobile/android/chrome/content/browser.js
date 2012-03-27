@@ -193,6 +193,7 @@ var BrowserApp = {
     Services.obs.addObserver(this, "Viewport:Change", false);
     Services.obs.addObserver(this, "Passwords:Init", false);
     Services.obs.addObserver(this, "FormHistory:Init", false);
+    Services.obs.addObserver(this, "ToggleProfiling", false);
 
     Services.obs.addObserver(this, "sessionstore-state-purge-complete", false);
 
@@ -327,7 +328,7 @@ var BrowserApp = {
     });
 
     if (this.isAppUpdated())
-      this.onUpdate();
+      this.onAppUpdated();
   },
 
   isAppUpdated: function() {
@@ -952,6 +953,14 @@ var BrowserApp = {
       Services.obs.removeObserver(this, "FormHistory:Init", false);
     } else if (aTopic == "sessionstore-state-purge-complete") {
       sendMessageToJava({ gecko: { type: "Session:StatePurged" }});
+    } else if (aTopic == "ToggleProfiling") {
+      let profiler = Cc["@mozilla.org/tools/profiler;1"].
+                       getService(Ci.nsIProfiler);
+      if (profiler.IsActive()) {
+        profiler.StopProfiler();
+      } else {
+        profiler.StartProfiler(100000, 25, ["stackwalk"], 1);
+      }
     }
   },
 
@@ -1052,11 +1061,11 @@ var NativeWindow = {
     },
 
     hide: function(aValue, aTabID) {
-      sendMessageToJava({
+      sendMessageToJava({ gecko: {
         type: "Doorhanger:Remove",
         value: aValue,
         tabID: aTabID
-      });
+      }});
     }
   },
 
@@ -1501,8 +1510,7 @@ Tab.prototype = {
     sendMessageToJava(message);
 
     this.overscrollController = new OverscrollController(this);
-    this.browser.contentWindow.controllers
-      .insertControllerAt(0, this.overscrollController);
+    this.browser.contentWindow.controllers.insertControllerAt(0, this.overscrollController);
 
     let flags = Ci.nsIWebProgress.NOTIFY_STATE_ALL |
                 Ci.nsIWebProgress.NOTIFY_LOCATION |
@@ -1553,8 +1561,7 @@ Tab.prototype = {
     if (!this.browser)
       return;
 
-    this.browser.controllers.contentWindow
-      .removeController(this.overscrollController);
+    this.browser.contentWindow.controllers.removeController(this.overscrollController);
 
     this.browser.removeProgressListener(this);
     this.browser.removeEventListener("DOMContentLoaded", this, true);
@@ -1598,9 +1605,10 @@ Tab.prototype = {
       return this.browser.docShellIsActive;
   },
 
-  setDisplayPort: function(aViewportX, aViewportY, aDisplayPortRect) {
+  setDisplayPort: function(aViewportX, aViewportY, aDisplayPort) {
     let zoom = this._zoom;
-    if (zoom <= 0)
+    let resolution = aDisplayPort.resolution;
+    if (zoom <= 0 || resolution <= 0)
       return;
 
     let element = this.browser.contentDocument.documentElement;
@@ -1608,10 +1616,14 @@ Tab.prototype = {
       return;
 
     let cwu = window.top.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
-    cwu.setDisplayPortForElement((aDisplayPortRect.left - aViewportX) / zoom,
-                                 (aDisplayPortRect.top - aViewportY) / zoom,
-                                 (aDisplayPortRect.right - aDisplayPortRect.left) / zoom,
-                                 (aDisplayPortRect.bottom - aDisplayPortRect.top) / zoom,
+    if (BrowserApp.selectedTab == this)
+      cwu.setResolution(resolution, resolution);
+    else if (resolution != zoom)
+      dump("Warning: setDisplayPort resolution did not match zoom for background tab!");
+    cwu.setDisplayPortForElement((aDisplayPort.left - aViewportX) / resolution,
+                                 (aDisplayPort.top - aViewportY) / resolution,
+                                 (aDisplayPort.right - aDisplayPort.left) / resolution,
+                                 (aDisplayPort.bottom - aDisplayPort.top) / resolution,
                                  element);
   },
 
@@ -2205,18 +2217,32 @@ Tab.prototype = {
         // Is it on the top level?
         let contentDocument = aSubject;
         if (contentDocument == this.browser.contentDocument) {
-          // reset CSS viewport and zoom to default on new page
+          // reset CSS viewport and zoom to default on new page, and then calculate
+          // them properly using the actual metadata from the page. note that the
+          // updateMetadata call takes into account the existing CSS viewport size
+          // and zoom when calculating the new ones, so we need to reset these
+          // things here before calling updateMetadata.
           this.setBrowserSize(kDefaultCSSViewportWidth, kDefaultCSSViewportHeight);
           this.setResolution(gScreenWidth / this.browserWidth, false);
-          // and then use the metadata to figure out how it needs to be updated
           ViewportHandler.updateMetadata(this);
 
-          // If we draw without a display-port, things can go wrong. While it's
-          // almost certain a display-port has been set via the
-          // MozScrolledAreaChanged event, make sure by sending a viewport
-          // update here. As it's the first paint, this will end up being a
-          // display-port request only.
-          this.sendViewportUpdate();
+          // Note that if we draw without a display-port, things can go wrong. By the
+          // time we execute this, it's almost certain a display-port has been set via
+          // the MozScrolledAreaChanged event. If that didn't happen, the updateMetadata
+          // call above does so at the end of the updateViewportSize function. As long
+          // as that is happening, we don't need to do it again here.
+
+          if (contentDocument instanceof ImageDocument) {
+            // for images, scale to fit width. this needs to happen *after* the call
+            // to updateMetadata above, because that call sets the CSS viewport which
+            // will affect the page size (i.e. contentDocument.body.scroll*) that we
+            // use in this calculation. also we call sendViewportUpdate after changing
+            // the resolution so that the display port gets recalculated appropriately.
+            let fitZoom = Math.min(gScreenWidth / contentDocument.body.scrollWidth,
+                                   gScreenHeight / contentDocument.body.scrollHeight);
+            this.setResolution(fitZoom, false);
+            this.sendViewportUpdate();
+          }
 
           BrowserApp.displayedDocumentChanged();
           this.contentDocumentIsDisplayed = true;
@@ -2917,7 +2943,8 @@ var FormAssistant = {
       // Reset invalid submit state on each pageshow
       case "pageshow":
         let target = aEvent.originalTarget;
-        if (target == content.document || target.ownerDocument == content.document)
+        let selectedDocument = BrowserApp.selectedBrowser.contentDocument;
+        if (target == selectedDocument || target.ownerDocument == selectedDocument)
           this._invalidSubmit = false;
     }
   },
@@ -3151,23 +3178,7 @@ var XPInstallObserver = {
       needsRestart = true;
 
     if (needsRestart) {
-      let buttons = [{
-        label: Strings.browser.GetStringFromName("notificationRestart.button"),
-        callback: function() {
-          // Notify all windows that an application quit has been requested
-          let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
-          Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
-
-          // If nothing aborted, quit the app
-          if (cancelQuit.data == false) {
-            let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"].getService(Ci.nsIAppStartup);
-            appStartup.quit(Ci.nsIAppStartup.eRestart | Ci.nsIAppStartup.eAttemptQuit);
-          }
-        }
-      }];
-
-      let message = Strings.browser.GetStringFromName("notificationRestart.normal");
-      NativeWindow.doorhanger.show(message, "addon-app-restart", buttons, BrowserApp.selectedTab.id, { persistence: -1 });
+      this.showRestartPrompt();
     } else {
       let message = Strings.browser.GetStringFromName("alertAddonsInstalledNoRestart");
       NativeWindow.toast.show(message, "short");
@@ -3208,6 +3219,30 @@ var XPInstallObserver = {
     msg = msg.replace("#4", Services.appinfo.version);
 
     NativeWindow.toast.show(msg, "short");
+  },
+
+  showRestartPrompt: function() {
+    let buttons = [{
+      label: Strings.browser.GetStringFromName("notificationRestart.button"),
+      callback: function() {
+        // Notify all windows that an application quit has been requested
+        let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
+        Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
+
+        // If nothing aborted, quit the app
+        if (cancelQuit.data == false) {
+          let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"].getService(Ci.nsIAppStartup);
+          appStartup.quit(Ci.nsIAppStartup.eRestart | Ci.nsIAppStartup.eAttemptQuit);
+        }
+      }
+    }];
+
+    let message = Strings.browser.GetStringFromName("notificationRestart.normal");
+    NativeWindow.doorhanger.show(message, "addon-app-restart", buttons, BrowserApp.selectedTab.id, { persistence: -1 });
+  },
+
+  hideRestartPrompt: function() {
+    NativeWindow.doorhanger.hide("addon-app-restart", BrowserApp.selectedTab.id);
   }
 };
 

@@ -169,6 +169,7 @@
 @BINPATH@/components/dom_json.xpt
 @BINPATH@/components/dom_power.xpt
 @BINPATH@/components/dom_range.xpt
+@BINPATH@/components/dom_settings.xpt
 @BINPATH@/components/dom_sidebar.xpt
 @BINPATH@/components/dom_sms.xpt
 @BINPATH@/components/dom_storage.xpt
@@ -236,6 +237,7 @@
 @BINPATH@/components/pref.xpt
 @BINPATH@/components/prefetch.xpt
 @BINPATH@/components/profile.xpt
+@BINPATH@/components/profiler.xpt
 @BINPATH@/components/proxyObject.xpt
 @BINPATH@/components/rdf.xpt
 @BINPATH@/components/satchel.xpt
@@ -400,6 +402,8 @@
 @BINPATH@/components/contentAreaDropListener.js
 @BINPATH@/components/messageWakeupService.js
 @BINPATH@/components/messageWakeupService.manifest
+@BINPATH@/components/SettingsManager.js
+@BINPATH@/components/SettingsManager.manifest
 @BINPATH@/components/nsFilePicker.js
 @BINPATH@/components/nsFilePicker.manifest
 #ifdef MOZ_B2G_RIL
@@ -627,3 +631,4 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/components/UpdatePrompt.js
 #endif
 @BINPATH@/components/MozKeyboard.js
+@BINPATH@/components/DirectoryProvider.js

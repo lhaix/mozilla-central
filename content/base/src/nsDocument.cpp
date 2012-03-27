@@ -177,6 +177,7 @@
 #include "nsFrameLoader.h"
 #include "nsEscape.h"
 #include "nsObjectLoadingContent.h"
+#include "nsHtml5TreeOpExecutor.h"
 #ifdef MOZ_MEDIA
 #include "nsHTMLMediaElement.h"
 #endif // MOZ_MEDIA
@@ -3156,7 +3157,8 @@ nsDocument::SetHeaderData(nsIAtom* aHeaderField, const nsAString& aData)
 bool
 nsDocument::TryChannelCharset(nsIChannel *aChannel,
                               PRInt32& aCharsetSource,
-                              nsACString& aCharset)
+                              nsACString& aCharset,
+                              nsHtml5TreeOpExecutor* aExecutor)
 {
   if(kCharsetFromChannel <= aCharsetSource) {
     return true;
@@ -3170,6 +3172,8 @@ nsDocument::TryChannelCharset(nsIChannel *aChannel,
       if(NS_SUCCEEDED(rv)) {
         aCharsetSource = kCharsetFromChannel;
         return true;
+      } else if (aExecutor && !charsetVal.IsEmpty()) {
+        aExecutor->ComplainAboutBogusProtocolCharset(this);
       }
     }
   }
@@ -8082,9 +8086,12 @@ nsIDocument::CreateStaticClone(nsISupports* aCloneContainer)
   nsCOMPtr<nsIDocument> clonedDoc;
   if (NS_SUCCEEDED(rv)) {
     clonedDoc = do_QueryInterface(clonedNode);
-    nsCOMPtr<nsIDOMDocument> clonedDOMDoc = do_QueryInterface(clonedDoc);
-    if (clonedDOMDoc) {
-      clonedDoc->mOriginalDocument = this;
+    if (clonedDoc) {
+      if (IsStaticDocument()) {
+        clonedDoc->mOriginalDocument = mOriginalDocument;
+      } else {
+        clonedDoc->mOriginalDocument = this;
+      }
       PRInt32 sheetsCount = GetNumberOfStyleSheets();
       for (PRInt32 i = 0; i < sheetsCount; ++i) {
         nsRefPtr<nsCSSStyleSheet> sheet = do_QueryObject(GetStyleSheetAt(i));
@@ -8967,7 +8974,7 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
   NS_ASSERTION(GetFullScreenElement() == aElement,
                "Full-screen element should be the requested element!");
   NS_ASSERTION(IsFullScreenDoc(), "Should be full-screen doc");
-  nsCOMPtr<nsIDOMHTMLElement> fse;
+  nsCOMPtr<nsIDOMElement> fse;
   GetMozFullScreenElement(getter_AddRefs(fse));
   nsCOMPtr<nsIContent> c(do_QueryInterface(fse));
   NS_ASSERTION(c->AsElement() == aElement,
@@ -8985,7 +8992,7 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
 }
 
 NS_IMETHODIMP
-nsDocument::GetMozFullScreenElement(nsIDOMHTMLElement **aFullScreenElement)
+nsDocument::GetMozFullScreenElement(nsIDOMElement **aFullScreenElement)
 {
   NS_ENSURE_ARG_POINTER(aFullScreenElement);
   *aFullScreenElement = nsnull;

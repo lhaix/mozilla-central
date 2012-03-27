@@ -129,7 +129,7 @@ GCONF_VERSION=1.2.1
 GIO_VERSION=2.18
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.7.10
+SQLITE_VERSION=3.7.11
 LIBNOTIFY_VERSION=0.4
 
 MSMANIFEST_TOOL=
@@ -301,19 +301,25 @@ MOZ_ARG_WITH_STRING(gonk,
                location of gonk dir],
     gonkdir=$withval)
 
+MOZ_ARG_WITH_STRING(gonk-toolchain-prefix,
+[  --with-gonk-toolchain-prefix=DIR
+                          prefix to gonk toolchain commands],
+    gonk_toolchain_prefix=$withval)
+
 if test -n "$gonkdir" ; then
     kernel_name=`uname -s | tr "[[:upper:]]" "[[:lower:]]"`
-    gonk_toolchain="$gonkdir"/prebuilt/$kernel_name-x86/toolchain/arm-eabi-4.4.3
+    android_source="$gonkdir"
+    ANDROID_SOURCE="$android_source"
 
     dnl set up compilers
-    AS="$gonk_toolchain"/bin/"$android_tool_prefix"-as
-    CC="$gonk_toolchain"/bin/"$android_tool_prefix"-gcc
-    CXX="$gonk_toolchain"/bin/"$android_tool_prefix"-g++
-    CPP="$gonk_toolchain"/bin/"$android_tool_prefix"-cpp
-    LD="$gonk_toolchain"/bin/"$android_tool_prefix"-ld
-    AR="$gonk_toolchain"/bin/"$android_tool_prefix"-ar
-    RANLIB="$gonk_toolchain"/bin/"$android_tool_prefix"-ranlib
-    STRIP="$gonk_toolchain"/bin/"$android_tool_prefix"-strip
+    AS="$gonk_toolchain_prefix"as
+    CC="$gonk_toolchain_prefix"gcc
+    CXX="$gonk_toolchain_prefix"g++
+    CPP="$gonk_toolchain_prefix"cpp
+    LD="$gonk_toolchain_prefix"ld
+    AR="$gonk_toolchain_prefix"ar
+    RANLIB="$gonk_toolchain_prefix"ranlib
+    STRIP="$gonk_toolchain_prefix"strip
 
     STLPORT_CPPFLAGS="-I$gonkdir/ndk/sources/cxx-stl/stlport/stlport/"
     STLPORT_LIBS="-lstlport"
@@ -1616,13 +1622,16 @@ if test "$OS_TARGET" = "Android" -a -z "$gonkdir"; then
        STLPORT_CPPFLAGS="-I$android_ndk/sources/cxx-stl/gnu-libstdc++/include -I$android_ndk/sources/cxx-stl/gnu-libstdc++/libs/$ANDROID_CPU_ARCH/include -D_GLIBCXX_PERMIT_BACKWARD_HASH"
        STLPORT_LDFLAGS="-L$android_ndk/sources/cxx-stl/gnu-libstdc++/libs/$ANDROID_CPU_ARCH"
        STLPORT_LIBS="-lstdc++"
-    elif test -e "$android_ndk/sources/cxx-stl/stlport/libs/$ANDROID_CPU_ARCH/libstlport_static.a" ; then
-       STLPORT_CPPFLAGS="-I$android_ndk/sources/cxx-stl/stlport/stlport"
-       STLPORT_LDFLAGS="-L$android_ndk/sources/cxx-stl/stlport/libs/$ANDROID_CPU_ARCH/"
-       STLPORT_LIBS="-lstlport_static"
-    elif  test -e "$android_ndk/tmp/ndk-digit/build/install/sources/cxx-stl/stlport/libs/$ANDROID_CPU_ARCH/libstlport_static.a" ; then
-       STLPORT_CPPFLAGS="-I$android_ndk/sources/cxx-stl/stlport/stlport"
-       STLPORT_LDFLAGS="-L$android_ndk/tmp/ndk-digit/build/install/sources/cxx-stl/stlport/libs/$ANDROID_CPU_ARCH"
+    elif test -e "$android_ndk/sources/cxx-stl/stlport/src/iostream.cpp" ; then
+       if test -e "$android_ndk/sources/cxx-stl/stlport/libs/$ANDROID_CPU_ARCH/libstlport_static.a"; then
+          STLPORT_LDFLAGS="-L$_objdir/build/stlport -L$android_ndk/sources/cxx-stl/stlport/libs/$ANDROID_CPU_ARCH/"
+       elif test -e "$android_ndk/tmp/ndk-digit/build/install/sources/cxx-stl/stlport/libs/$ANDROID_CPU_ARCH/libstlport_static.a"; then
+          STLPORT_LDFLAGS="-L$_objdir/build/stlport -L$android_ndk/tmp/ndk-digit/build/install/sources/cxx-stl/stlport/libs/$ANDROID_CPU_ARCH/"
+       else
+          AC_MSG_ERROR([Couldn't find path to stlport in the android ndk])
+       fi
+       STLPORT_SOURCES="$android_ndk/sources/cxx-stl/stlport"
+       STLPORT_CPPFLAGS="-I$_objdir/build/stlport -I$android_ndk/sources/cxx-stl/stlport/stlport"
        STLPORT_LIBS="-lstlport_static"
     elif test "$target" != "arm-android-eabi"; then
        dnl fail if we're not building with NDKr4
@@ -1632,6 +1641,8 @@ if test "$OS_TARGET" = "Android" -a -z "$gonkdir"; then
     LDFLAGS="$LDFLAGS $STLPORT_LDFLAGS"
     LIBS="$LIBS $STLPORT_LIBS"
 fi
+
+AC_SUBST([STLPORT_SOURCES])
 
 dnl ========================================================
 dnl Suppress Clang Argument Warnings
@@ -2458,7 +2469,6 @@ ia64*-hpux*)
         ZIP=zip
         UNZIP=unzip
         DOXYGEN=:
-        GARBAGE='$(OBJDIR)/vc20.pdb $(OBJDIR)/vc40.pdb'
         ASM_SUFFIX=asm
         OBJ_SUFFIX=obj
         LIB_SUFFIX=lib
@@ -4536,7 +4546,6 @@ MOZ_BRANDING_DIRECTORY=
 MOZ_OFFICIAL_BRANDING=
 MOZ_FEEDS=1
 MOZ_FLEXBOX=
-MOZ_INSTALLER=1
 MOZ_WEBAPP_RUNTIME=1
 MOZ_JSDEBUGGER=1
 MOZ_AUTH_EXTENSION=1
@@ -4620,8 +4629,11 @@ case "${target}" in
         fi
 
         NSS_DISABLE_DBM=1
+<<<<<<< HEAD
         MOZ_INSTALLER=
         MOZ_WEBAPP_RUNTIME=
+=======
+>>>>>>> 0f227029b84c3d7ef6f9bbe3506b0d35b15c53c5
         NECKO_WIFI=
         MOZ_THEME_FASTSTRIPE=1
         MOZ_TREE_FREETYPE=1
@@ -4790,7 +4802,7 @@ cairo-gtk2|cairo-gtk2-x11)
     MOZ_ENABLE_GTK2=1
     MOZ_ENABLE_XREMOTE=1
     MOZ_WEBGL=1
-    MOZ_WEBGL_GLX=1
+    MOZ_GL_DEFAULT_PROVIDER=GLX
 
     AC_DEFINE(MOZ_X11)
     MOZ_X11=1
@@ -4808,7 +4820,7 @@ cairo-qt)
     MOZ_ENABLE_QT=1
     if test -z "$WITHOUT_X11"; then
       MOZ_ENABLE_XREMOTE=1
-      MOZ_WEBGL_GLX=1
+      MOZ_GL_DEFAULT_PROVIDER=GLX
       MOZ_X11=1
       AC_DEFINE(MOZ_X11)
       XT_LIBS=
@@ -4971,6 +4983,15 @@ then
 
     if test -z "$QTDIR"; then
         PKG_CHECK_MODULES(MOZ_QT, QtGui QtNetwork QtCore QtOpenGL)
+        PKG_CHECK_MODULES(MOZ_QT5, QtWidgets QtMultimedia QtPrintSupport QtQuick1,
+                      MOZ_ENABLE_QT5=1,
+                      MOZ_ENABLE_QT5=)
+        if test "$MOZ_ENABLE_QT5"; then
+            echo "Using qt5"
+            MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $MOZ_QT5_CFLAGS"
+            MOZ_QT_LIBS="$MOZ_QT_LIBS $MOZ_QT5_LIBS"
+        fi
+
         AC_CHECK_PROGS(HOST_MOC, $MOC moc, "")
         AC_CHECK_PROGS(HOST_RCC, $RCC rcc, "")
     else
@@ -4983,8 +5004,19 @@ then
         MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtCore"
         MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtNetwork"
         MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtXml"
+        MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtDeclarative"
         HOST_MOC="$QTDIR/bin/moc"
         HOST_RCC="$QTDIR/bin/rcc"
+
+        # QtWidgets was introduced only in Qt5
+        if test -d $QTDIR/include/QtWidgets; then
+            echo "Using qt5"
+            MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtWidgets"
+            MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtMultimedia"
+            MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtPrintSupport"
+            MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtQuick1"
+            MOZ_QT_LIBS="$MOZ_QT_LIBS -lQtWidgets -lQtMultimedia -lQtPrintSupport -lQtQuick1"
+        fi
     fi
     if test -z "$HOST_MOC"; then
         AC_MSG_ERROR([No acceptable moc preprocessor found. Qt SDK is not installed or --with-qt is
@@ -6340,7 +6372,7 @@ dnl Installer
 dnl ========================================================
 dnl Abort Windows build if the required major version and
 dnl minimum minor version of Unicode NSIS isn't in the path.
-if test -n "$MOZ_INSTALLER" -a "$OS_ARCH" = "WINNT"; then
+if test "$OS_ARCH" = "WINNT"; then
     REQ_NSIS_MAJOR_VER=2
     MIN_NSIS_MINOR_VER=33
     MOZ_PATH_PROGS(MAKENSISU, $MAKENSISU makensisu-2.46 makensisu makensis)
@@ -6783,7 +6815,7 @@ if test $MOZ_PLATFORM_MAEMO; then
    fi
 
    MOZ_GFX_OPTIMIZE_MOBILE=1
-   MOZ_WEBGL_GLX=
+   MOZ_GL_DEFAULT_PROVIDER=EGL
    MOZ_MAEMO_LIBLOCATION=
 
    if test $MOZ_PLATFORM_MAEMO = 5; then
@@ -6909,6 +6941,22 @@ if test -n "$MOZ_EGL_XRENDER_COMPOSITE"; then
 fi
 
 AC_SUBST(MOZ_EGL_XRENDER_COMPOSITE)
+
+dnl ========================================================
+dnl GL provider
+dnl ========================================================
+MOZ_GL_PROVIDER=
+MOZ_ARG_WITH_STRING(gl-provider,
+[  --with-gl-provider=ID
+                          Set GL provider backend type],
+[ val=`echo $withval`
+    MOZ_GL_PROVIDER="$val"])
+
+if test -n "$MOZ_GL_PROVIDER"; then
+MOZ_GL_DEFAULT_PROVIDER=$MOZ_GL_PROVIDER
+AC_SUBST(MOZ_GL_PROVIDER)
+AC_DEFINE_UNQUOTED(MOZ_GL_PROVIDER, GLContextProvider$MOZ_GL_PROVIDER)
+fi
 
 dnl ========================================================
 dnl = faststripe theme
@@ -7277,13 +7325,11 @@ dnl We need to wrap dlopen and related functions on Android because we use
 dnl our own linker.
 if test "$OS_TARGET" = Android; then
     WRAP_LDFLAGS="${WRAP_LDFLAGS} -L$_objdir/dist/lib -lmozglue"
-    if test "$MOZ_WIDGET_TOOLKIT" = android; then
-        if test -n "$MOZ_OLD_LINKER"; then
-            WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=dlopen,--wrap=dlclose,--wrap=dlerror,--wrap=dlsym,--wrap=dladdr"
-        fi
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=getaddrinfo,--wrap=freeaddrinfo,--wrap=gai_strerror"
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=fork,--wrap=pthread_atfork"
+    if test -n "$MOZ_OLD_LINKER"; then
+        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=dlopen,--wrap=dlclose,--wrap=dlerror,--wrap=dlsym,--wrap=dladdr"
     fi
+    WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=getaddrinfo,--wrap=freeaddrinfo,--wrap=gai_strerror"
+    WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=fork,--wrap=pthread_atfork"
 fi
 
 dnl ========================================================
@@ -8404,7 +8450,6 @@ AC_SUBST(MOZ_DEBUG_FLAGS)
 AC_SUBST(MOZ_DEBUG_LDFLAGS)
 AC_SUBST(WARNINGS_AS_ERRORS)
 AC_SUBST(MOZ_EXTENSIONS)
-AC_SUBST(MOZ_INSTALLER)
 AC_SUBST(MOZ_JSDEBUGGER)
 AC_SUBST(MOZ_LOG_REFCNT)
 AC_SUBST(MOZ_LEAKY)
@@ -8766,12 +8811,12 @@ if test "$MOZ_X11"; then
 fi # MOZ_X11
 
 dnl Check for headers, etc. needed by WebGL.
-if test -n "$MOZ_WEBGL_GLX"; then
+if test "$MOZ_GL_DEFAULT_PROVIDER" = "GLX"; then
     MOZ_CHECK_HEADER(GL/glx.h)
     if test "$ac_cv_header_GL_glx_h" != "yes"; then
         AC_MSG_ERROR([Can't find header GL/glx.h for WebGL (install mesa-common-dev (Ubuntu), mesa-libGL-devel (Fedora), or Mesa-devel (openSUSE))])
     fi
-fi # MOZ_WEBGL_GLX
+fi # MOZ_GL_DEFAULT_PROVIDER=GLX
 fi # COMPILE_ENVIRONMENT
 
 if test "$USE_FC_FREETYPE"; then
@@ -9156,6 +9201,9 @@ if test -n "$MOZ_GLUE_PROGRAM_LDFLAGS"; then
    export MOZ_GLUE_PROGRAM_LDFLAGS
 fi
 export MOZ_APP_NAME
+export STLPORT_CPPFLAGS
+export STLPORT_LDFLAGS
+export STLPORT_LIBS
 AC_OUTPUT_SUBDIRS(js/src)
 ac_configure_args="$_SUBDIR_CONFIG_ARGS"
 

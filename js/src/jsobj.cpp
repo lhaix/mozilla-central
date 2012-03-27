@@ -76,13 +76,15 @@
 #include "json.h"
 #include "jswatchpoint.h"
 #include "jswrapper.h"
+#include "jsxml.h"
 
 #include "builtin/MapObject.h"
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/BytecodeEmitter.h"
 #include "frontend/Parser.h"
-#include "vm/StringBuffer.h"
 #include "js/MemoryMetrics.h"
+#include "vm/StringBuffer.h"
+#include "vm/Xdr.h"
 
 #include "jsarrayinlines.h"
 #include "jsatominlines.h"
@@ -92,14 +94,6 @@
 #include "jsscriptinlines.h"
 
 #include "vm/MethodGuard-inl.h"
-
-#if JS_HAS_XML_SUPPORT
-#include "jsxml.h"
-#endif
-
-#if JS_HAS_XDR
-#include "jsxdrapi.h"
-#endif
 
 #include "jsautooplen.h"
 
@@ -2919,17 +2913,8 @@ js::NewReshapedObject(JSContext *cx, TypeObject *type, JSObject *parent,
 }
 
 JSObject*
-js_CreateThis(JSContext *cx, JSObject *callee)
+js_CreateThis(JSContext *cx, Class *newclasp, JSObject *callee)
 {
-    Class *clasp = callee->getClass();
-
-    Class *newclasp = &ObjectClass;
-    if (clasp == &FunctionClass) {
-        JSFunction *fun = callee->toFunction();
-        if (fun->isNative() && fun->u.n.clasp)
-            newclasp = fun->u.n.clasp;
-    }
-
     Value protov;
     if (!callee->getProperty(cx, cx->runtime->atomState.classPrototypeAtom, &protov))
         return NULL;
@@ -3675,7 +3660,6 @@ DefineConstructorAndPrototype(JSContext *cx, HandleObject obj, JSProtoKey key, H
                              ctorKind);
         if (!fun)
             goto bad;
-        fun->setConstructorClass(clasp);
 
         /*
          * Set the class object early for standard class constructors. Type

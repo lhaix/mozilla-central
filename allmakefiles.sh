@@ -80,6 +80,12 @@ webapprt/Makefile
 fi
 
 if [ ! "$LIBXUL_SDK" ]; then
+  if [ "$STLPORT_SOURCES" ]; then
+    add_makefiles "
+      build/stlport/Makefile
+      build/stlport/stl/config/_android.h
+    "
+  fi
   add_makefiles "
     memory/mozalloc/Makefile
     mozglue/Makefile

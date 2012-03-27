@@ -780,7 +780,6 @@ nsHyperTextAccessible::GetRelativeOffset(nsIPresShell *aPresShell,
   }
 
   // Ask layout for the new node and offset, after moving the appropriate amount
-  nsPeekOffsetStruct pos;
 
   nsresult rv;
   PRInt32 contentOffset = aFromOffset;
@@ -794,9 +793,9 @@ nsHyperTextAccessible::GetRelativeOffset(nsIPresShell *aPresShell,
     }
   }
 
-  pos.SetData(aAmount, aDirection, contentOffset,
-              0, kIsJumpLinesOk, kIsScrollViewAStop, kIsKeyboardSelect, kIsVisualBidi,
-              wordMovementType);
+  nsPeekOffsetStruct pos(aAmount, aDirection, contentOffset,
+                         0, kIsJumpLinesOk, kIsScrollViewAStop, kIsKeyboardSelect, kIsVisualBidi,
+                         wordMovementType);
   rv = aFromFrame->PeekOffset(&pos);
   if (NS_FAILED(rv)) {
     if (aDirection == eDirPrevious) {
@@ -1224,7 +1223,7 @@ nsHyperTextAccessible::GetAttributesInternal(nsIPersistentProperties *aAttribute
   }
 
   if (FocusMgr()->IsFocused(this)) {
-    PRInt32 lineNumber = GetCaretLineNumber();
+    PRInt32 lineNumber = CaretLineNumber();
     if (lineNumber >= 1) {
       nsAutoString strLineNumber;
       strLineNumber.AppendInt(lineNumber);
@@ -1680,7 +1679,7 @@ nsHyperTextAccessible::GetCaretOffset(PRInt32 *aCaretOffset)
 }
 
 PRInt32
-nsHyperTextAccessible::GetCaretLineNumber()
+nsHyperTextAccessible::CaretLineNumber()
 {
   // Provide the line number for the caret, relative to the
   // currently focused node. Use a 1-based index
