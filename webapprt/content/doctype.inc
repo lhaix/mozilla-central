@@ -3,6 +3,6 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <!DOCTYPE window [
-<!ENTITY % browserDTD SYSTEM "chrome://browser/locale/browser.dtd" >
-%browserDTD;
+<!ENTITY % windowDTD SYSTEM "chrome://webapprt/locale/window.dtd" >
+%windowDTD;
 ]>
