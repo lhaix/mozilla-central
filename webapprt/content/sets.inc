@@ -8,10 +8,6 @@
 </commandset>
 
 <keyset id="mainKeyset">
-  <key id="key_closeWindow"
-       key="&closeCmd.key;"
-       command="cmd_closeWindow"
-       modifiers="accel,shift"/>
   <key id="key_undo"
        key="&undoCmd.key;"
        modifiers="accel"/>
