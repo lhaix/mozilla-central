@@ -626,5 +626,7 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/chrome/webapprt@JAREXT@
 @BINPATH@/chrome/webapprt.manifest
 @BINPATH@/components/WebappRTComponents.manifest
+@BINPATH@/components/WebappRTDirectoryProvider.js
+@BINPATH@/components/WebappRTCommandLineHandler.js
 @BINPATH@/webapprt.ini
 #endif
