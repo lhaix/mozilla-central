@@ -327,6 +327,10 @@ int main(int argc, char **argv)
       }
       NS_LogTerm();
       XPCOMGlueShutdown();
+
+      //force myself to the foreground.  exec-ing a non .app bundle normally leaves you in the background
+      [NSApp activateIgnoringOtherApps:YES];
+      
       return result;
   }
   
