@@ -2,20 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * This script is loaded by both webappWindow.xul and hiddenWindow.xul.
- * It defines some global symbols that other scripts use and configures
- * the windows in ways they must both be configured.
- *
- * See webappWindow.js and hiddenWindow.js for code specific to each window.
- */
-
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cu = Components.utils;
 
 Cu.import("resource://gre/modules/WebappRT.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+
+function onLoad() {
+  window.removeEventListener("load", onLoad, false);
+
+  let installRecord = WebappRT.config.app;
+  let manifest = WebappRT.config.app.manifest;
+
+  // Set the title of the window to the name of the webapp.
+  // XXX Set it to the webapp page's title, then update it when that changes.
+  document.documentElement.setAttribute("title", manifest.name);
+
+  // Load the webapp's launch path.
+  let url = installRecord.origin;
+  // XXX Resolve launch path relative to origin instead of merely concating 'em?
+  if (manifest.launch_path)
+    url += manifest.launch_path;
+  document.getElementById("content").setAttribute("src", url);
+}
+window.addEventListener("load", onLoad, false);
 
 #ifdef XP_MACOSX
 // On Mac, we dynamically create the label for the Quit menuitem, using
@@ -25,7 +36,7 @@ window.addEventListener("load", function onLoadUpdateMenuItems() {
   let installRecord = WebappRT.config.app;
   let manifest = WebappRT.config.app.manifest;
   let bundle =
-    Services.strings.createBundle("chrome://webapprt/locale/window.properties");
+    Services.strings.createBundle("chrome://webapprt/locale/webapp.properties");
   let quitLabel = bundle.formatStringFromName("quitApplicationCmdMac.label",
                                               [manifest.name], 1);
   let hideLabel = bundle.formatStringFromName("hideApplicationCmdMac.label",

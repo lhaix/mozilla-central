@@ -109,5 +109,5 @@
     locale/feedback/main.dtd                       (%feedback/main.dtd)
     locale/feedback/main.properties                (%feedback/main.properties)
 % locale webapprt @AB_CD@ %locale/webapprt/
-    locale/webapprt/window.dtd                     (%webapprt/window.dtd)
-    locale/webapprt/window.properties              (%webapprt/window.properties)
+    locale/webapprt/webapp.dtd                     (%webapprt/webapp.dtd)
+    locale/webapprt/webapp.properties              (%webapprt/webapp.properties)
