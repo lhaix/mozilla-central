@@ -24,12 +24,12 @@ RequestExecutionLevel user
 
 ; Variables
 Var AppFilename
+Var AppName
+Var AppRTTempDir
 
-; Variables used by common.nsh
+; Variables/macros used by common.nsh
 Var TmpVal
-Var BrandFullName
-Var BrandFullNameDA
-Var BrandShortName
+!define FileMainEXE           "$AppFilename.exe"
 
 ; Other included files may depend upon these includes!
 ; The following includes are provided by NSIS.
@@ -38,19 +38,6 @@ Var BrandShortName
 !include "WinMessages.nsh"
 !include "WinVer.nsh"
 !include "WordFunc.nsh"
-
-; Macros used by custom NSIS files
-!define FileMainEXE           "$AppFilename.exe"
-
-; These values are used in uninstall text
-!define BrandFullNameInternal "Mozilla Webapp Runtime Native App"
-!define BrandFullName         "Mozilla Webapp Runtime Native App"
-!define BrandShortName        "Mozilla WebAppRT Native App"
-
-; The following includes are custom.
-!include "defines.nsi"
-!include "common.nsh"
-!include "locales.nsi"
 
 !define CompanyName           "Mozilla Corporation"
 !define UninstallerName       "Mozilla Webapp Runtime App Uninstaller"
@@ -65,13 +52,18 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 VIAddVersionKey "FileDescription" "${UninstallerName}"
 VIAddVersionKey "OriginalFilename" "${UninstallerFilename}"
 
+!include "common.nsh"
+
 !insertmacro un.DeleteShortcuts
 !insertmacro un.RegCleanUninstall
 !insertmacro un.ParseUninstallLog
 
-Name "${UninstallerName}"
+Name "Mozilla Web App Runtime App"
 OutFile "${UninstallerFilename}"
 ShowUnInstDetails nevershow
+
+# Create a blank page so that the default pages (instfiles) don't appear
+UninstPage custom un.blankPage
 
 ################################################################################
 # Install Sections
@@ -82,33 +74,28 @@ Section ""
 SectionEnd
 
 ################################################################################
-# Uninstall Sections
-
-Section "Uninstall"
-
+# This is where uninstallation happens
+################################################################################
+Function un.blankPage
   MessageBox MB_OKCANCEL "$(UN_CONFIRM_UNINSTALL)" /SD IDOK IDCANCEL done
 
   ; Delete the app exe to prevent launching the app while we are uninstalling.
   ClearErrors
   ${DeleteFile} "$INSTDIR\${FileMainEXE}"
   ${If} ${Errors}
-    Push $0
-    Push $1
-
     ; If the app is running, rename the EXE out of the way
-    GetTempFilename $0
-    StrCpy $1 "$INSTDIR\${FileMainEXE}"
-    System::Call "kernel32::MoveFileEx(t, t, i) i ('$1', '$0', 0x1)"
-
-    Pop $0
-    Pop $1
-
+    CreateDirectory $AppRTTempDir
+    Rename "$INSTDIR\${FileMainEXE}" "$AppRTTempDir\${FileMainEXE}"
     ClearErrors
   ${EndIf}
 
 
   SetShellVarContext current  ; Set SHCTX to HKCU
+
+  ; Remove our entry in the "Uninstall" key
   ${un.RegCleanUninstall}
+
+  ; Remove our shortcuts from start menu, desktop, and taskbar
   ${un.DeleteShortcuts}
 
   ; Parse the uninstall log to unregister dll's and remove all installed
@@ -123,22 +110,18 @@ Section "Uninstall"
   ; Remove the installation directory if it is empty
   ${RemoveDir} "$INSTDIR"
 
-  ; Refresh desktop icons otherwise the start menu internet item won't be
-  ; removed and other ugly things will happen like recreation of the app's
-  ; clients registry key by the OS under some conditions.
-  System::Call "shell32::SHChangeNotify(i, i, i, i) v (0x08000000, 0, 0, 0)"
+  ; Refresh shell icons to reflect the changes we've made
+  ${RefreshShellIcons}
 
   done:
-
-SectionEnd
+FunctionEnd
 
 ################################################################################
 # Language
 
 !verbose push
 !verbose 3
-!include "overrideLocale.nsh"
-!include "customLocale.nsh"
+!include "webapp-uninstaller-locale.nsh"
 !verbose pop
 
 ; Set this after the locale files to override it if it is in the locale. Using
@@ -179,11 +162,8 @@ Function un.onInit
   !endif
 
   ReadINIStr $AppFilename "$INSTDIR\webapp.ini" "WebappRT" "Executable"
-  ReadINIStr $BrandFullName "$INSTDIR\webapp.ini" "Webapp" "Name"
+  ReadINIStr $AppName "$INSTDIR\webapp.ini" "Webapp" "Name"
 
-  StrCpy $BrandFullNameDA "$BrandFullName"
-  StrCpy $BrandShortName "$BrandFullName"
-FunctionEnd
-
-Function un.onGUIEnd
+  StrCpy $AppRTTempDir "$TEMP\moz_webapprt"
+  RmDir /r $AppRTTempDir
 FunctionEnd
