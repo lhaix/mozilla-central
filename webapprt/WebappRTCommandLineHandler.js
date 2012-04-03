@@ -20,7 +20,7 @@ CommandLineHandler.prototype = {
     Services.ww.openWindow(null,
                            Services.prefs.getCharPref("browser.chromeURL"),
                            "_blank",
-                           "chrome,dialog=no,all",
+                           "chrome,dialog=no,all,resizable",
                            null);
   },
 
