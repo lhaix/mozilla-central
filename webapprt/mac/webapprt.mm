@@ -49,14 +49,7 @@ NSException* makeException(NSString* name, NSString* message);
 
 void displayErrorAlert(NSString* title, NSString* message);
 
-//this is our version, to be compared with the version of the binary we are asked to use
-NSString* myVersion = [NSString stringWithFormat:@"%s", NS_STRINGIFY(GRE_BUILDID)];
 
-//we look for these flavors of Firefox, in this order
-NSArray* launchBinarySearchList = [NSArray arrayWithObjects: @"org.mozilla.nightly", 
-                                                              @"org.mozilla.aurora", 
-                                                              @"org.mozilla.beta", 
-                                                              @"org.mozilla.firefox", nil];
 
 
 XRE_GetFileFromPathType XRE_GetFileFromPath;
@@ -112,12 +105,16 @@ XRE_mainType XRE_main;
 
 int main(int argc, char **argv)
 {
+  NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];  
+
   NSString *firefoxPath = nil;   
   NSString *alternateBinaryID = nil;
 
+  //this is our version, to be compared with the version of the binary we are asked to use
+  NSString* myVersion = [NSString stringWithFormat:@"%s", NS_STRINGIFY(GRE_BUILDID)];
+
   NSLog(@"MY WEBAPPRT BUILDID: %@", myVersion);
 
-  NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];  
 
   //I need to look in our bundle first, before deciding what firefox binary to use
   NSBundle* myBundle = [NSBundle mainBundle];
@@ -150,7 +147,7 @@ int main(int argc, char **argv)
       //they differ, so set it and relaunch
       setenv("DYLD_FALLBACK_LIBRARY_PATH", libEnv, 1);
       execNewBinary(myWebRTPath);
-      exit(0);
+      return 0;
     }
     //HAVE DYLD_FALLBACK_LIBRARY_PATH
 
@@ -332,21 +329,20 @@ int main(int argc, char **argv)
       [NSApp activateIgnoringOtherApps:YES];
       
       return result;
+    }
+    
   }
-  
-}
-@catch (NSException *e) 
-{
-  NSLog(@"got exception: %@", e);
-  displayErrorAlert([e name], [e reason]);
-}
-@finally 
-{
-  [pool drain];
-  exit(1);
-}
-
-}
+  @catch (NSException *e) 
+  {
+    NSLog(@"got exception: %@", e);
+    displayErrorAlert([e name], [e reason]);
+  }
+  @finally 
+  {
+    [pool drain];
+  }
+  return 0;
+}  //end main
 
 
 NSException* makeException(NSString* name, NSString* message) 
@@ -375,6 +371,11 @@ NSString *pathToWebRT(NSString* alternateBinaryID)
 {
   //default is firefox
   NSString *binaryPath = nil;
+
+  //we look for these flavors of Firefox, in this order
+  NSArray* launchBinarySearchList = [NSArray arrayWithObjects: @"org.mozilla.nightly", 
+                                                                @"org.mozilla.aurora", 
+                                                                @"org.mozilla.firefox", nil];
 
   //if they provided a manual override, use that.  If they made an error, it will fail to launch
   if (alternateBinaryID != nil && ([alternateBinaryID length] > 0)) 
