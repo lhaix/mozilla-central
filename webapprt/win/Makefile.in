@@ -101,7 +101,8 @@ libs::
 		$(srcdir)/defines.nsi.in > $(CONFIG_DIR)/defines.nsi
 	$(PYTHON) \
 		$(topsrcdir)/toolkit/mozapps/installer/windows/nsis/preprocess-locale.py \
-		--preprocess-locale $(topsrcdir) $(PPL_LOCALE_ARGS) $(AB_CD) $(CONFIG_DIR)
+		--preprocess-single-file $(topsrcdir) $(PPL_LOCALE_ARGS) $(AB_CD) $(CONFIG_DIR) \
+		webapp-uninstaller.properties webapp-uninstaller-locale.nsh
 	$(MAKE) webapp_uninstaller
 
 GARBAGE_DIRS += instgen

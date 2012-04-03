@@ -1,5 +1,0 @@
-These are localized strings for the webapp runtime, which loads a webapp
-in a separate process from Firefox.  Webapps loaded in this way have very little
-application chrome, but the runtime does provide them with some default
-functionality, like the standard OS menus/menuitems.  This directory provides
-the strings for that default functionality.
