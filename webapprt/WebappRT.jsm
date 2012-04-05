@@ -39,7 +39,7 @@ function deepFreeze(o) {
   Object.freeze(o);
 
   // Then recursively call deepFreeze() to freeze its properties.
-  for (p in o) {
+  for (let p in o) {
     // If the object is on the prototype, not an object, or is already frozen,
     // skip it.  Note that this might leave an unfrozen reference somewhere in
     // the object if there is an already frozen object containing an unfrozen
