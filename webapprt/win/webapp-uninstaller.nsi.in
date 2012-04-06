@@ -39,10 +39,11 @@ Var TmpVal
 !include "WinVer.nsh"
 !include "WordFunc.nsh"
 
+; File properties, version strings, etc
 !define CompanyName           "Mozilla Corporation"
 !define UninstallerName       "Mozilla Webapp Runtime App Uninstaller"
 !define UninstallerFilename   "webapp-uninstaller.exe"
-
+!define AppVersion            "@APP_VERSION@"
 VIProductVersion "1.0.0.0"
 VIAddVersionKey "ProductName"     "${UninstallerName}"
 VIAddVersionKey "CompanyName"     "${CompanyName}"
@@ -52,8 +53,8 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 VIAddVersionKey "FileDescription" "${UninstallerName}"
 VIAddVersionKey "OriginalFilename" "${UninstallerFilename}"
 
+; Mozilla custom include
 !include "common.nsh"
-
 !insertmacro un.DeleteShortcuts
 !insertmacro un.RegCleanUninstall
 !insertmacro un.ParseUninstallLog
@@ -101,11 +102,9 @@ Function un.blankPage
   ; Parse the uninstall log to unregister dll's and remove all installed
   ; files / directories this install is responsible for.
   ${un.ParseUninstallLog}
-  ${RemoveDir} "$INSTDIR\chrome"
 
   ; Remove the uninstall directory that we control
   RmDir /r "$INSTDIR\uninstall"
-  ${RemoveDir} "$INSTDIR\uninstall"
 
   ; Remove the installation directory if it is empty
   ${RemoveDir} "$INSTDIR"
@@ -130,10 +129,6 @@ BrandingText " "
 
 # Initialization Functions
 Function .onInit
-  Push $0 ; Temp directory
-  Push $1 ; Temp uninstaller location
-  Push $2 ; Command line
-
   GetTempFileName $0
   Delete $0
   CreateDirectory $0
@@ -145,10 +140,7 @@ Function .onInit
   ${GetParameters} $2
   StrCpy $2 "_?=$EXEDIR $2"
   Exec '"$1" $2'
-
-  Pop $2
-  Pop $1
-  Pop $0
+  Quit
 FunctionEnd
 
 Function un.onInit
@@ -157,12 +149,12 @@ Function un.onInit
   ${un.GetParent} "$INSTDIR" $INSTDIR
   ${un.GetLongPath} "$INSTDIR" $INSTDIR
 
-  !ifdef HAVE_64BIT_OS
-    SetRegView 64
-  !endif
-
   ReadINIStr $AppFilename "$INSTDIR\webapp.ini" "WebappRT" "Executable"
   ReadINIStr $AppName "$INSTDIR\webapp.ini" "Webapp" "Name"
+
+  ${Unless} ${FileExists} "$INSTDIR\${FileMainEXE}"
+    Abort
+  ${EndUnless}
 
   StrCpy $AppRTTempDir "$TEMP\moz_webapprt"
   RmDir /r $AppRTTempDir
