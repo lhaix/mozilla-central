@@ -67,7 +67,7 @@ def lookup(path, l10ndirs):
             return join(d, path)
     return join(l10ndirs[-1], path)
 
-def preprocess_locale_files(config_dir, l10ndirs, lang_id):
+def preprocess_locale_files(config_dir, l10ndirs):
     """
     Preprocesses the installer localized properties files into the format
     required by NSIS and creates a basic NSIS nlf file.
@@ -75,7 +75,6 @@ def preprocess_locale_files(config_dir, l10ndirs, lang_id):
     Parameters:
     config_dir - the path to the destination directory
     l10ndirs   - list of paths to search for installer locale files
-    lang_id    - the language id to specify in the NSIS locale files
     """
 
     # Create the main NSIS language file
@@ -83,7 +82,7 @@ def preprocess_locale_files(config_dir, l10ndirs, lang_id):
     locale_strings = get_locale_strings(lookup("override.properties",
                                                l10ndirs),
                                         "LangString ^",
-                                        " " + lang_id + " ",
+                                        " 0 ",
                                         False)
     fp.write(unicode(locale_strings, "utf-8").encode("utf-16-le"))
     fp.close()
@@ -92,10 +91,10 @@ def preprocess_locale_files(config_dir, l10ndirs, lang_id):
     fp = open_utf16le_file(join(config_dir, "baseLocale.nsh"))
     fp.write((u""";NSIS Modern User Interface - Language File
 ;Compatible with Modern UI 1.68
-;Language: baseLocale (%s)
+;Language: baseLocale (0)
 !insertmacro MOZ_MUI_LANGUAGEFILE_BEGIN \"baseLocale\"
 !define MUI_LANGNAME \"baseLocale\"
-""" % (lang_id)).encode("utf-16-le"))
+""").encode("utf-16-le"))
     locale_strings = get_locale_strings(lookup("mui.properties", l10ndirs),
                                         "!define ", " ", True)
     fp.write(unicode(locale_strings, "utf-8").encode("utf-16-le"))
@@ -107,12 +106,12 @@ def preprocess_locale_files(config_dir, l10ndirs, lang_id):
     locale_strings = get_locale_strings(lookup("custom.properties",
                                                l10ndirs),
                                         "LangString ",
-                                        " " + lang_id + " ",
+                                        " 0 ",
                                         True)
     fp.write(unicode(locale_strings, "utf-8").encode("utf-16-le"))
     fp.close()
 
-def create_nlf_file(moz_dir, ab_cd, config_dir, lang_id):
+def create_nlf_file(moz_dir, ab_cd, config_dir):
     """
     Create a basic NSIS nlf file.
 
@@ -120,7 +119,6 @@ def create_nlf_file(moz_dir, ab_cd, config_dir, lang_id):
     moz_dir    - the path to top source directory for the toolkit source
     ab_cd      - the locale code
     config_dir - the path to the destination directory
-    lang_id    - the language id to specify in the nlf file
     """
     rtl = "-"
 
@@ -144,7 +142,7 @@ def create_nlf_file(moz_dir, ab_cd, config_dir, lang_id):
 NLF v6
 # Start editing here
 # Language ID
-%s
+0
 # Font and size - dash (-) means default
 -
 -
@@ -152,12 +150,11 @@ NLF v6
 -
 # RTL - anything else than RTL means LTR
 %s
-""" % (lang_id, rtl)).encode("utf-16-le"))
+""" % rtl).encode("utf-16-le"))
     fp.close()
 
 def preprocess_locale_file(config_dir,
                            l10ndirs,
-                           lang_id,
                            properties_filename,
                            output_filename):
     """
@@ -167,7 +164,6 @@ def preprocess_locale_file(config_dir,
     Parameters:
     config_dir            - the path to the destination directory
     l10ndirs              - list of paths to search for installer locale files
-    lang_id               - the language id to specify in the NSIS locale files
     properties_filename   - the name of the properties file to search for
     output_filename       - the output filename to write
     """
@@ -177,7 +173,7 @@ def preprocess_locale_file(config_dir,
     locale_strings = get_locale_strings(lookup(properties_filename,
                                                l10ndirs),
                                         "LangString ",
-                                        " " + lang_id + " ",
+                                        " 0 ",
                                         True)
     fp.write(unicode(locale_strings, "utf-8").encode("utf-16-le"))
     fp.close()
@@ -285,11 +281,6 @@ or
     if (not foundOne):
       p.error("No command specified")
 
-    # Set the language ID to 0 to make this locale the default locale. An
-    # actual ID will need to be used to create a multi-language installer
-    # (e.g. for CD distributions, etc.).
-    lang_id = "0"
-
     if options.preprocess:
         if len(args) not in (3,4):
             p.error(preprocess_locale_args_help_string)
@@ -308,8 +299,8 @@ or
         config_dir = pargs[2]
 
         # Create the output files
-        create_nlf_file(moz_dir, ab_cd, config_dir, lang_id)
-        preprocess_locale_files(config_dir, l10n_dirs, lang_id)
+        create_nlf_file(moz_dir, ab_cd, config_dir)
+        preprocess_locale_files(config_dir, l10n_dirs)
     elif options.preprocessSingle:
         if len(args) not in (5,6):
             p.error(preprocess_single_file_args_help_string)
@@ -330,10 +321,9 @@ or
         out_file = pargs[4]
 
         # Create the output files
-        create_nlf_file(moz_dir, ab_cd, config_dir, lang_id)
+        create_nlf_file(moz_dir, ab_cd, config_dir)
         preprocess_locale_file(config_dir,
                                l10n_dirs,
-                               lang_id,
                                in_file,
                                out_file)
     elif options.convert:
