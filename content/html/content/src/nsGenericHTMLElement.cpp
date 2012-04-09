@@ -120,7 +120,7 @@
 #include "nsHTMLMenuElement.h"
 #include "nsAsyncDOMEvent.h"
 #include "nsIScriptError.h"
-
+#include "nsDOMMutationObserver.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/FromParser.h"
 
@@ -314,6 +314,10 @@ nsGenericHTMLElement::CopyInnerTo(nsGenericElement* aDst) const
   for (i = 0; i < count; ++i) {
     const nsAttrName *name = mAttrsAndChildren.AttrNameAt(i);
     const nsAttrValue *value = mAttrsAndChildren.AttrAt(i);
+
+    nsAutoString valStr;
+    value->ToString(valStr);
+
     if (name->Equals(nsGkAtoms::style, kNameSpaceID_None) &&
         value->Type() == nsAttrValue::eCSSStyleRule) {
       // We can't just set this as a string, because that will fail
@@ -323,14 +327,12 @@ nsGenericHTMLElement::CopyInnerTo(nsGenericElement* aDst) const
       nsRefPtr<mozilla::css::StyleRule> styleRule = do_QueryObject(ruleClone);
       NS_ENSURE_TRUE(styleRule, NS_ERROR_UNEXPECTED);
 
-      rv = aDst->SetInlineStyleRule(styleRule, false);
+      rv = aDst->SetInlineStyleRule(styleRule, &valStr, false);
       NS_ENSURE_SUCCESS(rv, rv);
 
       continue;
     }
 
-    nsAutoString valStr;
-    value->ToString(valStr);
     rv = aDst->SetAttr(name->NamespaceID(), name->LocalName(),
                        name->GetPrefix(), valStr, false);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -763,9 +765,11 @@ nsGenericHTMLElement::SetInnerHTML(const nsAString& aInnerHTML)
 
   // Remove childnodes.
   PRUint32 childCount = GetChildCount();
+  nsAutoMutationBatch mb(this, true, false);
   for (PRUint32 i = 0; i < childCount; ++i) {
     RemoveChildAt(0, true);
   }
+  mb.RemovalDone();
 
   nsAutoScriptLoaderDisabler sld(doc);
   
@@ -779,6 +783,7 @@ nsGenericHTMLElement::SetInnerHTML(const nsAString& aInnerHTML)
                                            doc->GetCompatibilityMode() ==
                                              eCompatibility_NavQuirks,
                                            true);
+    mb.NodesAdded();
     // HTML5 parser has notified, but not fired mutation events.
     FireMutationEventsForDirectParsing(doc, this, oldChildCount);
   } else {
@@ -794,6 +799,7 @@ nsGenericHTMLElement::SetInnerHTML(const nsAString& aInnerHTML)
       nsAutoScriptBlockerSuppressNodeRemoved scriptBlocker;
 
       static_cast<nsINode*>(this)->AppendChild(fragment, &rv);
+      mb.NodesAdded();
     }
   }
 
@@ -836,6 +842,7 @@ nsGenericHTMLElement::SetOuterHTML(const nsAString& aOuterHTML)
                                       OwnerDoc()->GetCompatibilityMode() ==
                                         eCompatibility_NavQuirks,
                                       true);
+    nsAutoMutationBatch mb(parent, true, false);
     parent->ReplaceChild(fragment, this, &rv);
     return rv;
   }
@@ -861,6 +868,7 @@ nsGenericHTMLElement::SetOuterHTML(const nsAString& aOuterHTML)
                                                          getter_AddRefs(df));
   NS_ENSURE_SUCCESS(rv, rv);
   nsCOMPtr<nsINode> fragment = do_QueryInterface(df);
+  nsAutoMutationBatch mb(parent, true, false);
   parent->ReplaceChild(fragment, this, &rv);
   return rv;
 }
@@ -910,7 +918,7 @@ nsGenericHTMLElement::InsertAdjacentHTML(const nsAString& aPosition,
 
   nsresult rv;
   // Parse directly into destination if possible
-  if (doc->IsHTML() &&
+  if (doc->IsHTML() && !OwnerDoc()->MayHaveDOMMutationObservers() &&
       (position == eBeforeEnd ||
        (position == eAfterEnd && !GetNextSibling()) ||
        (position == eAfterBegin && !GetFirstChild()))) {
@@ -949,6 +957,7 @@ nsGenericHTMLElement::InsertAdjacentHTML(const nsAString& aPosition,
   // listeners on the fragment that comes from the parser.
   nsAutoScriptBlockerSuppressNodeRemoved scriptBlocker;
 
+  nsAutoMutationBatch mb(destination, true, false);
   switch (position) {
     case eBeforeBegin:
       destination->InsertBefore(fragment, this, &rv);
@@ -2253,13 +2262,6 @@ nsGenericHTMLElement::MapScrollingAttributeInto(const nsMappedAttributes* aAttri
 }
 
 //----------------------------------------------------------------------
-
-nsresult
-nsGenericHTMLElement::GetAttrHelper(nsIAtom* aAttr, nsAString& aValue)
-{
-  GetAttr(kNameSpaceID_None, aAttr, aValue);
-  return NS_OK;
-}
 
 nsresult
 nsGenericHTMLElement::SetAttrHelper(nsIAtom* aAttr, const nsAString& aValue)

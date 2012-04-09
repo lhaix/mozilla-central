@@ -291,8 +291,8 @@ public:
             if (sample) {
               JSObject *frame = b.CreateObject();
               char tagBuff[1024];
-              void* pc = (void*)entry.mTagData;
-              snprintf(tagBuff, 1024, "%p", pc);
+              unsigned long long pc = (unsigned long long)entry.mTagData;
+              snprintf(tagBuff, 1024, "%#llx", pc);
               b.DefineProperty(frame, "location", tagBuff);
               b.ArrayPush(frames, frame);
             }
@@ -580,7 +580,7 @@ void doSampleStackTrace(ProfileStack *aStack, ThreadProfile &aProfile, TickSampl
   // Sample
   // 's' tag denotes the start of a sample block
   // followed by 0 or more 'c' tags.
-  for (int i = 0; i < aStack->mStackPointer; i++) {
+  for (mozilla::sig_safe_t i = 0; i < aStack->mStackPointer; i++) {
     if (i == 0) {
       Address pc = 0;
       if (sample) {
@@ -673,8 +673,8 @@ std::ostream& operator<<(std::ostream& stream, const ProfileEntry& entry)
     // Bug 739800 - Force l-tag addresses to have a "0x" prefix on all platforms
     // Additionally, stringstream seemed to be ignoring formatter flags.
     char tagBuff[1024];
-    Address pc = entry.mTagAddress;
-    snprintf(tagBuff, 1024, "l-%#x\n", pc);
+    unsigned long long pc = (unsigned long long)entry.mTagData;
+    snprintf(tagBuff, 1024, "l-%#llx\n", pc);
     stream << tagBuff;
   } else {
     stream << entry.mTagName << "-" << entry.mTagData << "\n";

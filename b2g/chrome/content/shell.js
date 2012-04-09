@@ -45,14 +45,13 @@ XPCOMUtils.defineLazyServiceGetter(Services, 'fm', function() {
 // XXX never grant 'content-camera' to non-gaia apps
 function addPermissions(urls) {
   let permissions = [
-    'indexedDB', 'indexedDB-unlimited', 'webapps-manage', 'offline-app',
+    'indexedDB', 'indexedDB-unlimited', 'webapps-manage', 'offline-app', 'pin-app',
     'websettings-read', 'websettings-readwrite',
     'content-camera', 'webcontacts-manage', 'wifi-manage', 'desktop-notification',
     'geolocation'
   ];
   urls.forEach(function(url) {
     url = url.trim();
-    dump("XxXxX adding permissions for " + url);
     let uri = Services.io.newURI(url, null, null);
     let allow = Ci.nsIPermissionManager.ALLOW_ACTION;
 
@@ -94,6 +93,7 @@ var shell = {
 
     window.addEventListener('MozApplicationManifest', this);
     window.addEventListener('mozfullscreenchange', this);
+    window.addEventListener('sizemodechange', this);
     this.contentBrowser.addEventListener('load', this, true);
 
     // Until the volume can be set from the content side, set it to a
@@ -131,6 +131,7 @@ var shell = {
   stop: function shell_stop() {
     window.removeEventListener('MozApplicationManifest', this);
     window.removeEventListener('mozfullscreenchange', this);
+    window.removeEventListener('sizemodechange', this);
   },
 
   toggleDebug: function shell_toggleDebug() {
@@ -227,6 +228,13 @@ var shell = {
         if (document.mozFullScreen)
           Services.fm.focusedWindow = window;
         break;
+      case 'sizemodechange':
+        if (window.windowState == window.STATE_MINIMIZED) {
+          this.contentBrowser.docShell.isActive = false;
+        } else {
+          this.contentBrowser.docShell.isActive = true;
+        }
+        break;
       case 'load':
         this.contentBrowser.removeEventListener('load', this, true);
 
@@ -285,7 +293,7 @@ var shell = {
   let idleHandler = function idleHandler(subject, topic, time) {
     if (topic === "idle") {
       if (power.getWakeLockState("screen") != "locked-foreground") {
-        screen.mozEnabled = false;
+        navigator.mozPower.screenEnabled = false;
       }
     }
   }
@@ -298,18 +306,37 @@ var shell = {
     if (topic == "screen") {
       if (state != "locked-foreground") {
         if (Services.idle.idleTime > idleTimeout*1000) {
-          screen.mozEnabled = false;
+          navigator.mozPower.screenEnabled = false;
         }
       } else {
-        screen.mozEnabled = true;
+        navigator.mozPower.screenEnabled = true;
       }
     }
   }
   let idleTimeout = Services.prefs.getIntPref("power.screen.timeout");
-  if (idleTimeout) {
-    Services.idle.addIdleObserver(idleHandler, idleTimeout);
-    power.addWakeLockListener(wakeLockHandler);
+  let request = navigator.mozSettings.getLock().get("power.screen.timeout");
+  request.onsuccess = function onSuccess() {
+    idleTimeout = request.result["power.screen.timeout"] || idleTimeout;
+    if (idleTimeout) {
+      Services.idle.addIdleObserver(idleHandler, idleTimeout);
+      power.addWakeLockListener(wakeLockHandler);
+    }
   }
+  request.onerror = function onError() {
+    if (idleTimeout) {
+      Services.idle.addIdleObserver(idleHandler, idleTimeout);
+      power.addWakeLockListener(wakeLockHandler);
+    }
+  }
+  // XXX We may override other's callback here, but this is the only
+  // user of mozSettings in shell.js at this moment.
+  navigator.mozSettings.onsettingchange = function onSettingChange(e) {
+    if (e.settingName == "power.screen.timeout" && e.settingValue) {
+      Services.idle.removeIdleObserver(idleHandler, idleTimeout);
+      idleTimeout = e.settingValue;
+      Services.idle.addIdleObserver(idleHandler, idleTimeout);
+    }
+  };
 })();
 
 function nsBrowserAccess() {

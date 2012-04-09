@@ -25,15 +25,26 @@ function test()
 
 function testFrameParameters()
 {
-  // scriptsadded is fired last when switching to a paused state, so the
-  // property view will have had a chance to fetch the call parameters.
-  gPane.activeThread.addOneTimeListener("scriptsadded", function() {
+  dump("Started testFrameParameters!\n");
+
+  gDebugger.addEventListener("Debugger:FetchedParameters", function test() {
+    dump("Entered Debugger:FetchedParameters!\n");
+
+    gDebugger.removeEventListener("Debugger:FetchedParameters", test, false);
     Services.tm.currentThread.dispatch({ run: function() {
+
+      dump("After currentThread.dispatch!\n");
 
       var frames = gDebugger.DebuggerView.Stackframes._frames,
           childNodes = frames.childNodes,
           localScope = gDebugger.DebuggerView.Properties.localScope,
           localNodes = localScope.querySelector(".details").childNodes;
+
+      dump("Got our variables:\n");
+      dump("frames     - " + frames.constructor + "\n");
+      dump("childNodes - " + childNodes.constructor + "\n");
+      dump("localScope - " + localScope.constructor + "\n");
+      dump("localNodes - " + localNodes.constructor + "\n");
 
       is(gDebugger.StackFrames.activeThread.state, "paused",
         "Should only be getting stack frames while paused.");
@@ -70,7 +81,7 @@ function testFrameParameters()
 
       resumeAndFinish();
     }}, 0);
-  });
+  }, false);
 
   EventUtils.sendMouseEvent({ type: "click" },
     content.document.querySelector("button"),

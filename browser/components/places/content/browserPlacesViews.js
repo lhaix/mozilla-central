@@ -54,7 +54,7 @@ PlacesViewBase.prototype = {
   get result() this._result,
   set result(val) {
     if (this._result == val)
-      return;
+      return val;
 
     if (this._result) {
       this._result.removeObserver(this);
@@ -732,6 +732,8 @@ PlacesViewBase.prototype = {
                                  .getComputedStyle(this.viewElt, "")
                                  .direction == "rtl";
   },
+
+  get ownerWindow() window,
 
   /**
    * Adds an "Open All in Tabs" menuitem to the bottom of the popup.
@@ -1678,7 +1680,7 @@ PlacesToolbar.prototype = {
     if (parent.localName == "toolbarbutton")
       this._openedMenuButton = parent;
 
-    return PlacesViewBase.prototype._onPopupShowing.apply(this, arguments);
+    PlacesViewBase.prototype._onPopupShowing.apply(this, arguments);
   },
 
   _onPopupHidden: function PT__onPopupHidden(aEvent) {

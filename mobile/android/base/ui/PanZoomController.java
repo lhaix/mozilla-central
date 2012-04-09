@@ -367,6 +367,7 @@ public class PanZoomController
 
     private boolean onTouchCancel(MotionEvent event) {
         mState = PanZoomState.NOTHING;
+        cancelTouch();
         // ensure we snap back if we're overscrolled
         bounce();
         return false;
@@ -472,7 +473,10 @@ public class PanZoomController
         }
 
         mState = PanZoomState.BOUNCE;
-
+        // set the animation target *after* setting state BOUNCE, so that
+        // the getRedrawHint() is returning false and we don't clobber the display
+        // port we set as a result of this animation target call.
+        mController.setAnimationTarget(metrics);
         startAnimationTimer(new BounceRunnable(bounceStartMetrics, metrics));
     }
 
@@ -534,6 +538,9 @@ public class PanZoomController
         mX.displace();
         mY.displace();
         PointF displacement = getDisplacement();
+        if (FloatUtils.fuzzyEquals(displacement.x, 0.0f) && FloatUtils.fuzzyEquals(displacement.y, 0.0f)) {
+            return;
+        }
         if (! mSubscroller.scrollBy(displacement)) {
             synchronized (mController) {
                 mController.scrollBy(displacement);
@@ -895,7 +902,7 @@ public class PanZoomController
         return true;
     }
 
-    public void cancelTouch() {
+    private void cancelTouch() {
         GeckoEvent e = GeckoEvent.createBroadcastEvent("Gesture:CancelTouch", "");
         GeckoAppShell.sendEventToGecko(e);
     }

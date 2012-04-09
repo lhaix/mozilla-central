@@ -170,7 +170,7 @@ public:
   virtual PRInt32 IndexOf(nsINode* aPossibleChild) const;
   virtual nsresult InsertChildAt(nsIContent* aKid, PRUint32 aIndex,
                                  bool aNotify);
-  virtual nsresult RemoveChildAt(PRUint32 aIndex, bool aNotify);
+  virtual void RemoveChildAt(PRUint32 aIndex, bool aNotify);
   NS_IMETHOD GetTextContent(nsAString &aTextContent)
   {
     nsresult rv = GetNodeValue(aTextContent);
@@ -211,7 +211,7 @@ public:
   virtual const nsAttrName* GetAttrNameAt(PRUint32 aIndex) const;
   virtual PRUint32 GetAttrCount() const;
   virtual const nsTextFragment *GetText();
-  virtual PRUint32 TextLength();
+  virtual PRUint32 TextLength() const;
   virtual nsresult SetText(const PRUnichar* aBuffer, PRUint32 aLength,
                            bool aNotify);
   // Need to implement this here too to avoid hiding.
@@ -248,7 +248,8 @@ public:
   virtual const nsAttrValue* DoGetClasses() const;
   NS_IMETHOD WalkContentStyleRules(nsRuleWalker* aRuleWalker);
   virtual mozilla::css::StyleRule* GetInlineStyleRule();
-  NS_IMETHOD SetInlineStyleRule(mozilla::css::StyleRule* aStyleRule, bool aNotify);
+  NS_IMETHOD SetInlineStyleRule(mozilla::css::StyleRule* aStyleRule,
+                                const nsAString* aSerialized, bool aNotify);
   NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
   virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
                                               PRInt32 aModType) const;

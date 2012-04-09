@@ -37,14 +37,12 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#include "mozilla/Util.h"
-
 #include "Exceptions.h"
 
 #include "jsapi.h"
 #include "jsfriendapi.h"
 #include "jsprf.h"
-
+#include "mozilla/Util.h"
 #include "nsTraceRefcnt.h"
 
 #include "WorkerInlines.h"
@@ -111,7 +109,7 @@ private:
   }
 
   static void
-  Finalize(JSContext* aCx, JSObject* aObj)
+  Finalize(JSFreeOp* aFop, JSObject* aObj)
   {
     JS_ASSERT(JS_GetClass(aObj) == &sClass);
     delete GetJSPrivateSafeish<DOMException>(aObj);
@@ -318,7 +316,7 @@ private:
   }
 
   static void
-  Finalize(JSContext* aCx, JSObject* aObj)
+  Finalize(JSFreeOp* aFop, JSObject* aObj)
   {
     JS_ASSERT(JS_GetClass(aObj) == &sClass);
     delete GetJSPrivateSafeish<FileException>(aObj);

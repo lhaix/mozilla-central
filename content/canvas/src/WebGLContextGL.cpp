@@ -1911,15 +1911,20 @@ WebGLContext::GenerateMipmap(WebGLenum target)
     WebGLTexture *tex = activeBoundTextureForTarget(target);
 
     if (!tex)
-        return ErrorInvalidOperation("generateMipmap: no texture is bound to this target");
+        return ErrorInvalidOperation("generateMipmap: No texture is bound to this target.");
 
-    if (!tex->IsFirstImagePowerOfTwo()) {
-        return ErrorInvalidOperation("generateMipmap: the width or height of this texture is not a power of two");
-    }
+    if (!tex->HasImageInfoAt(0, 0))
+        return ErrorInvalidOperation("generateMipmap: Level zero of texture is not defined.");
 
-    if (!tex->AreAllLevel0ImageInfosEqual()) {
-        return ErrorInvalidOperation("generateMipmap: the six faces of this cube map have different dimensions, format, or type.");
-    }
+    if (!tex->IsFirstImagePowerOfTwo())
+        return ErrorInvalidOperation("generateMipmap: Level zero of texture does not have power-of-two width and height.");
+
+    GLenum format = tex->ImageInfoAt(0, 0).Format();
+    if (IsTextureFormatCompressed(format))
+        return ErrorInvalidOperation("generateMipmap: Texture data at level zero is compressed.");
+
+    if (!tex->AreAllLevel0ImageInfosEqual())
+        return ErrorInvalidOperation("generateMipmap: The six faces of this cube map have different dimensions, format, or type.");
 
     tex->SetGeneratedMipmap();
 
@@ -3117,18 +3122,20 @@ WebGLContext::Hint(WebGLenum target, WebGLenum mode)
     bool isValid = false;
 
     switch (target) {
+        case LOCAL_GL_GENERATE_MIPMAP_HINT:
+            isValid = true;
+            break;
         case LOCAL_GL_FRAGMENT_SHADER_DERIVATIVE_HINT:
             if (mEnabledExtensions[WebGL_OES_standard_derivatives]) 
                 isValid = true;
             break;
     }
 
-    if (isValid) {
-        gl->fHint(target, mode);
-        return NS_OK;
-    }
+    if (!isValid)
+        return ErrorInvalidEnum("hint: invalid hint");
 
-    return ErrorInvalidEnum("hint: invalid hint");
+    gl->fHint(target, mode);
+    return NS_OK;
 }
 
 NS_IMETHODIMP

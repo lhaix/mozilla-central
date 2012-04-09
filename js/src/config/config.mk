@@ -46,7 +46,7 @@
 
 # Define an include-at-most-once flag
 ifdef INCLUDED_CONFIG_MK
-$(error Don't include config.mk twice!)
+$(error Do not include config.mk twice!)
 endif
 INCLUDED_CONFIG_MK = 1
 
@@ -837,3 +837,8 @@ EXPAND_LIBNAME = $(foreach lib,$(1),$(LIB_PREFIX)$(lib).$(LIB_SUFFIX))
 endif
 EXPAND_LIBNAME_PATH = $(foreach lib,$(1),$(2)/$(LIB_PREFIX)$(lib).$(LIB_SUFFIX))
 EXPAND_MOZLIBNAME = $(foreach lib,$(1),$(DIST)/lib/$(LIB_PREFIX)$(lib).$(LIB_SUFFIX))
+
+# Include internal ply only if needed
+ifndef MOZ_SYSTEM_PLY
+PLY_INCLUDE = -I$(topsrcdir)/other-licenses/ply
+endif

@@ -263,7 +263,7 @@ public:
   virtual PRInt32 IndexOf(nsINode* aPossibleChild) const;
   virtual nsresult InsertChildAt(nsIContent* aKid, PRUint32 aIndex,
                                  bool aNotify);
-  virtual nsresult RemoveChildAt(PRUint32 aIndex, bool aNotify);
+  virtual void RemoveChildAt(PRUint32 aIndex, bool aNotify);
   NS_IMETHOD GetTextContent(nsAString &aTextContent);
   NS_IMETHOD SetTextContent(const nsAString& aTextContent);
 
@@ -327,7 +327,7 @@ public:
   virtual const nsAttrName* GetAttrNameAt(PRUint32 aIndex) const;
   virtual PRUint32 GetAttrCount() const;
   virtual const nsTextFragment *GetText();
-  virtual PRUint32 TextLength();
+  virtual PRUint32 TextLength() const;
   virtual nsresult SetText(const PRUnichar* aBuffer, PRUint32 aLength,
                            bool aNotify);
   // Need to implement this here too to avoid hiding.
@@ -342,9 +342,6 @@ public:
   virtual nsIContent *GetBindingParent() const;
   virtual bool IsNodeOfType(PRUint32 aFlags) const;
   virtual bool IsLink(nsIURI** aURI) const;
-
-  virtual PRUint32 GetScriptTypeID() const;
-  NS_IMETHOD SetScriptTypeID(PRUint32 aLang);
 
   virtual void DestroyContent();
   virtual void SaveSubtreeState();
@@ -371,7 +368,9 @@ public:
   virtual const nsAttrValue* DoGetClasses() const;
   NS_IMETHOD WalkContentStyleRules(nsRuleWalker* aRuleWalker);
   virtual mozilla::css::StyleRule* GetInlineStyleRule();
-  NS_IMETHOD SetInlineStyleRule(mozilla::css::StyleRule* aStyleRule, bool aNotify);
+  NS_IMETHOD SetInlineStyleRule(mozilla::css::StyleRule* aStyleRule,
+                                const nsAString* aSerialized,
+                                bool aNotify);
   NS_IMETHOD_(bool)
     IsAttributeMapped(const nsIAtom* aAttribute) const;
   virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
@@ -1046,6 +1045,25 @@ _elementName::Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const        \
   {                                                                     \
     return static_cast<nsXPCClassInfo*>(                                \
       NS_GetDOMClassInfoInstance(eDOMClassInfo_##_interface##_id));     \
+  }
+
+/**
+ * A macro to implement the getter and setter for a given string
+ * valued content property. The method uses the generic GetAttr and
+ * SetAttr methods.  We use the 5-argument form of SetAttr, because
+ * some consumers only implement that one, hiding superclass
+ * 4-argument forms.
+ */
+#define NS_IMPL_STRING_ATTR(_class, _method, _atom)                     \
+  NS_IMETHODIMP                                                         \
+  _class::Get##_method(nsAString& aValue)                               \
+  {                                                                     \
+    return GetAttr(kNameSpaceID_None, nsGkAtoms::_atom, aValue);        \
+  }                                                                     \
+  NS_IMETHODIMP                                                         \
+  _class::Set##_method(const nsAString& aValue)                         \
+  {                                                                     \
+    return SetAttr(kNameSpaceID_None, nsGkAtoms::_atom, nsnull, aValue, true); \
   }
 
 /**

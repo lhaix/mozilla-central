@@ -79,7 +79,6 @@
 #include "nsNPAPIPluginInstance.h"
 #include "nsISupportsUtils.h"
 #include "nsObjectFrame.h"
-#include "nsOuterDocAccessible.h"
 #include "nsRootAccessibleWrap.h"
 #include "nsTextFragment.h"
 #include "mozilla/Services.h"
@@ -110,6 +109,7 @@
 
 #include "nsXFormsFormControlsAccessible.h"
 #include "nsXFormsWidgetsAccessible.h"
+#include "OuterDocAccessible.h"
 
 #include "mozilla/FunctionTimer.h"
 #include "mozilla/dom/Element.h"
@@ -210,9 +210,9 @@ already_AddRefed<nsAccessible>
 nsAccessibilityService::CreateOuterDocAccessible(nsIContent* aContent,
                                                  nsIPresShell* aPresShell)
 {
-  nsAccessible* accessible = 
-    new nsOuterDocAccessible(aContent, 
-                             nsAccUtils::GetDocAccessibleFor(aPresShell));
+  nsAccessible* accessible =
+    new OuterDocAccessible(aContent,
+                           nsAccUtils::GetDocAccessibleFor(aPresShell));
   NS_ADDREF(accessible);
   return accessible;
 }
@@ -594,6 +594,22 @@ nsAccessibilityService::UpdateText(nsIPresShell* aPresShell,
   nsDocAccessible* document = GetDocAccessible(aPresShell->GetDocument());
   if (document)
     document->UpdateText(aContent);
+}
+
+void
+nsAccessibilityService::TreeViewChanged(nsIPresShell* aPresShell,
+                                        nsIContent* aContent,
+                                        nsITreeView* aView)
+{
+  nsDocAccessible* document = GetDocAccessible(aPresShell->GetDocument());
+  if (document) {
+    nsAccessible* accessible = document->GetAccessible(aContent);
+    if (accessible) {
+      nsXULTreeAccessible* treeAcc = accessible->AsXULTree();
+      if (treeAcc) 
+        treeAcc->TreeViewChanged(aView);
+    }
+  }
 }
 
 void
@@ -1340,7 +1356,7 @@ nsAccessibilityService::CreateAccessibleByType(nsIContent* aContent,
     return nsnull;
 
   if (type == nsIAccessibleProvider::OuterDoc) {
-    nsAccessible* accessible = new nsOuterDocAccessible(aContent, aDoc);
+    nsAccessible* accessible = new OuterDocAccessible(aContent, aDoc);
     NS_IF_ADDREF(accessible);
     return accessible;
   }

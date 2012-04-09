@@ -6720,6 +6720,15 @@ nsIFrame::FinishAndStoreOverflow(nsOverflowAreas& aOverflowAreas,
       // XXX In theory this should consider margin collapsing
       nsRect marginBounds(bounds);
       nsMargin margin = GetUsedMargin();
+
+      // Bug 724352 - vertical scrollable overflow only matters for
+      // scroll frames which are block margin roots and has already
+      // accumulated child vertical margins during reflow.  We need
+      // to revisit this when using UpdateOverflow for non-transform
+      // style changes (bug 719177).
+      margin.top = 0;
+      margin.bottom = 0;
+
       ApplySkipSides(margin);
       marginBounds.SaturatingInflate(margin);
       nsRect& so = aOverflowAreas.ScrollableOverflow();
@@ -7632,13 +7641,7 @@ nsFrame::BoxReflow(nsBoxLayoutState&        aState,
   nsBoxLayoutMetrics *metrics = BoxMetrics();
   nsReflowStatus status = NS_FRAME_COMPLETE;
 
-  bool redrawAfterReflow = false;
-  bool redrawNow = false;
-
   bool needsReflow = NS_SUBTREE_DIRTY(this);
-
-  if (redrawNow)
-     Redraw(aState);
 
   // if we don't need a reflow then 
   // lets see if we are already that size. Yes? then don't even reflow. We are done.
@@ -7805,13 +7808,6 @@ nsFrame::BoxReflow(nsBoxLayoutState&        aState,
     Reflow(aPresContext, aDesiredSize, reflowState, status);
 
     NS_ASSERTION(NS_FRAME_IS_COMPLETE(status), "bad status");
-
-    if (redrawAfterReflow) {
-       nsRect r = GetRect();
-       r.width = aDesiredSize.width;
-       r.height = aDesiredSize.height;
-       Redraw(aState, &r);
-    }
 
     PRUint32 layoutFlags = aState.LayoutFlags();
     nsContainerFrame::FinishReflowChild(this, aPresContext, &reflowState,

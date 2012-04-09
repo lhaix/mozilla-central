@@ -51,7 +51,6 @@
 #include "XPCWrapper.h"
 #include "nsJSPrincipals.h"
 #include "nsWrapperCache.h"
-#include "WrapperFactory.h"
 #include "AccessCheck.h"
 #include "nsJSUtils.h"
 
@@ -62,7 +61,10 @@
 #include "jsfriendapi.h"
 #include "jstypedarray.h"
 
+#include "mozilla/dom/bindings/Utils.h"
+
 using namespace mozilla;
+using namespace mozilla::dom;
 
 //#define STRICT_CHECK_OF_UNICODE
 #ifdef STRICT_CHECK_OF_UNICODE
@@ -106,6 +108,11 @@ XPCConvert::GetISupportsFromJSObject(JSObject* obj, nsISupports** iface)
         (jsclass->flags & JSCLASS_HAS_PRIVATE) &&
         (jsclass->flags & JSCLASS_PRIVATE_IS_NSISUPPORTS)) {
         *iface = (nsISupports*) xpc_GetJSPrivate(obj);
+        return true;
+    }
+    if (jsclass && (jsclass->flags & JSCLASS_IS_DOMJSCLASS) &&
+        bindings::DOMJSClass::FromJSClass(jsclass)->mDOMObjectIsISupports) {
+        *iface = bindings::UnwrapDOMObject<nsISupports>(obj, jsclass);
         return true;
     }
     return false;
@@ -1075,42 +1082,21 @@ XPCConvert::NativeInterface2JSObject(XPCLazyCallContext& lccx,
         return false;
 
     // If the object was not wrapped, we are same compartment and don't need
-    // to enforce any cross origin policies, except in case of the location
-    // object, which always needs a wrapper in between.
+    // to do any cross-compartment wrapping. However, there are still a few
+    // special cases we need to take care of.
     if (original == flat) {
-        if (xpc::WrapperFactory::IsLocationObject(flat)) {
-            JSObject *locationWrapper = wrapper->GetWrapper();
-            if (!locationWrapper) {
-                locationWrapper = xpc::WrapperFactory::WrapLocationObject(cx, flat);
-                if (!locationWrapper)
-                    return false;
 
-                // Cache the location wrapper to ensure that we maintain
-                // the identity of window/document.location.
-                wrapper->SetWrapper(locationWrapper);
-            }
+        // Everything here should be same-compartment.
+        MOZ_ASSERT(js::IsObjectInContextCompartment(flat, cx));
 
-            flat = locationWrapper;
-        } else if (wrapper->NeedsSOW() &&
-                   !xpc::AccessCheck::isChrome(js::GetContextCompartment(cx))) {
-            JSObject *sowWrapper = wrapper->GetWrapper();
-            if (!sowWrapper) {
-                sowWrapper = xpc::WrapperFactory::WrapSOWObject(cx, flat);
-                if (!sowWrapper)
-                    return false;
+        // Apply any same-compartment security wrappers.
+        flat = wrapper->GetSameCompartmentSecurityWrapper(cx);
+        if (!flat)
+            return false;
 
-                // Cache the sow wrapper to ensure that we maintain
-                // the identity of this node.
-                wrapper->SetWrapper(sowWrapper);
-            }
-
-            flat = sowWrapper;
-        } else {
-            flat = JS_ObjectToOuterObject(cx, flat);
-            NS_ASSERTION(flat, "bad outer object hook!");
-            NS_ASSERTION(js::IsObjectInContextCompartment(flat, cx),
-                         "bad compartment");
-        }
+        // Outerize any inner windows.
+        flat = JS_ObjectToOuterObject(cx, flat);
+        MOZ_ASSERT(flat, "bad outer object hook!");
     }
 
     *d = OBJECT_TO_JSVAL(flat);

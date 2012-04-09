@@ -58,6 +58,8 @@ function serverForFoo(engine) {
 // Verify that Places smart bookmarks have their annotation uploaded and
 // handled locally.
 add_test(function test_annotation_uploaded() {
+  new SyncTestingInfrastructure();
+
   let startCount = smartBookmarkCount();
   
   _("Start count is " + startCount);
@@ -71,9 +73,7 @@ add_test(function test_annotation_uploaded() {
   _("Create a smart bookmark in the toolbar.");
   let parent = PlacesUtils.toolbarFolderId;
   let uri =
-    Utils.makeURI("place:redirectsMode=" +
-                  Ci.nsINavHistoryQueryOptions.REDIRECTS_MODE_TARGET +
-                  "&sort=" +
+    Utils.makeURI("place:sort=" +
                   Ci.nsINavHistoryQueryOptions.SORT_BY_VISITCOUNT_DESCENDING +
                   "&maxResults=10");
   let title = "Most Visited";
@@ -106,10 +106,6 @@ add_test(function test_annotation_uploaded() {
   do_check_eq(smartBookmarkCount(), startCount + 1);
 
   _("Sync record to the server.");
-  Svc.Prefs.set("username", "foo");
-  Service.serverURL = TEST_SERVER_URL;
-  Service.clusterURL = TEST_CLUSTER_URL;
-
   let server = serverForFoo(engine);
   let collection = server.user("foo").collection("bookmarks");
 
@@ -178,11 +174,11 @@ add_test(function test_annotation_uploaded() {
 });
 
 add_test(function test_smart_bookmarks_duped() {
+  new SyncTestingInfrastructure();
+
   let parent = PlacesUtils.toolbarFolderId;
   let uri =
-    Utils.makeURI("place:redirectsMode=" +
-                  Ci.nsINavHistoryQueryOptions.REDIRECTS_MODE_TARGET +
-                  "&sort=" +
+    Utils.makeURI("place:sort=" +
                   Ci.nsINavHistoryQueryOptions.SORT_BY_VISITCOUNT_DESCENDING +
                   "&maxResults=10");
   let title = "Most Visited";
@@ -192,10 +188,6 @@ add_test(function test_smart_bookmarks_duped() {
   let record = store.createRecord(mostVisitedGUID);
   
   _("Prepare sync.");
-  Svc.Prefs.set("username", "foo");
-  Service.serverURL = TEST_SERVER_URL;
-  Service.clusterURL = TEST_CLUSTER_URL;
-
   let server = serverForFoo(engine);
   let collection = server.user("foo").collection("bookmarks");
 

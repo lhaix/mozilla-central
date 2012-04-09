@@ -57,6 +57,8 @@
 #include "xpcprivate.h"
 #include "XPCWrapper.h"
 
+#include "mozilla/dom/bindings/Common.h"
+
 #include "nscore.h"
 #include "nsDOMClassInfo.h"
 #include "nsCRT.h"
@@ -501,6 +503,7 @@ using mozilla::dom::indexedDB::IDBWrapperCache;
 
 #include "nsDOMTouchEvent.h"
 #include "nsIDOMCustomEvent.h"
+#include "nsDOMMutationObserver.h"
 
 #include "nsWrapperCacheInlines.h"
 #include "dombindings.h"
@@ -639,7 +642,6 @@ DOMCI_DATA(DOMConstructor, void)
     0,                                                                        \
     false,                                                                 \
     false,                                                                 \
-    NULL,                                                                     \
     NS_DEFINE_CLASSINFO_DATA_DEBUG(_class)                                    \
   },
 
@@ -656,7 +658,6 @@ DOMCI_DATA(DOMConstructor, void)
     0,                                                                        \
     true,                                                                  \
     false,                                                                 \
-    NULL,                                                                     \
     NS_DEFINE_CLASSINFO_DATA_DEBUG(_class)                                    \
   },
 
@@ -1355,8 +1356,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
                            nsIXPCScriptable::WANT_DELPROPERTY |
                            nsIXPCScriptable::DONT_ENUM_STATIC_PROPS |
                            nsIXPCScriptable::WANT_NEWENUMERATE)
-  NS_DEFINE_CLASSINFO_DATA(StorageList, nsStorageListSH,
-                           ARRAY_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(StorageItem, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(StorageEvent, nsDOMGenericSH,
@@ -1617,7 +1616,10 @@ static nsDOMClassInfoData sClassInfoData[] = {
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(CustomEvent, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
-
+  NS_DEFINE_CLASSINFO_DATA(MozMutationObserver, nsDOMGenericSH,
+                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
+  NS_DEFINE_CLASSINFO_DATA(MutationRecord, nsDOMGenericSH,
+                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(MozSettingsEvent, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
@@ -1666,6 +1668,7 @@ static const nsContractIDMapData kConstructorMap[] =
   NS_DEFINE_CONSTRUCTOR_DATA(XSLTProcessor,
                              "@mozilla.org/document-transformer;1?type=xslt")
   NS_DEFINE_CONSTRUCTOR_DATA(EventSource, NS_EVENTSOURCE_CONTRACTID)
+  NS_DEFINE_CONSTRUCTOR_DATA(MozMutationObserver, NS_DOMMUTATIONOBSERVER_CONTRACTID)
 };
 
 #define NS_DEFINE_EVENT_CTOR(_class)                        \
@@ -2403,6 +2406,12 @@ nsDOMClassInfo::Init()
 
   sXPConnect->SetFunctionThisTranslator(NS_GET_IID(nsIDOMEventListener),
                                         elt, getter_AddRefs(old));
+
+  nsCOMPtr<nsIXPCFunctionThisTranslator> mctl = new nsMutationCallbackThisTranslator();
+  NS_ENSURE_TRUE(elt, NS_ERROR_OUT_OF_MEMORY);
+
+  sXPConnect->SetFunctionThisTranslator(NS_GET_IID(nsIMutationObserverCallback),
+                                        mctl, getter_AddRefs(old));
 
   nsCOMPtr<nsIScriptSecurityManager> sm =
     do_GetService("@mozilla.org/scriptsecuritymanager;1", &rv);
@@ -3910,10 +3919,6 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMStorage)
   DOM_CLASSINFO_MAP_END
 
-  DOM_CLASSINFO_MAP_BEGIN(StorageList, nsIDOMStorageList)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMStorageList)
-  DOM_CLASSINFO_MAP_END
-
   DOM_CLASSINFO_MAP_BEGIN(StorageItem, nsIDOMStorageItem)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMStorageItem)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMToString)
@@ -4370,6 +4375,14 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_EVENT_MAP_ENTRIES
   DOM_CLASSINFO_MAP_END
 
+  DOM_CLASSINFO_MAP_BEGIN(MozMutationObserver, nsIDOMMozMutationObserver)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMMozMutationObserver)
+  DOM_CLASSINFO_MAP_END
+
+  DOM_CLASSINFO_MAP_BEGIN(MutationRecord, nsIDOMMutationRecord)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMMutationRecord)
+  DOM_CLASSINFO_MAP_END
+
   DOM_CLASSINFO_MAP_BEGIN(MozSettingsEvent, nsIDOMMozSettingsEvent)
      DOM_CLASSINFO_MAP_ENTRY(nsIDOMMozSettingsEvent)
      DOM_CLASSINFO_EVENT_MAP_ENTRIES
@@ -4465,7 +4478,11 @@ nsDOMClassInfo::Init()
   sDisableGlobalScopePollutionSupport =
     Preferences::GetBool("browser.dom.global_scope_pollution.disabled");
 
-  mozilla::dom::binding::Register(sClassInfoData);
+  // Proxy bindings
+  mozilla::dom::binding::Register(nameSpaceManager);
+
+  // Non-proxy bindings
+  mozilla::dom::bindings::Register(nameSpaceManager);
 
   sIsInitialized = true;
 
@@ -4776,7 +4793,7 @@ nsDOMClassInfo::Convert(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
 }
 
 NS_IMETHODIMP
-nsDOMClassInfo::Finalize(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
+nsDOMClassInfo::Finalize(nsIXPConnectWrappedNative *wrapper, JSFreeOp *fop,
                          JSObject *obj)
 {
   NS_WARNING("nsDOMClassInfo::Finalize Don't call me!");
@@ -4887,9 +4904,8 @@ GetExternalClassInfo(nsScriptNameSpaceManager *aNameSpaceManager,
   rv = creator->RegisterDOMCI(NS_ConvertUTF16toUTF8(aName).get(), sof);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  const nsGlobalNameStruct *name_struct;
-  rv = aNameSpaceManager->LookupName(aName, &name_struct);
-  if (NS_SUCCEEDED(rv) && name_struct &&
+  const nsGlobalNameStruct *name_struct = aNameSpaceManager->LookupName(aName);
+  if (name_struct &&
       name_struct->mType == nsGlobalNameStruct::eTypeExternalClassInfo) {
     *aResult = name_struct;
   }
@@ -5928,7 +5944,7 @@ private:
       return NS_ERROR_UNEXPECTED;
     }
 
-    nameSpaceManager->LookupName(aName, aNameStruct);
+    *aNameStruct = nameSpaceManager->LookupName(aName);
 
     // Return NS_OK here, aName just isn't a DOM class but nothing failed.
     return NS_OK;
@@ -6548,10 +6564,9 @@ nsWindowSH::GlobalResolve(nsGlobalWindow *aWin, JSContext *cx,
 
   nsDependentJSString name(id);
 
-  const nsGlobalNameStruct *name_struct = nsnull;
   const PRUnichar *class_name = nsnull;
-
-  nameSpaceManager->LookupName(name, &name_struct, &class_name);
+  const nsGlobalNameStruct *name_struct =
+    nameSpaceManager->LookupName(name, &class_name);
 
   if (!name_struct) {
     return NS_OK;
@@ -6572,6 +6587,15 @@ nsWindowSH::GlobalResolve(nsGlobalWindow *aWin, JSContext *cx,
   if (name_struct->mType == nsGlobalNameStruct::eTypeInterface) {
     // We're resolving a name of a DOM interface for which there is no
     // direct DOM class, create a constructor object...
+
+    // Lookup new DOM bindings.
+    mozilla::dom::binding::DefineInterface define =
+      name_struct->mDefineDOMInterface;
+    if (define && mozilla::dom::binding::DefineConstructor(cx, obj, define, &rv)) {
+      *did_resolve = NS_SUCCEEDED(rv);
+
+      return rv;
+    }
 
     nsRefPtr<nsDOMConstructor> constructor;
     rv = nsDOMConstructor::Create(class_name,
@@ -6630,7 +6654,7 @@ nsWindowSH::GlobalResolve(nsGlobalWindow *aWin, JSContext *cx,
     // Lookup new DOM bindings.
     if (name_struct->mType == nsGlobalNameStruct::eTypeClassConstructor) {
       mozilla::dom::binding::DefineInterface define =
-        sClassInfoData[name_struct->mDOMClassInfoID].mDefineDOMInterface;
+        name_struct->mDefineDOMInterface;
       if (define && mozilla::dom::binding::DefineConstructor(cx, obj, define, &rv)) {
         *did_resolve = NS_SUCCEEDED(rv);
 
@@ -6669,6 +6693,16 @@ nsWindowSH::GlobalResolve(nsGlobalWindow *aWin, JSContext *cx,
   if (name_struct->mType == nsGlobalNameStruct::eTypeClassProto) {
     // We don't have a XPConnect prototype object, let ResolvePrototype create
     // one.
+
+    // Lookup new DOM bindings.
+    mozilla::dom::binding::DefineInterface define =
+      name_struct->mDefineDOMInterface;
+    if (define && mozilla::dom::binding::DefineConstructor(cx, obj, define, &rv)) {
+      *did_resolve = NS_SUCCEEDED(rv);
+
+      return rv;
+    }
+
     return ResolvePrototype(sXPConnect, aWin, cx, obj, class_name, nsnull,
                             name_struct, nameSpaceManager, nsnull, true,
                             did_resolve);
@@ -7363,7 +7397,7 @@ nsWindowSH::NewResolve(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
 }
 
 NS_IMETHODIMP
-nsWindowSH::Finalize(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
+nsWindowSH::Finalize(nsIXPConnectWrappedNative *wrapper, JSFreeOp *fop,
                      JSObject *obj)
 {
   nsCOMPtr<nsIScriptGlobalObject> sgo(do_QueryWrappedNative(wrapper));
@@ -7839,10 +7873,6 @@ NS_IMETHODIMP
 nsEventTargetSH::AddProperty(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
                              JSObject *obj, jsid id, jsval *vp, bool *_retval)
 {
-  if (id == sAddEventListener_id) {
-    return NS_OK;
-  }
-
   nsEventTargetSH::PreserveWrapper(GetNative(wrapper, obj));
 
   return NS_OK;
@@ -8904,7 +8934,7 @@ nsHTMLDocumentSH::DocumentAllNewResolve(JSContext *cx, JSObject *obj, jsid id,
 // sGlobalScopePolluterClass!
 
 void
-nsHTMLDocumentSH::ReleaseDocument(JSContext *cx, JSObject *obj)
+nsHTMLDocumentSH::ReleaseDocument(JSFreeOp *fop, JSObject *obj)
 {
   nsIHTMLDocument *doc = (nsIHTMLDocument *)::JS_GetPrivate(obj);
 
@@ -10480,15 +10510,15 @@ nsStorage2SH::GetProperty(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
   JSAutoRequest ar(cx);
 
   if (DOMStringIsNull(val)) {
-      *vp = JSVAL_NULL;
-  }
-  else {
-      JSString *str =
-        ::JS_NewUCStringCopyN(cx, reinterpret_cast<const jschar *>(val.get()),
-                              val.Length());
-      NS_ENSURE_TRUE(str, NS_ERROR_OUT_OF_MEMORY);
+    // No such key.
+    *vp = JSVAL_VOID;
+  } else {
+    JSString* str =
+      JS_NewUCStringCopyN(cx, static_cast<const jschar *>(val.get()),
+                          val.Length());
+    NS_ENSURE_TRUE(str, NS_ERROR_OUT_OF_MEMORY);
 
-      *vp = STRING_TO_JSVAL(str);
+    *vp = STRING_TO_JSVAL(str);
   }
 
   return NS_SUCCESS_I_DID_SOMETHING;
@@ -10594,18 +10624,6 @@ nsStorage2SH::NewEnumerate(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
   return NS_OK;
 }
 
-// StorageList scriptable helper
-
-nsISupports*
-nsStorageListSH::GetNamedItem(nsISupports *aNative, const nsAString& aName,
-                              nsWrapperCache **aCache, nsresult *aResult)
-{
-  nsDOMStorageList* storagelist = static_cast<nsDOMStorageList*>(aNative);
-
-  return storagelist->GetNamedItem(aName, aResult);
-}
-
-
 // nsIDOMEventListener::HandleEvent() 'this' converter helper
 
 NS_INTERFACE_MAP_BEGIN(nsEventListenerThisTranslator)
@@ -10637,6 +10655,28 @@ nsEventListenerThisTranslator::TranslateThis(nsISupports *aInitialThis,
 
   *_retval = target.forget().get();
 
+  return NS_OK;
+}
+
+NS_INTERFACE_MAP_BEGIN(nsMutationCallbackThisTranslator)
+  NS_INTERFACE_MAP_ENTRY(nsIXPCFunctionThisTranslator)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
+NS_INTERFACE_MAP_END
+
+NS_IMPL_ADDREF(nsMutationCallbackThisTranslator)
+NS_IMPL_RELEASE(nsMutationCallbackThisTranslator)
+
+NS_IMETHODIMP
+nsMutationCallbackThisTranslator::TranslateThis(nsISupports *aInitialThis,
+                                                nsIInterfaceInfo *aInterfaceInfo,
+                                                PRUint16 aMethodIndex,
+                                                bool *aHideFirstParamFromJS,
+                                                nsIID * *aIIDOfResult,
+                                                nsISupports **_retval)
+{
+  *aHideFirstParamFromJS = false;
+  *aIIDOfResult = nsnull;
+  NS_IF_ADDREF(*_retval = nsDOMMutationObserver::CurrentObserver());
   return NS_OK;
 }
 
@@ -10682,7 +10722,7 @@ nsDOMConstructorSH::NewResolve(nsIXPConnectWrappedNative *wrapper, JSContext *cx
   // NewResolve hooks.
   JSBool found;
   if (!JS_HasPropertyById(cx, nativePropsObj, id, &found)) {
-    *_retval = PR_FALSE;
+    *_retval = false;
     return NS_OK;
   }
 

@@ -59,6 +59,7 @@
 #include "nsCCUncollectableMarker.h"
 #include "jsfriendapi.h"
 #include "js/MemoryMetrics.h"
+#include "mozilla/dom/bindings/DOMJSClass.h"
 
 #include "nsJSPrincipals.h"
 
@@ -250,19 +251,17 @@ xpc::CompartmentPrivate::~CompartmentPrivate()
     MOZ_COUNT_DTOR(xpc::CompartmentPrivate);
 }
 
-static JSBool
-CompartmentCallback(JSContext *cx, JSCompartment *compartment, unsigned op)
+static void
+CompartmentDestroyedCallback(JSFreeOp *fop, JSCompartment *compartment)
 {
-    JS_ASSERT(op == JSCOMPARTMENT_DESTROY);
-
     XPCJSRuntime* self = nsXPConnect::GetRuntimeInstance();
     if (!self)
-        return true;
+        return;
 
     nsAutoPtr<xpc::CompartmentPrivate>
         priv(static_cast<xpc::CompartmentPrivate*>(JS_GetCompartmentPrivate(compartment)));
     if (!priv)
-        return true;
+        return;
 
     JS_SetCompartmentPrivate(compartment, nsnull);
 
@@ -274,8 +273,6 @@ CompartmentCallback(JSContext *cx, JSCompartment *compartment, unsigned op)
     NS_ASSERTION(current == compartment, "compartment mismatch");
 #endif
     map.Remove(key);
-
-    return true;
 }
 
 struct ObjectHolder : public JSDHashEntryHdr
@@ -518,6 +515,11 @@ SuspectDOMExpandos(nsPtrHashKey<JSObject> *key, void *arg)
                      "Not a DOM proxy?");
         native = static_cast<nsISupports*>(js::GetProxyPrivate(obj).toPrivate());
     }
+    else {
+        NS_ASSERTION(mozilla::dom::bindings::DOMJSClass::FromJSClass(JS_GetClass(obj))->mDOMObjectIsISupports,
+                     "Someone added a wrapper for a non-nsISupports native to DOMExpandos!");
+        native = static_cast<nsISupports*>(js::GetReservedSlot(obj, DOM_OBJECT_SLOT).toPrivate());
+    }
     closure->cb->NoteXPCOMRoot(native);
     return PL_DHASH_NEXT;
 }
@@ -634,18 +636,6 @@ DoDeferredRelease(nsTArray<T> &array)
     }
 }
 
-static JSDHashOperator
-SweepWaiverWrappers(JSDHashTable *table, JSDHashEntryHdr *hdr,
-                    uint32_t number, void *arg)
-{
-    JSObject *key = ((JSObject2JSObjectMap::Entry *)hdr)->key;
-    JSObject *value = ((JSObject2JSObjectMap::Entry *)hdr)->value;
-
-    if (JS_IsAboutToBeFinalized(key) || JS_IsAboutToBeFinalized(value))
-        return JS_DHASH_REMOVE;
-    return JS_DHASH_NEXT;
-}
-
 static PLDHashOperator
 SweepExpandos(XPCWrappedNative *wn, JSObject *&expando, void *arg)
 {
@@ -661,7 +651,7 @@ SweepCompartment(nsCStringHashKey& aKey, JSCompartment *compartment, void *aClos
     xpc::CompartmentPrivate *priv =
         static_cast<xpc::CompartmentPrivate *>(JS_GetCompartmentPrivate(compartment));
     if (priv->waiverWrapperMap)
-        priv->waiverWrapperMap->Enumerate(SweepWaiverWrappers, nsnull);
+        priv->waiverWrapperMap->Sweep();
     if (priv->expandoMap)
         priv->expandoMap->Enumerate(SweepExpandos, nsnull);
     return PL_DHASH_NEXT;
@@ -709,7 +699,7 @@ XPCJSRuntime::GCCallback(JSRuntime *rt, JSGCStatus status)
 }
 
 /* static */ void
-XPCJSRuntime::FinalizeCallback(JSContext *cx, JSFinalizeStatus status)
+XPCJSRuntime::FinalizeCallback(JSFreeOp *fop, JSFinalizeStatus status)
 {
     XPCJSRuntime* self = nsXPConnect::GetRuntimeInstance();
     if (!self)
@@ -740,7 +730,7 @@ XPCJSRuntime::FinalizeCallback(JSContext *cx, JSFinalizeStatus status)
                 Enumerate(WrappedJSDyingJSObjectFinder, dyingWrappedJSArray);
 
             // Find dying scopes.
-            XPCWrappedNativeScope::FinishedMarkPhaseOfGC(cx, self);
+            XPCWrappedNativeScope::StartFinalizationPhaseOfGC(fop, self);
 
             // Sweep compartments.
             self->GetCompartmentMap().EnumerateRead((XPCCompartmentMap::EnumReadFunction)
@@ -856,7 +846,7 @@ XPCJSRuntime::FinalizeCallback(JSContext *cx, JSFinalizeStatus status)
 #endif
 
             // Sweep scopes needing cleanup
-            XPCWrappedNativeScope::FinishedFinalizationPhaseOfGC(cx);
+            XPCWrappedNativeScope::FinishedFinalizationPhaseOfGC();
 
             // Now we are going to recycle any unused WrappedNativeTearoffs.
             // We do this by iterating all the live callcontexts (on all
@@ -1206,15 +1196,6 @@ XPCJSRuntime::~XPCJSRuntime()
             printf("deleting XPCJSRuntime with %d live detached XPCWrappedNativeProto\n", (int)count);
 #endif
         delete mDetachedWrappedNativeProtoMap;
-    }
-
-    if (mExplicitNativeWrapperMap) {
-#ifdef XPC_DUMP_AT_SHUTDOWN
-        uint32_t count = mExplicitNativeWrapperMap->Count();
-        if (count)
-            printf("deleting XPCJSRuntime with %d live explicit XPCNativeWrapper\n", (int)count);
-#endif
-        delete mExplicitNativeWrapperMap;
     }
 
     if (mJSHolders.ops) {
@@ -1709,7 +1690,7 @@ class JSCompartmentsMultiReporter : public nsIMemoryMultiReporter
         for (size_t i = 0; i < paths.length(); i++)
             // These ones don't need a description, hence the "".
             REPORT(nsCString(paths[i]),
-                   nsIMemoryReporter::KIND_OTHER,
+                   nsIMemoryReporter::KIND_SUMMARY,
                    nsIMemoryReporter::UNITS_COUNT,
                    1, "");
 
@@ -1938,6 +1919,7 @@ AccumulateTelemetryCallback(int id, uint32_t sample)
 }
 
 bool XPCJSRuntime::gNewDOMBindingsEnabled;
+bool XPCJSRuntime::gParisBindingsEnabled;
 
 bool PreserveWrapper(JSContext *cx, JSObject *obj)
 {
@@ -1966,7 +1948,6 @@ XPCJSRuntime::XPCJSRuntime(nsXPConnect* aXPConnect)
    mNativeScriptableSharedMap(XPCNativeScriptableSharedMap::newMap(XPC_NATIVE_JSCLASS_MAP_SIZE)),
    mDyingWrappedNativeProtoMap(XPCWrappedNativeProtoMap::newMap(XPC_DYING_NATIVE_PROTO_MAP_SIZE)),
    mDetachedWrappedNativeProtoMap(XPCWrappedNativeProtoMap::newMap(XPC_DETACHED_NATIVE_PROTO_MAP_SIZE)),
-   mExplicitNativeWrapperMap(XPCNativeWrapperMap::newMap(XPC_NATIVE_WRAPPER_MAP_SIZE)),
    mMapLock(XPCAutoLock::NewLock("XPCJSRuntime::mMapLock")),
    mThreadRunningGC(nsnull),
    mWrappedJSToReleaseArray(),
@@ -1991,6 +1972,8 @@ XPCJSRuntime::XPCJSRuntime(nsXPConnect* aXPConnect)
     DOM_InitInterfaces();
     Preferences::AddBoolVarCache(&gNewDOMBindingsEnabled, "dom.new_bindings",
                                  false);
+    Preferences::AddBoolVarCache(&gParisBindingsEnabled, "dom.paris_bindings",
+                                 false);
 
 
     // these jsids filled in later when we have a JSContext to work with.
@@ -2014,7 +1997,7 @@ XPCJSRuntime::XPCJSRuntime(nsXPConnect* aXPConnect)
     JS_SetNativeStackQuota(mJSRuntime, 128 * sizeof(size_t) * 1024);
 #endif
     JS_SetContextCallback(mJSRuntime, ContextCallback);
-    JS_SetCompartmentCallback(mJSRuntime, CompartmentCallback);
+    JS_SetDestroyCompartmentCallback(mJSRuntime, CompartmentDestroyedCallback);
     JS_SetGCCallback(mJSRuntime, GCCallback);
     JS_SetFinalizeCallback(mJSRuntime, FinalizeCallback);
     JS_SetExtraGCRootsTracer(mJSRuntime, TraceBlackJS, this);
@@ -2083,7 +2066,6 @@ XPCJSRuntime::newXPCJSRuntime(nsXPConnect* aXPConnect)
         self->GetThisTranslatorMap()          &&
         self->GetNativeScriptableSharedMap()  &&
         self->GetDyingWrappedNativeProtoMap() &&
-        self->GetExplicitNativeWrapperMap()   &&
         self->GetMapLock()                    &&
         self->mWatchdogThread) {
         return self;

@@ -108,6 +108,7 @@
 #include "mozilla/FunctionTimer.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/dom/bindings/Utils.h"
 
 #include "sampler.h"
 
@@ -914,7 +915,6 @@ static const char js_relimit_option_str[]= JS_OPTIONS_DOT_STR "relimit";
 #ifdef JS_GC_ZEAL
 static const char js_zeal_option_str[]        = JS_OPTIONS_DOT_STR "gczeal";
 static const char js_zeal_frequency_str[]     = JS_OPTIONS_DOT_STR "gczeal.frequency";
-static const char js_zeal_compartment_str[]   = JS_OPTIONS_DOT_STR "gczeal.compartment_gc";
 #endif
 static const char js_methodjit_content_str[]  = JS_OPTIONS_DOT_STR "methodjit.content";
 static const char js_methodjit_chrome_str[]   = JS_OPTIONS_DOT_STR "methodjit.chrome";
@@ -1021,9 +1021,8 @@ nsJSContext::JSOptionChangedCallback(const char *pref, void *data)
 #ifdef JS_GC_ZEAL
   PRInt32 zeal = Preferences::GetInt(js_zeal_option_str, -1);
   PRInt32 frequency = Preferences::GetInt(js_zeal_frequency_str, JS_DEFAULT_ZEAL_FREQ);
-  bool compartment = Preferences::GetBool(js_zeal_compartment_str, false);
   if (zeal >= 0)
-    ::JS_SetGCZeal(context->mContext, (PRUint8)zeal, frequency, compartment);
+    ::JS_SetGCZeal(context->mContext, (PRUint8)zeal, frequency);
 #endif
 
   return 0;
@@ -1185,6 +1184,8 @@ nsJSContext::EvaluateStringWithValue(const nsAString& aScript,
 
     return NS_OK;
   }
+
+  nsAutoMicroTask mt;
 
   // Safety first: get an object representing the script's principals, i.e.,
   // the entities who signed this script, or the fully-qualified-domain-name
@@ -1358,7 +1359,7 @@ nsJSContext::EvaluateString(const nsAString& aScript,
                             nsIPrincipal *aOriginPrincipal,
                             const char *aURL,
                             PRUint32 aLineNo,
-                            PRUint32 aVersion,
+                            JSVersion aVersion,
                             nsAString *aRetValue,
                             bool* aIsUndefined)
 {
@@ -1379,6 +1380,8 @@ nsJSContext::EvaluateString(const nsAString& aScript,
 
     return NS_OK;
   }
+
+  nsAutoMicroTask mt;
 
   if (!aScopeObject) {
     aScopeObject = JS_GetGlobalObject(mContext);
@@ -1555,6 +1558,8 @@ nsJSContext::ExecuteScript(JSScript* aScriptObject,
 
     return NS_OK;
   }
+
+  nsAutoMicroTask mt;
 
   if (!aScopeObject) {
     aScopeObject = JS_GetGlobalObject(mContext);
@@ -1814,6 +1819,7 @@ nsJSContext::CallEventHandler(nsISupports* aTarget, JSObject* aScope,
 #endif
   SAMPLE_LABEL("JS", "CallEventHandler");
 
+  nsAutoMicroTask mt;
   JSAutoRequest ar(mContext);
   JSObject* target = nsnull;
   nsresult rv = JSObjectFromInterface(aTarget, aScope, &target);
@@ -2006,12 +2012,16 @@ nsJSContext::GetGlobalObject()
 
   JSClass *c = JS_GetClass(global);
 
-  if (!c || ((~c->flags) & (JSCLASS_HAS_PRIVATE |
-                            JSCLASS_PRIVATE_IS_NSISUPPORTS))) {
+  // Whenever we end up with globals that are JSCLASS_IS_DOMJSCLASS
+  // and have an nsISupports DOM object, we will need to modify this
+  // check here.
+  MOZ_ASSERT(!(c->flags & JSCLASS_IS_DOMJSCLASS));
+  if ((~c->flags) & (JSCLASS_HAS_PRIVATE |
+                     JSCLASS_PRIVATE_IS_NSISUPPORTS)) {
     return nsnull;
   }
-
-  nsISupports *priv = (nsISupports *)js::GetObjectPrivate(global);
+  
+  nsISupports *priv = static_cast<nsISupports*>(js::GetObjectPrivate(global));
 
   nsCOMPtr<nsIXPConnectWrappedNative> wrapped_native =
     do_QueryInterface(priv);
@@ -3563,8 +3573,8 @@ SetMemoryMaxPrefChangedCallback(const char* aPrefName, void* aClosure)
 static int
 SetMemoryGCModePrefChangedCallback(const char* aPrefName, void* aClosure)
 {
-  PRBool enableCompartmentGC = Preferences::GetBool("javascript.options.mem.gc_per_compartment");
-  PRBool enableIncrementalGC = Preferences::GetBool("javascript.options.mem.gc_incremental");
+  bool enableCompartmentGC = Preferences::GetBool("javascript.options.mem.gc_per_compartment");
+  bool enableIncrementalGC = Preferences::GetBool("javascript.options.mem.gc_incremental");
   JSGCMode mode;
   if (enableIncrementalGC) {
     mode = JSGC_MODE_INCREMENTAL;

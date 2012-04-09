@@ -686,6 +686,10 @@ public class GeckoAppShell
             });
     }
 
+    public static void enableLocationHighAccuracy(final boolean enable) {
+        // unsupported
+    }
+
     /*
      * Keep these values consistent with |SensorType| in Hal.h
      */
@@ -1842,7 +1846,7 @@ public class GeckoAppShell
     }
 
     // This is only used in Native Fennec.
-    public static void setPreventPanning(final boolean aPreventPanning) { }
+    public static void notifyDefaultPrevented(boolean defaultPrevented) { }
 
     public static short getScreenOrientation() {
         return GeckoScreenOrientationListener.getInstance().getScreenOrientation();
@@ -1854,5 +1858,19 @@ public class GeckoAppShell
 
     public static void disableScreenOrientationNotifications() {
         GeckoScreenOrientationListener.getInstance().disableNotifications();
+    }
+
+    public static void lockScreenOrientation(int aOrientation) {
+        GeckoScreenOrientationListener.getInstance().lockScreenOrientation(aOrientation);
+    }
+
+    public static void unlockScreenOrientation() {
+        GeckoScreenOrientationListener.getInstance().unlockScreenOrientation();
+    }
+
+    static native void notifyFilePickerResult(String filePath, long id);
+
+    /* Stubbed out because this is called from AndroidBridge for Native Fennec */
+    public static void showFilePickerAsync(String aMimeType, long id) {
     }
 }

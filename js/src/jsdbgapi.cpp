@@ -204,7 +204,7 @@ JS_SetTrap(JSContext *cx, JSScript *script, jsbytecode *pc, JSTrapHandler handle
     BreakpointSite *site = script->getOrCreateBreakpointSite(cx, pc, NULL);
     if (!site)
         return false;
-    site->setTrap(cx, handler, closure);
+    site->setTrap(cx->runtime->defaultFreeOp(), handler, closure);
     return true;
 }
 
@@ -213,7 +213,7 @@ JS_ClearTrap(JSContext *cx, JSScript *script, jsbytecode *pc,
              JSTrapHandler *handlerp, jsval *closurep)
 {
     if (BreakpointSite *site = script->getBreakpointSite(pc)) {
-        site->clearTrap(cx, handlerp, closurep);
+        site->clearTrap(cx->runtime->defaultFreeOp(), handlerp, closurep);
     } else {
         if (handlerp)
             *handlerp = NULL;
@@ -225,13 +225,13 @@ JS_ClearTrap(JSContext *cx, JSScript *script, jsbytecode *pc,
 JS_PUBLIC_API(void)
 JS_ClearScriptTraps(JSContext *cx, JSScript *script)
 {
-    script->clearTraps(cx);
+    script->clearTraps(cx->runtime->defaultFreeOp());
 }
 
 JS_PUBLIC_API(void)
 JS_ClearAllTrapsForCompartment(JSContext *cx)
 {
-    cx->compartment->clearTraps(cx);
+    cx->compartment->clearTraps(cx->runtime->defaultFreeOp());
 }
 
 JS_PUBLIC_API(JSBool)
@@ -966,12 +966,9 @@ JS_GetObjectTotalSize(JSContext *cx, JSObject *obj)
 static size_t
 GetAtomTotalSize(JSContext *cx, JSAtom *atom)
 {
-    size_t nbytes;
-
-    nbytes = sizeof(JSAtom *) + sizeof(JSDHashEntryStub);
-    nbytes += sizeof(JSString);
-    nbytes += (atom->length() + 1) * sizeof(jschar);
-    return nbytes;
+    return sizeof(AtomStateEntry) + sizeof(HashNumber) +
+           sizeof(JSString) +
+           (atom->length() + 1) * sizeof(jschar);
 }
 
 JS_PUBLIC_API(size_t)
@@ -1598,7 +1595,7 @@ extern JS_PUBLIC_API(void)
 JS_DumpPCCounts(JSContext *cx, JSScript *script)
 {
 #if defined(DEBUG)
-    JS_ASSERT(script->pcCounters);
+    JS_ASSERT(script->scriptCounts);
 
     Sprinter sprinter(cx);
     if (!sprinter.init())
@@ -1641,7 +1638,7 @@ JS_DumpCompartmentPCCounts(JSContext *cx)
 {
     for (CellIter i(cx->compartment, gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
         JSScript *script = i.get<JSScript>();
-        if (script->pcCounters)
+        if (script->scriptCounts)
             JS_DumpPCCounts(cx, script);
     }
 }

@@ -684,9 +684,6 @@ public:
     XPCWrappedNativeProtoMap* GetDetachedWrappedNativeProtoMap() const
         {return mDetachedWrappedNativeProtoMap;}
 
-    XPCNativeWrapperMap* GetExplicitNativeWrapperMap() const
-        {return mExplicitNativeWrapperMap;}
-
     XPCCompartmentMap& GetCompartmentMap()
         {return mCompartmentMap;}
 
@@ -750,7 +747,7 @@ public:
     void UnmarkSkippableJSHolders();
 
     static void GCCallback(JSRuntime *rt, JSGCStatus status);
-    static void FinalizeCallback(JSContext *cx, JSFinalizeStatus status);
+    static void FinalizeCallback(JSFreeOp *fop, JSFinalizeStatus status);
 
     inline void AddVariantRoot(XPCTraceableVariant* variant);
     inline void AddWrappedJSRoot(nsXPCWrappedJS* wrappedJS);
@@ -797,6 +794,11 @@ public:
         return gNewDOMBindingsEnabled;
     }
 
+    bool ParisBindingsEnabled()
+    {
+        return gParisBindingsEnabled;
+    }
+
     size_t SizeOfIncludingThis(nsMallocSizeOfFun mallocSizeOf);
 
 private:
@@ -809,6 +811,7 @@ private:
     static void WatchdogMain(void *arg);
 
     static bool gNewDOMBindingsEnabled;
+    static bool gParisBindingsEnabled;
 
     static const char* mStrings[IDX_TOTAL_COUNT];
     jsid mStrIDs[IDX_TOTAL_COUNT];
@@ -826,7 +829,6 @@ private:
     XPCNativeScriptableSharedMap* mNativeScriptableSharedMap;
     XPCWrappedNativeProtoMap* mDyingWrappedNativeProtoMap;
     XPCWrappedNativeProtoMap* mDetachedWrappedNativeProtoMap;
-    XPCNativeWrapperMap*     mExplicitNativeWrapperMap;
     XPCCompartmentMap        mCompartmentMap;
     XPCLock* mMapLock;
     PRThread* mThreadRunningGC;
@@ -1560,10 +1562,10 @@ public:
     SuspectAllWrappers(XPCJSRuntime* rt, nsCycleCollectionTraversalCallback &cb);
 
     static void
-    FinishedMarkPhaseOfGC(JSContext* cx, XPCJSRuntime* rt);
+    StartFinalizationPhaseOfGC(JSFreeOp *fop, XPCJSRuntime* rt);
 
     static void
-    FinishedFinalizationPhaseOfGC(JSContext* cx);
+    FinishedFinalizationPhaseOfGC();
 
     static void
     MarkAllWrappedNativesAndProtos();
@@ -1626,6 +1628,11 @@ public:
         return mNewDOMBindingsEnabled;
     }
 
+    JSBool ParisBindingsEnabled()
+    {
+        return mParisBindingsEnabled;
+    }
+
 protected:
     XPCWrappedNativeScope(XPCCallContext& ccx, JSObject* aGlobal, nsISupports* aNative);
     virtual ~XPCWrappedNativeScope();
@@ -1667,6 +1674,7 @@ private:
     nsDataHashtable<nsDepCharHashKey, JSObject*> mCachedDOMPrototypes;
 
     JSBool mNewDOMBindingsEnabled;
+    JSBool mParisBindingsEnabled;
 };
 
 /***************************************************************************/
@@ -2300,7 +2308,7 @@ public:
         {NS_ASSERTION(!mScriptableInfo, "leak here!"); mScriptableInfo = si;}
 
     bool CallPostCreatePrototype(XPCCallContext& ccx);
-    void JSProtoObjectFinalized(JSContext *cx, JSObject *obj);
+    void JSProtoObjectFinalized(js::FreeOp *fop, JSObject *obj);
 
     void SystemIsBeingShutDown();
 
@@ -2764,6 +2772,13 @@ public:
         PRWord newval = PRWord(obj) | (mWrapperWord & FLAG_MASK);
         mWrapperWord = newval;
     }
+
+    // Returns the relevant same-compartment security if applicable, or
+    // mFlatJSObject otherwise.
+    //
+    // This takes care of checking mWrapperWord to see if we already have such
+    // a wrapper.
+    JSObject *GetSameCompartmentSecurityWrapper(JSContext *cx);
 
     void NoteTearoffs(nsCycleCollectionTraversalCallback& cb);
 

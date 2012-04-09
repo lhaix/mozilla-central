@@ -272,13 +272,13 @@ var StackFrames = {
     if (!frame) {
       return;
     }
+
     // Move the editor's caret to the proper line.
     if (DebuggerView.Scripts.isSelected(frame.where.url) && frame.where.line) {
       window.editor.setCaretPosition(frame.where.line - 1);
       window.editor.setDebugLocation(frame.where.line - 1);
     } else if (DebuggerView.Scripts.contains(frame.where.url)) {
       DebuggerView.Scripts.selectScript(frame.where.url);
-      SourceScripts.onChange({ target: DebuggerView.Scripts._scripts });
       window.editor.setCaretPosition(frame.where.line - 1);
     } else {
       window.editor.setDebugLocation(-1);
@@ -311,6 +311,10 @@ var StackFrames = {
           paramVar.setGrip(paramVal);
           this._addExpander(paramVar, paramVal);
         }
+        // Signal that call parameters have been fetched.
+        let evt = document.createEvent("Event");
+        evt.initEvent("Debugger:FetchedParameters", true, false);
+        document.documentElement.dispatchEvent(evt);
       }.bind(this));
     }
   },
@@ -469,11 +473,13 @@ var SourceScripts = {
     DebuggerView.Scripts.addChangeListener(this.onChange);
 
     this.activeThread = aThreadClient;
-    aThreadClient.addListener("paused", this.onPaused);
     aThreadClient.addListener("scriptsadded", this.onScripts);
     aThreadClient.addListener("scriptscleared", this.onScriptsCleared);
     this.clearLabelsCache();
     this.onScriptsCleared();
+    // Retrieve the list of scripts known to the server from before the client
+    // was ready to handle new script notifications.
+    this.activeThread.fillScripts();
     aCallback && aCallback();
   },
 
@@ -481,19 +487,8 @@ var SourceScripts = {
    * Disconnect from the client.
    */
   disconnect: function TS_disconnect() {
-    this.activeThread.removeListener("paused", this.onPaused);
     this.activeThread.removeListener("scriptsadded", this.onScripts);
     this.activeThread.removeListener("scriptscleared", this.onScriptsCleared);
-  },
-
-  /**
-   * Handler for the thread client's paused notification. This is triggered only
-   * once, to retrieve the list of scripts known to the server from before the
-   * client was ready to handle new script notifications.
-   */
-  onPaused: function SS_onPaused() {
-    this.activeThread.removeListener("paused", this.onPaused);
-    this.activeThread.fillScripts();
   },
 
   /**
@@ -528,8 +523,7 @@ var SourceScripts = {
       return;
     }
     let script = scripts.selectedItem.getUserData("sourceScript");
-    this.setEditorMode(script.url, script.contentType);
-    this._showScript(script);
+    this.showScript(script);
   },
 
   /**
@@ -633,31 +627,66 @@ var SourceScripts = {
     DebuggerView.Scripts.addScript(this._getScriptLabel(aScript.url), aScript);
 
     if (window.editor.getCharCount() == 0) {
-      this._showScript(aScript);
+      this.showScript(aScript);
     }
   },
 
   /**
    * Load the editor with the script text if available, otherwise fire an event
    * to load and display the script text.
+   *
+   * @param object aScript
+   *        The script object coming from the active thread.
+   * @param object [aOptions]
+   *        Additional options for showing the script (optional). Supported
+   *        options:
+   *        - targetLine: place the editor at the given line number.
    */
-  _showScript: function SS_showScript(aScript) {
+  showScript: function SS_showScript(aScript, aOptions) {
     if (!aScript.loaded) {
       // Notify the chrome code that we need to load a script file.
       var evt = document.createEvent("CustomEvent");
-      evt.initCustomEvent("Debugger:LoadSource", true, false, aScript.url);
+      evt.initCustomEvent("Debugger:LoadSource", true, false,
+                          {url: aScript.url, options: aOptions});
       document.documentElement.dispatchEvent(evt);
+      window.editor.setMode(SourceEditor.MODES.TEXT);
       window.editor.setText(DebuggerView.getStr("loadingText"));
+      window.editor.resetUndo();
     } else {
-      window.editor.setText(aScript.text);
-      window.updateEditorBreakpoints();
-      StackFrames.updateEditor();
+      this._onShowScript(aScript, aOptions);
+    }
+  },
+
+  /**
+   * Display the script source once it loads.
+   *
+   * @private
+   * @param object aScript
+   *        The script object coming from the active thread.
+   * @param object [aOptions]
+   *        Additional options for showing the script (optional). Supported
+   *        options:
+   *        - targetLine: place the editor at the given line number.
+   */
+  _onShowScript: function SS__onShowScript(aScript, aOptions) {
+    aOptions = aOptions || {};
+    this.setEditorMode(aScript.url, aScript.contentType);
+    window.editor.setText(aScript.text);
+    window.updateEditorBreakpoints();
+    StackFrames.updateEditor();
+    if (aOptions.targetLine) {
+      window.editor.setCaretPosition(aOptions.targetLine - 1);
     }
     window.editor.resetUndo();
-  }
+
+    // Notify the chrome code that we shown script file.
+    let evt = document.createEvent("CustomEvent");
+    evt.initCustomEvent("Debugger:ScriptShown", true, false,
+                        {url: aScript.url});
+    document.documentElement.dispatchEvent(evt);
+  },
 };
 
-SourceScripts.onPaused = SourceScripts.onPaused.bind(SourceScripts);
 SourceScripts.onScripts = SourceScripts.onScripts.bind(SourceScripts);
 SourceScripts.onNewScript = SourceScripts.onNewScript.bind(SourceScripts);
 SourceScripts.onScriptsCleared = SourceScripts.onScriptsCleared.bind(SourceScripts);

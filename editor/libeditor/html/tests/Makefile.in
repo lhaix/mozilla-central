@@ -48,6 +48,7 @@ _TEST_FILES = \
 		green.png \
 		test_bug290026.html \
 		test_bug291780.html \
+		test_bug316447.html \
 		test_bug332636.html \
 		test_bug332636.html^headers^ \
 		test_bug372345.html \
@@ -102,6 +103,7 @@ _TEST_FILES = \
 		test_select_all_without_body.html \
 		file_select_all_without_body.html \
 		test_root_element_replacement.html \
+		test_bug738366.html \
 		$(NULL)
 
 ifneq (mobile,$(MOZ_BUILD_APP))

@@ -136,6 +136,7 @@ GetObjectOrRepresentedView(id <mozAccessible> aObject)
 // notifications sent out to listening accessible providers.
 - (void)didReceiveFocus;
 - (void)valueDidChange;
+- (void)selectedTextDidChange;
 
 #pragma mark -
 
@@ -146,9 +147,6 @@ GetObjectOrRepresentedView(id <mozAccessible> aObject)
  * Append a child if they are already cached.
  */
 - (void)appendChild:(nsAccessible*)aAccessible;
-
-// invalidates the cached parent, used by invalidateChildren.
-- (void)invalidateParent;
 
 // makes ourselves "expired". after this point, we might be around if someone
 // has retained us (e.g., a third-party), but we really contain no information.

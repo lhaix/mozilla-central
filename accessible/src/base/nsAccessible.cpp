@@ -264,17 +264,6 @@ nsAccessible::GetRootDocument(nsIAccessibleDocument **aRootDocument)
 }
 
 NS_IMETHODIMP
-nsAccessible::GetInnerHTML(nsAString& aInnerHTML)
-{
-  aInnerHTML.Truncate();
-
-  nsCOMPtr<nsIDOMHTMLElement> htmlElement = do_QueryInterface(mContent);
-  NS_ENSURE_TRUE(htmlElement, NS_ERROR_NULL_POINTER);
-
-  return htmlElement->GetInnerHTML(aInnerHTML);
-}
-
-NS_IMETHODIMP
 nsAccessible::GetLanguage(nsAString& aLanguage)
 {
   Language(aLanguage);
@@ -832,7 +821,7 @@ nsAccessible::ChildAtPoint(PRInt32 aX, PRInt32 aY,
     // point. Skip offscreen or invisible accessibles. This takes care of cases
     // where layout won't walk into things for us, such as image map areas and
     // sub documents (XXX: subdocuments should be handled by methods of
-    // nsOuterDocAccessibles).
+    // OuterDocAccessibles).
     PRInt32 childCount = GetChildCount();
     for (PRInt32 childIdx = 0; childIdx < childCount; childIdx++) {
       nsAccessible *child = GetChildAt(childIdx);
@@ -1620,8 +1609,13 @@ nsAccessible::State()
 void
 nsAccessible::ApplyARIAState(PRUint64* aState)
 {
+  if (!mContent->IsElement())
+    return;
+
+  dom::Element* element = mContent->AsElement();
+
   // Test for universal states first
-  *aState |= nsARIAMap::UniversalStatesFor(mContent);
+  *aState |= nsARIAMap::UniversalStatesFor(element);
 
   if (mRoleMapEntry) {
 
@@ -1661,16 +1655,11 @@ nsAccessible::ApplyARIAState(PRUint64* aState)
     return;
 
   *aState |= mRoleMapEntry->state;
-  if (nsStateMapEntry::MapToStates(mContent, aState,
-                                   mRoleMapEntry->attributeMap1) &&
-      nsStateMapEntry::MapToStates(mContent, aState,
-                                   mRoleMapEntry->attributeMap2)) {
-    nsStateMapEntry::MapToStates(mContent, aState,
-                                 mRoleMapEntry->attributeMap3);
-  }
-}
 
-// Not implemented by this class
+  if (aria::MapToState(mRoleMapEntry->attributeMap1, element, aState) &&
+      aria::MapToState(mRoleMapEntry->attributeMap2, element, aState))
+    aria::MapToState(mRoleMapEntry->attributeMap3, element, aState);
+}
 
 /* DOMString getValue (); */
 NS_IMETHODIMP
@@ -1804,14 +1793,11 @@ nsAccessible::GetKeyBindings(PRUint8 aActionIndex,
 }
 
 role
-nsAccessible::ARIARoleInternal()
+nsAccessible::ARIATransformRole(role aRole)
 {
-  NS_PRECONDITION(mRoleMapEntry && mRoleMapEntry->roleRule == kUseMapRole,
-                  "ARIARoleInternal should only be called when ARIA role overrides!");
-
   // XXX: these unfortunate exceptions don't fit into the ARIA table. This is
   // where the accessible role depends on both the role and ARIA state.
-  if (mRoleMapEntry->role == roles::PUSHBUTTON) {
+  if (aRole == roles::PUSHBUTTON) {
     if (nsAccUtils::HasDefinedARIAToken(mContent, nsGkAtoms::aria_pressed)) {
       // For simplicity, any existing pressed attribute except "" or "undefined"
       // indicates a toggle.
@@ -1826,7 +1812,7 @@ nsAccessible::ARIARoleInternal()
       return roles::BUTTONMENU;
     }
 
-  } else if (mRoleMapEntry->role == roles::LISTBOX) {
+  } else if (aRole == roles::LISTBOX) {
     // A listbox inside of a combobox needs a special role because of ATK
     // mapping to menu.
     if (mParent && mParent->Role() == roles::COMBOBOX) {
@@ -1839,12 +1825,12 @@ nsAccessible::ARIARoleInternal()
           return roles::COMBOBOX_LIST;
     }
 
-  } else if (mRoleMapEntry->role == roles::OPTION) {
+  } else if (aRole == roles::OPTION) {
     if (mParent && mParent->Role() == roles::COMBOBOX_LIST)
       return roles::COMBOBOX_OPTION;
   }
 
-  return mRoleMapEntry->role;
+  return aRole;
 }
 
 role
@@ -2839,9 +2825,9 @@ nsAccessible::IsSelect()
   // accessible so that we can follow COM identity rules.
 
   return mRoleMapEntry &&
-    (mRoleMapEntry->attributeMap1 == eARIAMultiSelectable ||
-     mRoleMapEntry->attributeMap2 == eARIAMultiSelectable ||
-     mRoleMapEntry->attributeMap3 == eARIAMultiSelectable);
+    (mRoleMapEntry->attributeMap1 == aria::eARIAMultiSelectable ||
+     mRoleMapEntry->attributeMap2 == aria::eARIAMultiSelectable ||
+     mRoleMapEntry->attributeMap3 == aria::eARIAMultiSelectable);
 }
 
 already_AddRefed<nsIArray>

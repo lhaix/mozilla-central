@@ -680,10 +680,9 @@ nsGenericDOMDataNode::InsertChildAt(nsIContent* aKid, PRUint32 aIndex,
   return NS_OK;
 }
 
-nsresult
+void
 nsGenericDOMDataNode::RemoveChildAt(PRUint32 aIndex, bool aNotify)
 {
-  return NS_OK;
 }
 
 nsIContent *
@@ -874,7 +873,7 @@ nsGenericDOMDataNode::GetText()
 }
 
 PRUint32
-nsGenericDOMDataNode::TextLength()
+nsGenericDOMDataNode::TextLength() const
 {
   return mText.GetLength();
 }
@@ -981,6 +980,7 @@ nsGenericDOMDataNode::GetInlineStyleRule()
 
 NS_IMETHODIMP
 nsGenericDOMDataNode::SetInlineStyleRule(css::StyleRule* aStyleRule,
+                                         const nsAString* aSerialized,
                                          bool aNotify)
 {
   NS_NOTREACHED("How come we're setting inline style on a non-element?");

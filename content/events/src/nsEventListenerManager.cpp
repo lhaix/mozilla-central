@@ -290,16 +290,9 @@ nsEventListenerManager::AddEventListener(nsIDOMEventListener *aListener,
                                    MutationBitForEventType(aType));
     }
   } else if (aTypeAtom == nsGkAtoms::ondeviceorientation) {
-     nsPIDOMWindow* window = GetInnerWindowForTarget();
-     if (window)
-       window->EnableDeviceSensor(SENSOR_ORIENTATION);
+    EnableDevice(NS_DEVICE_ORIENTATION);
   } else if (aTypeAtom == nsGkAtoms::ondevicemotion) {
-    nsPIDOMWindow* window = GetInnerWindowForTarget();
-    if (window) {
-      window->EnableDeviceSensor(SENSOR_ACCELERATION);
-      window->EnableDeviceSensor(SENSOR_LINEAR_ACCELERATION);
-      window->EnableDeviceSensor(SENSOR_GYROSCOPE);
-    }
+    EnableDevice(NS_DEVICE_MOTION);
   } else if ((aType >= NS_MOZTOUCH_DOWN && aType <= NS_MOZTOUCH_UP) ||
              (aTypeAtom == nsGkAtoms::ontouchstart ||
               aTypeAtom == nsGkAtoms::ontouchend ||
@@ -327,6 +320,69 @@ nsEventListenerManager::AddEventListener(nsIDOMEventListener *aListener,
   }
 }
 
+bool
+nsEventListenerManager::IsDeviceType(PRUint32 aType)
+{
+  switch (aType) {
+    case NS_DEVICE_ORIENTATION:
+    case NS_DEVICE_MOTION:
+      return true;
+    default:
+      break;
+  }
+  return false;
+}
+
+void
+nsEventListenerManager::EnableDevice(PRUint32 aType)
+{
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(mTarget);
+  if (!window) {
+    return;
+  }
+
+  NS_ASSERTION(window->IsInnerWindow(), "Target should not be an outer window");
+
+  switch (aType) {
+    case NS_DEVICE_ORIENTATION:
+      window->EnableDeviceSensor(SENSOR_ORIENTATION);
+      break;
+    case NS_DEVICE_MOTION:
+      window->EnableDeviceSensor(SENSOR_ACCELERATION);
+      window->EnableDeviceSensor(SENSOR_LINEAR_ACCELERATION);
+      window->EnableDeviceSensor(SENSOR_GYROSCOPE);
+      break;
+    default:
+      NS_WARNING("Enabling an unknown device sensor.");
+      break;
+  }
+}
+
+void
+nsEventListenerManager::DisableDevice(PRUint32 aType)
+{
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(mTarget);
+  if (!window) {
+    return;
+  }
+
+  NS_ASSERTION(window->IsInnerWindow(), "Target should not be an outer window");
+
+  switch (aType) {
+    case NS_DEVICE_ORIENTATION:
+      window->DisableDeviceSensor(SENSOR_ORIENTATION);
+      break;
+    case NS_DEVICE_MOTION:
+      window->DisableDeviceSensor(SENSOR_ACCELERATION);
+      window->DisableDeviceSensor(SENSOR_LINEAR_ACCELERATION);
+      window->DisableDeviceSensor(SENSOR_GYROSCOPE);
+      break;
+    default:
+      NS_WARNING("Disabling an unknown device sensor.");
+      break;
+  }
+}
+
 void
 nsEventListenerManager::RemoveEventListener(nsIDOMEventListener *aListener, 
                                             PRUint32 aType,
@@ -341,29 +397,31 @@ nsEventListenerManager::RemoveEventListener(nsIDOMEventListener *aListener,
   aFlags &= ~NS_PRIV_EVENT_UNTRUSTED_PERMITTED;
 
   PRUint32 count = mListeners.Length();
+  PRUint32 typeCount = 0;
+  bool deviceType = IsDeviceType(aType);
+
   for (PRUint32 i = 0; i < count; ++i) {
     ls = &mListeners.ElementAt(i);
-    if (ls->mListener == aListener &&
-        ((ls->mFlags & ~NS_PRIV_EVENT_UNTRUSTED_PERMITTED) == aFlags) &&
-        EVENT_TYPE_EQUALS(ls, aType, aUserType)) {
-      nsRefPtr<nsEventListenerManager> kungFuDeathGrip = this;
-      mListeners.RemoveElementAt(i);
-      mNoListenerForEvent = NS_EVENT_TYPE_NULL;
-      mNoListenerForEventAtom = nsnull;
-      if (aType == NS_DEVICE_ORIENTATION) {
-        nsPIDOMWindow* window = GetInnerWindowForTarget();
-        if (window)
-          window->DisableDeviceSensor(SENSOR_ORIENTATION);
-      } else if (aType == NS_DEVICE_MOTION) {
-        nsPIDOMWindow* window = GetInnerWindowForTarget();
-        if (window) {
-          window->DisableDeviceSensor(SENSOR_ACCELERATION);
-          window->DisableDeviceSensor(SENSOR_LINEAR_ACCELERATION);
-          window->DisableDeviceSensor(SENSOR_GYROSCOPE);
+    if (EVENT_TYPE_EQUALS(ls, aType, aUserType)) {
+      ++typeCount;
+      if (ls->mListener == aListener &&
+          (ls->mFlags & ~NS_PRIV_EVENT_UNTRUSTED_PERMITTED) == aFlags) {
+        nsRefPtr<nsEventListenerManager> kungFuDeathGrip = this;
+        mListeners.RemoveElementAt(i);
+        --count;
+        mNoListenerForEvent = NS_EVENT_TYPE_NULL;
+        mNoListenerForEventAtom = nsnull;
+
+        if (deviceType) {
+          return;
         }
+        --typeCount;
       }
-      break;
     }
+  }
+
+  if (deviceType && typeCount == 0) {
+    DisableDevice(aType);
   }
 }
 
@@ -756,6 +814,7 @@ nsEventListenerManager::HandleEventSubType(nsListenerStruct* aListenerStruct,
   }
 
   if (NS_SUCCEEDED(result)) {
+    nsAutoMicroTask mt;
     // nsIDOMEvent::currentTarget is set in nsEventDispatcher.
     result = aListener->HandleEvent(aDOMEvent);
   }
@@ -1010,11 +1069,6 @@ nsEventListenerManager::GetJSEventListener(nsIAtom *aEventName, jsval *vp)
   }
 
   nsIJSEventListener *listener = ls->GetJSListener();
-  if (listener->GetEventContext()->GetScriptTypeID() !=
-        nsIProgrammingLanguage::JAVASCRIPT) {
-    // Not JS, so no point doing anything with it.
-    return;
-  }
     
   if (ls->mHandlerIsString) {
     CompileEventHandlerInternal(ls, true, nsnull);
