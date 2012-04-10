@@ -34,6 +34,8 @@ Var TmpVal
 ; Other included files may depend upon these includes!
 ; The following includes are provided by NSIS.
 !include "FileFunc.nsh"
+!insertmacro GetParameters
+!insertmacro un.RefreshShellIcons
 !include "LogicLib.nsh"
 !include "WinMessages.nsh"
 !include "WinVer.nsh"
@@ -110,7 +112,7 @@ Function un.blankPage
   ${RemoveDir} "$INSTDIR"
 
   ; Refresh shell icons to reflect the changes we've made
-  ${RefreshShellIcons}
+  ${un.RefreshShellIcons}
 
   done:
 FunctionEnd
