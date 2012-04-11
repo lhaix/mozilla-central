@@ -211,7 +211,7 @@ namespace {
       nsXREAppData* const get() { return mAppData; }
   };
 
-  bool
+  void
   EmbedIcon(wchar_t const * const src,
             wchar_t const * const dst)
   {
@@ -229,7 +229,7 @@ namespace {
                _SH_DENYWR,
                _S_IREAD);
     if (file.mFd == -1) {
-      return false;
+      return;
     }
 
     // Load all the data from the icon file
@@ -242,7 +242,7 @@ namespace {
     // Open the target library for updating
     updateRes.beginUpdateResource(dst, FALSE);
     if (updateRes == NULL) {
-      return false;
+      return;
     }
 
     // Allocate the group resource entry
@@ -263,7 +263,7 @@ namespace {
                           MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL),
                           data + sourceIcon->ImageOffset,
                           sourceIcon->ImageSize)) {
-        return false;
+        return;
       }
       // Copy the data for this icon (note that the structs have different sizes)
       memcpy(targetIcon, sourceIcon, sizeof(IconResEntry));
@@ -275,15 +275,11 @@ namespace {
     if (!UpdateResource(updateRes, RT_GROUP_ICON, "MAINICON",
                         MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL),
                         group, groupSize)) {
-      return false;
+      return;
     }
 
     // Save the modifications
-    if (!updateRes.commitChanges()) {
-      return false;
-    }
-
-    return true;
+    updateRes.commitChanges();
   }
 
   void
