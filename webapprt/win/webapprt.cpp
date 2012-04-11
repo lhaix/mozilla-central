@@ -200,7 +200,7 @@ namespace {
   };
 
   bool
-  embedIcon(wchar_t const * const src,
+  EmbedIcon(wchar_t const * const src,
             wchar_t const * const dst) {
     ScopedResourceUpdateHandle updateRes;
 
@@ -334,7 +334,7 @@ namespace {
     }
 
     // Embed the app's icon in the new exe
-    embedIcon(iconPath,
+    EmbedIcon(iconPath,
               curExePath);
 
     STARTUPINFOW si;
