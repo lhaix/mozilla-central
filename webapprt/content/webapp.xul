@@ -63,8 +63,9 @@
        - (from which nsMenuBarX still moves it properly), and we don't create
        - the File menu in the first place on that OS.
        -
-       - XXX Move the Mac Quit item back up here after adding the first item
-       - that always shows up in the File menu on Mac. -->
+       - But if you are adding a persistent item to the File menu on Mac,
+       - then that workaround is no longer necessary, and you can move the Quit
+       - item up here. -->
     <menu id="file-menu" label="&fileMenu.label;"
           accesskey="&fileMenu.accesskey;">
       <menupopup id="menu_FilePopup">
