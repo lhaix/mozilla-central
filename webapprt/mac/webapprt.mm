@@ -134,24 +134,6 @@ int main(int argc, char **argv)
       @throw makeException(@"Missing WebRT Files", @"Cannot locate binary for this application");
     }
 
-    //CHECK DYLD_FALLBACK_LIBRARY_PATH
-    char libEnv[MAXPATHLEN];
-    snprintf(libEnv, MAXPATHLEN, "%s%s", [firefoxPath UTF8String], APP_CONTENTS_PATH);
-
-    char* curVal = getenv("DYLD_FALLBACK_LIBRARY_PATH");
-
-    if ((curVal == NULL) || strncmp(libEnv, curVal, MAXPATHLEN)) 
-    {
-      //NOT SET! SET AND RELAUNCH
-      NSLog(@"DYLD_FALLBACK_LIBRARY_PATH NOT SET!!");
-      //they differ, so set it and relaunch
-      setenv("DYLD_FALLBACK_LIBRARY_PATH", libEnv, 1);
-      execNewBinary(myWebRTPath);
-      return 0;
-    }
-    //HAVE DYLD_FALLBACK_LIBRARY_PATH
-
-
     //GET FIREFOX BUILD ID
     NSString *firefoxINIFilePath = [NSString stringWithFormat:@"%@%s%s", firefoxPath, APP_CONTENTS_PATH, FXAPPINI_NAME];
     nsINIParser ffparser;
