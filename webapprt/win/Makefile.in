@@ -90,7 +90,10 @@ libs::
 		$(srcdir)/webapp-uninstaller.nsi.in > $(CONFIG_DIR)/webapp-uninstaller.nsi
 	$(PYTHON) \
 		$(topsrcdir)/toolkit/mozapps/installer/windows/nsis/preprocess-locale.py \
-		--preprocess-single-file $(topsrcdir) $(PPL_LOCALE_ARGS) $(AB_CD) $(CONFIG_DIR) \
+		--create-nlf-file $(topsrcdir) $(AB_CD) $(CONFIG_DIR)
+	$(PYTHON) \
+		$(topsrcdir)/toolkit/mozapps/installer/windows/nsis/preprocess-locale.py \
+		--preprocess-single-file $(topsrcdir) $(PPL_LOCALE_ARGS) $(CONFIG_DIR) \
 		webapp-uninstaller.properties webapp-uninstaller-locale.nsh
 	$(MAKE) webapp_uninstaller
 

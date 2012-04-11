@@ -198,13 +198,12 @@ if __name__ == '__main__':
 
 Commands:
  --convert-utf8-utf16le     - Preprocesses installer locale properties files
-                              and creates a basic NSIS nlf file
  --preprocess-locale        - Preprocesses the installer localized properties
                               files into the format required by NSIS and
                               creates a basic NSIS nlf file.
  --preprocess-single-file   - Preprocesses a single properties file into the
-                              format required by NSIS and creates a basic
-                              NSIS nlf file.
+                              format required by NSIS
+ --create-nlf-file          - Creates a basic NSIS nlf file
 
 preprocess-locale.py --preprocess-locale <src> <locale> <code> <dest>
 
@@ -217,7 +216,6 @@ Arguments:
 
 preprocess-locale.py --preprocess-single-file <src>
                                               <locale>
-                                              <code>
                                               <dest>
                                               <infile>
                                               <outfile>
@@ -225,10 +223,19 @@ preprocess-locale.py --preprocess-single-file <src>
 Arguments:
  <src>    \tthe path to top source directory for the toolkit source
  <locale> \tthe path to the installer's locale files
- <code>   \tthe locale code
  <dest>   \tthe path to the destination directory
  <infile> \tthe properties file to process
  <outfile>\tthe nsh file to write
+
+
+preprocess-locale.py --create-nlf-file <src>
+                                       <code>
+                                       <dest>
+
+Arguments:
+ <src>    \tthe path to top source directory for the toolkit source
+ <code>   \tthe locale code
+ <dest>   \tthe path to the destination directory
 
 
 preprocess-locale.py --convert-utf8-utf16le <src> <dest>
@@ -251,11 +258,17 @@ or
    <src> <locale> <code> <dest> <infile> <outfile>
    --l10n-dir <dir> [--l10n-dir <dir>...]"""
 
+    create_nlf_args_help_string = """\
+Arguments to --create-nlf-file should be:
+   <src> <code> <dest>"""
+
     p = OptionParser(usage=usage)
     p.add_option("--preprocess-locale", action="store_true", default=False,
                  dest='preprocess')
     p.add_option("--preprocess-single-file", action="store_true", default=False,
                  dest='preprocessSingle')
+    p.add_option("--create-nlf-file", action="store_true", default=False,
+                 dest='createNlf')
     p.add_option("--l10n-dir", action="append", default=[],
                  dest="l10n_dirs",
                  help="Add directory to lookup for locale files")
@@ -273,6 +286,11 @@ or
         else:
             foundOne = True
     if (options.preprocessSingle):
+        if(foundOne):
+            p.error("More than one command specified")
+        else:
+            foundOne = True
+    if (options.createNlf):
         if(foundOne):
             p.error("More than one command specified")
         else:
@@ -302,30 +320,40 @@ or
         create_nlf_file(moz_dir, ab_cd, config_dir)
         preprocess_locale_files(config_dir, l10n_dirs)
     elif options.preprocessSingle:
-        if len(args) not in (5,6):
+        if len(args) not in (4,5):
             p.error(preprocess_single_file_args_help_string)
 
         # Parse args
         pargs = args[:]
         moz_dir = pargs[0]
-        if len(pargs) == 6:
+        if len(pargs) == 5:
             l10n_dirs = [pargs[1]]
             del pargs[1]
         else:
             if not options.l10n_dirs:
                 p.error(preprocess_single_file_args_help_string)
             l10n_dirs = options.l10n_dirs
-        ab_cd = pargs[1]
-        config_dir = pargs[2]
-        in_file = pargs[3]
-        out_file = pargs[4]
+        config_dir = pargs[1]
+        in_file = pargs[2]
+        out_file = pargs[3]
 
         # Create the output files
-        create_nlf_file(moz_dir, ab_cd, config_dir)
         preprocess_locale_file(config_dir,
                                l10n_dirs,
                                in_file,
                                out_file)
+    elif options.createNlf:
+        if len(args) != 3:
+            p.error(create_nlf_args_help_string)
+
+        # Parse args
+        pargs = args[:]
+        moz_dir = pargs[0]
+        ab_cd = pargs[1]
+        config_dir = pargs[2]
+
+        # Create the output files
+        create_nlf_file(moz_dir, ab_cd, config_dir)
     elif options.convert:
         if len(args) != 2:
             p.error("--convert-utf8-utf16le needs both of <src> <dest>")

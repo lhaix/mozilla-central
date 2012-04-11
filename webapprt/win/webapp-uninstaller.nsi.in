@@ -87,7 +87,7 @@ Function un.blankPage
   ${DeleteFile} "$INSTDIR\${FileMainEXE}"
   ${If} ${Errors}
     ; If the app is running, rename the EXE out of the way
-    CreateDirectory $AppRTTempDir
+    CreateDirectory "$AppRTTempDir"
     Rename "$INSTDIR\${FileMainEXE}" "$AppRTTempDir\${FileMainEXE}"
     ClearErrors
   ${EndIf}
@@ -132,9 +132,9 @@ BrandingText " "
 # Initialization Functions
 Function .onInit
   GetTempFileName $0
-  Delete $0
-  CreateDirectory $0
-  SetOutPath $0
+  Delete "$0"
+  CreateDirectory "$0"
+  SetOutPath "$0"
 
   StrCpy $1 "$0\${UninstallerFilename}"
   WriteUninstaller "$1"
@@ -159,5 +159,5 @@ Function un.onInit
   ${EndUnless}
 
   StrCpy $AppRTTempDir "$TEMP\moz_webapprt"
-  RmDir /r $AppRTTempDir
+  RmDir /r "$AppRTTempDir"
 FunctionEnd
