@@ -9,7 +9,7 @@
 !verbose 3
 
 ; 7-Zip provides better compression than the lzma from NSIS so we add the files
-; uncompressed and use 7-Zip to create a SFX archive of it
+; uncompressed and let the application installer compress it.
 SetDatablockOptimize on
 SetCompress off
 CRCCheck on
@@ -47,12 +47,12 @@ Var TmpVal
 !define UninstallerFilename   "webapp-uninstaller.exe"
 !define AppVersion            "@APP_VERSION@"
 VIProductVersion "1.0.0.0"
-VIAddVersionKey "ProductName"     "${UninstallerName}"
-VIAddVersionKey "CompanyName"     "${CompanyName}"
-VIAddVersionKey "LegalCopyright"  "${CompanyName}"
-VIAddVersionKey "FileVersion"     "${AppVersion}"
-VIAddVersionKey "ProductVersion"  "${AppVersion}"
-VIAddVersionKey "FileDescription" "${UninstallerName}"
+VIAddVersionKey "ProductName"      "${UninstallerName}"
+VIAddVersionKey "CompanyName"      "${CompanyName}"
+VIAddVersionKey "LegalCopyright"   "${CompanyName}"
+VIAddVersionKey "FileVersion"      "${AppVersion}"
+VIAddVersionKey "ProductVersion"   "${AppVersion}"
+VIAddVersionKey "FileDescription"  "${UninstallerName}"
 VIAddVersionKey "OriginalFilename" "${UninstallerFilename}"
 
 ; Mozilla custom include
@@ -101,7 +101,7 @@ Function un.blankPage
   ; Remove our shortcuts from start menu, desktop, and taskbar
   ${un.DeleteShortcuts}
 
-  ; Parse the uninstall log to unregister dll's and remove all installed
+  ; Parse the uninstall log to remove all installed
   ; files / directories this install is responsible for.
   ${un.ParseUninstallLog}
 
