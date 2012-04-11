@@ -20,11 +20,10 @@ function onLoad() {
   document.documentElement.setAttribute("title", manifest.name);
 
   // Load the webapp's launch path.
-  let url = installRecord.origin;
-  // XXX Resolve launch path relative to origin instead of merely concating 'em?
+  let url = Services.io.newURI(installRecord.origin, null, null);
   if (manifest.launch_path)
-    url += manifest.launch_path;
-  document.getElementById("content").setAttribute("src", url);
+    url = Services.io.newURI(manifest.launch_path, null, url);
+  document.getElementById("content").setAttribute("src", url.spec);
 }
 window.addEventListener("load", onLoad, false);
 
