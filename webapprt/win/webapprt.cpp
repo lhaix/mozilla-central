@@ -77,7 +77,8 @@ namespace {
 
   // Copied from toolkit/xre/nsAppData.cpp.
   void
-  SetAllocatedString(const char *&str, const char *newvalue) {
+  SetAllocatedString(const char *&str, const char *newvalue)
+  {
     NS_Free(const_cast<char*>(str));
     if (newvalue) {
       str = NS_strdup(newvalue);
@@ -91,7 +92,8 @@ namespace {
   joinPath(char* const dest,
            char const* const dir,
            char const* const leaf,
-           size_t bufferSize) {
+           size_t bufferSize)
+  {
     size_t dirLen = strlen(dir);
     size_t leafLen = strlen(leaf);
     bool needsSeparator = (dirLen != 0
@@ -134,26 +136,30 @@ namespace {
 
       void
       beginUpdateResource(wchar_t const * const filePath,
-                          bool bDeleteExistingResources) {
+                          bool bDeleteExistingResources)
+      {
         mUpdateRes = BeginUpdateResourceW(filePath,
                                           bDeleteExistingResources);
       }
 
       bool
-      commitChanges() {
+      commitChanges()
+      {
         bool ret = (FALSE != EndUpdateResourceW(mUpdateRes, FALSE));
         mUpdateRes = NULL;
         return ret;
       }
 
-      ~ScopedResourceUpdateHandle() {
+      ~ScopedResourceUpdateHandle()
+      {
         if (NULL != mUpdateRes) {
           EndUpdateResourceW(mUpdateRes, TRUE);  // Discard changes
         }
       }
 
       operator
-      HANDLE() {
+      HANDLE()
+      {
         return get();
       }
     private:
@@ -164,34 +170,40 @@ namespace {
   /**
    * A helper class for scope-guarding nsXREAppData.
    */
-  class ScopedXREAppData {
+  class ScopedXREAppData
+  {
     public:
       ScopedXREAppData()
         : mAppData(NULL) { }
 
       nsresult
-      create(nsILocalFile* aINIFile) {
+      create(nsILocalFile* aINIFile)
+      {
         return XRE_CreateAppData(aINIFile, &mAppData);
       }
 
-      ~ScopedXREAppData() {
+      ~ScopedXREAppData()
+      {
         if (NULL != mAppData) {
           XRE_FreeAppData(mAppData);
         }
       }
 
       nsXREAppData* const
-      operator->() {
+      operator->()
+      {
         return get();
       }
 
       nsXREAppData
-      operator*() {
+      operator*()
+      {
         return *get();
       }
 
       operator
-      nsXREAppData*() {
+      nsXREAppData*()
+      {
         return get();
       }
     private:
@@ -201,7 +213,8 @@ namespace {
 
   bool
   EmbedIcon(wchar_t const * const src,
-            wchar_t const * const dst) {
+            wchar_t const * const dst)
+  {
     ScopedResourceUpdateHandle updateRes;
 
     nsAutoArrayPtr<BYTE> group;
@@ -274,7 +287,8 @@ namespace {
   }
 
   void
-  Output(const wchar_t *fmt, ... ) {
+  Output(const wchar_t *fmt, ... )
+  {
     va_list ap;
     va_start(ap, fmt);
 
@@ -287,7 +301,8 @@ namespace {
   }
 
   void
-  Output(const char *fmt, ... ) {
+  Output(const char *fmt, ... )
+  {
     va_list ap;
     va_start(ap, fmt);
 
@@ -315,7 +330,8 @@ namespace {
   };
 
   bool
-  AttemptCopyAndLaunch(wchar_t* src) {
+  AttemptCopyAndLaunch(wchar_t* src)
+  {
     // Rename the old app executable
     if (FALSE == ::MoveFileExW(curExePath,
                                backupFilePath,
@@ -365,7 +381,8 @@ namespace {
   }
 
   bool
-  AttemptCopyAndLaunch(char* srcUtf8) {
+  AttemptCopyAndLaunch(char* srcUtf8)
+  {
     wchar_t src[MAXPATHLEN];
     if (0 == MultiByteToWideChar(CP_UTF8,
                                  0,
@@ -380,7 +397,8 @@ namespace {
   }
 
   bool
-  AttemptGRELoadAndLaunch(char* greDir) {
+  AttemptGRELoadAndLaunch(char* greDir)
+  {
     nsresult rv;
 
     char xpcomDllPath[MAXPATHLEN];
@@ -441,7 +459,8 @@ namespace {
   }
 
   bool
-  AttemptLoadFromDir(char* firefoxDir) {
+  AttemptLoadFromDir(char* firefoxDir)
+  {
     nsresult rv;
 
     // Here we're going to open Firefox's application.ini
@@ -475,7 +494,8 @@ namespace {
   }
 
   bool
-  GetFirefoxDirFromRegistry(char* firefoxDir) {
+  GetFirefoxDirFromRegistry(char* firefoxDir)
+  {
     HKEY key;
     wchar_t wideGreDir[MAXPATHLEN];
 
