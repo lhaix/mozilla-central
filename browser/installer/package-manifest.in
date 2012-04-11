@@ -620,11 +620,7 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 
 #ifdef MOZ_WEBAPP_RUNTIME
 ; [Webapp Runtime]
-#ifndef XP_UNIX
 @BINPATH@/webapprt@BIN_SUFFIX@
-#else
-@BINPATH@/webapprt
-#endif
 @BINPATH@/chrome/webapprt@JAREXT@
 @BINPATH@/chrome/webapprt.manifest
 @BINPATH@/components/WebappRTComponents.manifest
