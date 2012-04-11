@@ -499,6 +499,7 @@ namespace {
       NS_ENSURE_SUCCESS(rv, rv);
 
       xreDir.forget(&webShellAppData->xreDirectory);
+      NS_IF_RELEASE(webShellAppData->directory);
       directory.forget(&webShellAppData->directory);
 
       // There is only XUL.

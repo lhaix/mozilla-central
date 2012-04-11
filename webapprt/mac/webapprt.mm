@@ -315,6 +315,7 @@ int main(int argc, char **argv)
         }
 
         xreDir.forget(&webShellAppData->xreDirectory);
+        NS_IF_RELEASE(webShellAppData->directory);
         directory.forget(&webShellAppData->directory);
 
         // There is only XUL.
