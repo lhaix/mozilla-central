@@ -16,7 +16,6 @@ function onLoad() {
   let manifest = WebappRT.config.app.manifest;
 
   // Set the title of the window to the name of the webapp.
-  // XXX Set it to the webapp page's title, then update it when that changes.
   document.documentElement.setAttribute("title", manifest.name);
 
   // Load the webapp's launch path.
