@@ -12,11 +12,12 @@
 #include <windows.h>
 
 // Mozilla headers (alphabetical)
+#include "mozilla/FileUtils.h"  // ScopedClose
 #include "nsILocalFile.h"
 #include "nsINIParser.h"
-#include "nsWindowsWMain.cpp"            // we want a wmain entry point
+#include "nsWindowsWMain.cpp"   // we want a wmain entry point
 #include "nsXPCOMGlue.h"
-#include "nsXPCOMPrivate.h"              // for MAXPATHLEN and XPCOM_DLL
+#include "nsXPCOMPrivate.h"     // for MAXPATHLEN and XPCOM_DLL
 #include "nsXULAppAPI.h"
 
 XRE_GetFileFromPathType XRE_GetFileFromPath;
@@ -98,13 +99,13 @@ namespace {
                         && leafLen != 0
                         && leaf[0] != '\\');
 
-    if(dirLen + (needsSeparator? 1 : 0) + leafLen >= bufferSize) {
+    if (dirLen + (needsSeparator? 1 : 0) + leafLen >= bufferSize) {
       return NS_ERROR_FAILURE;
     }
 
     strncpy(dest, dir, bufferSize);
     char* destEnd = dest + dirLen;
-    if(needsSeparator) {
+    if (needsSeparator) {
       *(destEnd++) = '\\';
     }
 
@@ -120,50 +121,6 @@ namespace {
     public:
       ScopedLogging() { NS_LogInit(); }
       ~ScopedLogging() { NS_LogTerm(); }
-  };
-
-  /**
-   * A helper class which calls XPCOMGlueStartup/XPCOMGlueShutdown in its scope.
-   */
-  class ScopedXPCOMGlue
-  {
-    public:
-      ScopedXPCOMGlue()
-        : mRv(NS_ERROR_FAILURE) { }
-      ~ScopedXPCOMGlue() {
-        if(NS_SUCCEEDED(mRv)) {
-          XPCOMGlueShutdown();
-        }
-      }
-      nsresult startup(const char * xpcomFile) {
-        return (mRv = XPCOMGlueStartup(xpcomFile));
-      }
-    private:
-      nsresult mRv;
-  };
-
-  /**
-   * A helper class for scope-guarding a file handle.
-   */
-  class ScopedFile
-  {
-    public:
-      int* const ptr() { return &mFileHandle; }
-      ScopedFile()
-        : mFileHandle(-1) { }
-      ~ScopedFile() {
-        if(-1 != mFileHandle) {
-          _close(mFileHandle);
-        }
-      }
-
-      operator
-      int() {
-        return get();
-      }
-    private:
-      int mFileHandle;
-      int const get() { return mFileHandle; }
   };
 
   /**
@@ -190,7 +147,7 @@ namespace {
       }
 
       ~ScopedResourceUpdateHandle() {
-        if(NULL != mUpdateRes) {
+        if (NULL != mUpdateRes) {
           EndUpdateResourceW(mUpdateRes, TRUE);  // Discard changes
         }
       }
@@ -218,7 +175,7 @@ namespace {
       }
 
       ~ScopedXREAppData() {
-        if(NULL != mAppData) {
+        if (NULL != mAppData) {
           XRE_FreeAppData(mAppData);
         }
       }
@@ -242,80 +199,78 @@ namespace {
       nsXREAppData* const get() { return mAppData; }
   };
 
-  nsresult
+  bool
   embedIcon(wchar_t const * const src,
             wchar_t const * const dst) {
     ScopedResourceUpdateHandle updateRes;
 
-    { // Scope for group
-      nsAutoArrayPtr<BYTE> group;
-      long groupSize;
+    nsAutoArrayPtr<BYTE> group;
+    long groupSize;
 
-      { // Scope for data
-        nsAutoArrayPtr<BYTE> data;
+    nsAutoArrayPtr<BYTE> data;
 
-        { // Scope for file
-          ScopedFile file;
+    mozilla::ScopedClose file;
+    _wsopen_s( &file.mFd,
+               src,
+               _O_BINARY | _O_RDONLY,
+               _SH_DENYWR,
+               _S_IREAD);
+    if (file.mFd == -1) {
+      return false;
+    }
 
-          _wsopen_s( file.ptr(),
-                     src,
-                     _O_BINARY | _O_RDONLY,
-                     _SH_DENYWR,
-                     _S_IREAD);
-          if (file == -1) {
-            return NS_ERROR_FAILURE;
-          }
+    // Load all the data from the icon file
+    long filesize = _filelength(file.mFd);
+    data = new BYTE[filesize];
+    _read(file.mFd, data, filesize);
 
-          // Load all the data from the icon file
-          long filesize = _filelength(file);
-          data = new BYTE[filesize];
-          _read(file, data, filesize);
-        }
+    IconHeader* header = reinterpret_cast<IconHeader*>(data.get());
 
-        IconHeader* header = reinterpret_cast<IconHeader*>(data.get());
+    // Open the target library for updating
+    updateRes.beginUpdateResource(dst, FALSE);
+    if (updateRes == NULL) {
+      return false;
+    }
 
-        // Open the target library for updating
-        updateRes.beginUpdateResource(dst, FALSE);
-        if (updateRes == NULL) {
-          return NS_ERROR_FAILURE;
-        }
+    // Allocate the group resource entry
+    groupSize = sizeof(IconHeader) + header->ImageCount * sizeof(IconResEntry);
+    group = new BYTE[groupSize];
+    memcpy(group, data, sizeof(IconHeader));
 
-        // Allocate the group resource entry
-        groupSize = sizeof(IconHeader) + header->ImageCount * sizeof(IconResEntry);
-        group = new BYTE[groupSize];
-        memcpy(group, data, sizeof(IconHeader));
+    IconDirEntry* sourceIcon =
+                    reinterpret_cast<IconDirEntry*>(data + sizeof(IconHeader));
+    IconResEntry* targetIcon =
+                    reinterpret_cast<IconResEntry*>(group + sizeof(IconHeader));
 
-        IconDirEntry* sourceIcon = reinterpret_cast<IconDirEntry*>(data + sizeof(IconHeader));
-        IconResEntry* targetIcon = reinterpret_cast<IconResEntry*>(group + sizeof(IconHeader));
-
-        for (int id = 1; id <= header->ImageCount; id++) {
-          // Add the individual icon
-          if (!UpdateResource(updateRes, RT_ICON, MAKEINTRESOURCE(id),
-                              MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL),
-                              data + sourceIcon->ImageOffset, sourceIcon->ImageSize)) {
-            return NS_ERROR_FAILURE;
-          }
-          // Copy the data for this icon (note that the structs have different sizes)
-          memcpy(targetIcon, sourceIcon, sizeof(IconResEntry));
-          targetIcon->ResourceID = id;
-          sourceIcon++;
-          targetIcon++;
-        }
-      }
-
-      if (!UpdateResource(updateRes, RT_GROUP_ICON, "MAINICON",
+    for (int id = 1; id <= header->ImageCount; id++) {
+      // Add the individual icon
+      if (!UpdateResource(updateRes,
+                          RT_ICON,
+                          MAKEINTRESOURCE(id),
                           MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL),
-                          group, groupSize)) {
-        return NS_ERROR_FAILURE;
+                          data + sourceIcon->ImageOffset,
+                          sourceIcon->ImageSize)) {
+        return false;
       }
+      // Copy the data for this icon (note that the structs have different sizes)
+      memcpy(targetIcon, sourceIcon, sizeof(IconResEntry));
+      targetIcon->ResourceID = id;
+      sourceIcon++;
+      targetIcon++;
+    }
+
+    if (!UpdateResource(updateRes, RT_GROUP_ICON, "MAINICON",
+                        MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL),
+                        group, groupSize)) {
+      return false;
     }
 
     // Save the modifications
-    if(!updateRes.commitChanges()) {
-      return NS_ERROR_FAILURE;
+    if (!updateRes.commitChanges()) {
+      return false;
     }
 
-    return NS_OK;
+    return true;
   }
 
   void
@@ -359,24 +314,23 @@ namespace {
       { nsnull, nsnull }
   };
 
-  nsresult
-  AttemptCopyAndLaunch(wchar_t* src,
-                       int* result) {
+  bool
+  AttemptCopyAndLaunch(wchar_t* src) {
     // Rename the old app executable
-    if(FALSE == ::MoveFileExW(curExePath,
-                              backupFilePath,
-                              MOVEFILE_REPLACE_EXISTING)) {
-      return NS_ERROR_FAILURE;
+    if (FALSE == ::MoveFileExW(curExePath,
+                               backupFilePath,
+                               MOVEFILE_REPLACE_EXISTING)) {
+      return false;
     }
 
     // Copy webapprt.exe from the Firefox dir to the app's dir
-    if(FALSE == ::CopyFileW(src,
-                            curExePath,
-                            TRUE)) {
+    if (FALSE == ::CopyFileW(src,
+                             curExePath,
+                             TRUE)) {
       // Try to move the old file back to its original location
       ::MoveFileW(backupFilePath,
                   curExePath);
-      return NS_ERROR_FAILURE;
+      return false;
     }
 
     // Embed the app's icon in the new exe
@@ -390,79 +344,56 @@ namespace {
     si.cb = sizeof(si);
     ::ZeroMemory(&pi, sizeof(pi));
 
-    if(!CreateProcessW(curExePath, // No module name (use command line)
-                       NULL,             // Command line
-                       NULL,             // Process handle not inheritable
-                       NULL,             // Thread handle not inheritable
-                       FALSE,            // Set handle inheritance to FALSE
-                       0,                // No creation flags
-                       NULL,             // Use parent's environment block
-                       NULL,             // Use parent's starting directory 
-                       &si,
-                       &pi)) {
-      return NS_ERROR_FAILURE;
+    if (!CreateProcessW(curExePath, // No module name (use command line)
+                        NULL,       // Command line
+                        NULL,       // Process handle not inheritable
+                        NULL,       // Thread handle not inheritable
+                        FALSE,      // Set handle inheritance to FALSE
+                        0,          // No creation flags
+                        NULL,       // Use parent's environment block
+                        NULL,       // Use parent's starting directory
+                        &si,
+                        &pi)) {
+      return false;
     }
 
-    // Wait until child process exits.
-    WaitForSingleObject(pi.hProcess, INFINITE);
-
-    DWORD exitCode;
-    if(FALSE == GetExitCodeProcess(pi.hProcess, &exitCode)) {
-      exitCode = GetLastError();
-    }
-
-    // Close process and thread handles. 
+    // Close process and thread handles.
     CloseHandle( pi.hProcess );
     CloseHandle( pi.hThread );
 
-    return NS_OK;
+    return true;
   }
 
-  nsresult
-  AttemptCopyAndLaunch(char* srcUtf8, int* result) {
+  bool
+  AttemptCopyAndLaunch(char* srcUtf8) {
     wchar_t src[MAXPATHLEN];
-    if(0 == MultiByteToWideChar(CP_UTF8,
-                                0,
-                                srcUtf8,
-                                -1,
-                                src,
-                                MAXPATHLEN)) {
-      return NS_ERROR_FAILURE;
+    if (0 == MultiByteToWideChar(CP_UTF8,
+                                 0,
+                                 srcUtf8,
+                                 -1,
+                                 src,
+                                 MAXPATHLEN)) {
+      return false;
     }
 
-    return AttemptCopyAndLaunch(src, result);
+    return AttemptCopyAndLaunch(src);
   }
 
-  nsresult
-  AttemptGRELoadAndLaunch(char* greDir,
-                          int* result) {
+  bool
+  AttemptGRELoadAndLaunch(char* greDir) {
     nsresult rv;
 
     char xpcomDllPath[MAXPATHLEN];
     rv = joinPath(xpcomDllPath, greDir, XPCOM_DLL, MAXPATHLEN);
-    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_SUCCESS(rv, false);
 
-    ScopedXPCOMGlue glue;
-    rv = glue.startup(xpcomDllPath);
-    NS_ENSURE_SUCCESS(rv, rv);
+    rv = XPCOMGlueStartup(xpcomDllPath);
+    NS_ENSURE_SUCCESS(rv, false);
 
     rv = XPCOMGlueLoadXULFunctions(kXULFuncs);
-    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_SUCCESS(rv, false);
 
     // NOTE: The GRE has successfully loaded, so we can use XPCOM now
-
-    wchar_t wideGreDir[MAXPATHLEN];
-    if(0 == MultiByteToWideChar(CP_UTF8,
-                                0,
-                                greDir,
-                                -1,
-                                wideGreDir,
-                                MAXPATHLEN)) {
-      return NS_ERROR_FAILURE;
-    }
-
-    SetDllDirectoryW(wideGreDir);
-
     { // Scope for any XPCOM stuff we create
 
       ScopedLogging log;
@@ -471,15 +402,15 @@ namespace {
       // same directory as the GRE.
       char rtIniPath[MAXPATHLEN];
       rv = joinPath(rtIniPath, greDir, kWEBAPPRT_INI, MAXPATHLEN);
-      NS_ENSURE_SUCCESS(rv, rv);
+      NS_ENSURE_SUCCESS(rv, false);
 
       // Load the runtime's INI from its path.
       nsCOMPtr<nsILocalFile> rtINI;
       rv = XRE_GetFileFromPath(rtIniPath, getter_AddRefs(rtINI));
-      NS_ENSURE_SUCCESS(rv, rv);
+      NS_ENSURE_SUCCESS(rv, false);
 
-      if(!rtINI) {
-        return NS_ERROR_FILE_NOT_FOUND;
+      if (!rtINI) {
+        return false;
       }
 
       ScopedXREAppData webShellAppData;
@@ -491,37 +422,36 @@ namespace {
       nsCOMPtr<nsILocalFile> directory;
       rv = XRE_GetFileFromPath(greDir,
                                getter_AddRefs(directory));
-      NS_ENSURE_SUCCESS(rv, rv);
+      NS_ENSURE_SUCCESS(rv, false);
 
       nsCOMPtr<nsILocalFile> xreDir;
       rv = XRE_GetFileFromPath(greDir,
                                getter_AddRefs(xreDir));
-      NS_ENSURE_SUCCESS(rv, rv);
+      NS_ENSURE_SUCCESS(rv, false);
 
       xreDir.forget(&webShellAppData->xreDirectory);
       NS_IF_RELEASE(webShellAppData->directory);
       directory.forget(&webShellAppData->directory);
 
       // There is only XUL.
-      *result = XRE_main(*pargc, *pargv, webShellAppData);
+      XRE_main(*pargc, *pargv, webShellAppData);
     }
 
-    return NS_OK;
+    return true;
   }
 
-  nsresult
-  AttemptLoadFromDir(char* firefoxDir,
-                     int* result) {
+  bool
+  AttemptLoadFromDir(char* firefoxDir) {
     nsresult rv;
 
     // Here we're going to open Firefox's application.ini
     char appIniPath[MAXPATHLEN];
     rv = joinPath(appIniPath, firefoxDir, kAPP_INI, MAXPATHLEN);
-    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_SUCCESS(rv, false);
 
     nsINIParser parser;
     rv = parser.Init(appIniPath);
-    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_SUCCESS(rv, false);
 
     // Get buildid of FF we're trying to load
     char buildid[MAXPATHLEN]; // This isn't a path, so MAXPATHLEN doesn't
@@ -531,70 +461,70 @@ namespace {
                           "BuildID",
                           buildid,
                           MAXPATHLEN);
-    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_SUCCESS(rv, false);
 
-    if(0 == strcmp(buildid, NS_STRINGIFY(GRE_BUILDID))) {
-      return AttemptGRELoadAndLaunch(firefoxDir, result);
+    if (0 == strcmp(buildid, NS_STRINGIFY(GRE_BUILDID))) {
+      return AttemptGRELoadAndLaunch(firefoxDir);
     }
 
     char webAppRTExe[MAXPATHLEN];
     rv = joinPath(webAppRTExe, firefoxDir, kAPP_RT, MAXPATHLEN);
-    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_SUCCESS(rv, false);
 
-    return AttemptCopyAndLaunch(webAppRTExe, result);
+    return AttemptCopyAndLaunch(webAppRTExe);
   }
 
-  nsresult
+  bool
   GetFirefoxDirFromRegistry(char* firefoxDir) {
     HKEY key;
     wchar_t wideGreDir[MAXPATHLEN];
 
-    if(ERROR_SUCCESS !=
-        RegOpenKeyExW(
-         HKEY_LOCAL_MACHINE,
-         L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App paths\\firefox.exe",
-         0,
-         KEY_READ,
-         &key)) {
-      return NS_ERROR_FAILURE;
+    if (ERROR_SUCCESS !=
+                RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                              L"SOFTWARE\\Microsoft\\Windows"
+                              L"\\CurrentVersion\\App paths\\firefox.exe",
+                              0,
+                              KEY_READ,
+                              &key)) {
+      return false;
     }
 
     DWORD length = MAXPATHLEN * sizeof(wchar_t);
     // XXX: When Vista/XP64 become our minimum supported client, we can use
     //      RegGetValue instead
-    if(ERROR_SUCCESS != RegQueryValueExW(key,
-                                         L"Path",
-                                         NULL,
-                                         NULL,
-                                         reinterpret_cast<BYTE*>(wideGreDir),
-                                         &length)) {
+    if (ERROR_SUCCESS != RegQueryValueExW(key,
+                                          L"Path",
+                                          NULL,
+                                          NULL,
+                                          reinterpret_cast<BYTE*>(wideGreDir),
+                                          &length)) {
       RegCloseKey(key);
-      return NS_ERROR_FAILURE;
+      return false;
     };
     RegCloseKey(key);
 
     // According to this article, we need to write our own null terminator:
     // http://msdn.microsoft.com/en-us/library/ms724911%28v=vs.85%29.aspx
     length = length / sizeof(wchar_t);
-    if(wideGreDir[length] != L'\0') {
-      if(length >= MAXPATHLEN) {
-        return NS_ERROR_FAILURE;
+    if (wideGreDir[length] != L'\0') {
+      if (length >= MAXPATHLEN) {
+        return false;
       }
       wideGreDir[length] = L'\0';
     }
 
-    if(0 == WideCharToMultiByte(CP_UTF8,
-                                0,
-                                wideGreDir,
-                                -1,
-                                firefoxDir,
-                                MAXPATHLEN,
-                                NULL,
-                                NULL)) {
-      return NS_ERROR_FAILURE;
+    if (0 == WideCharToMultiByte(CP_UTF8,
+                                 0,
+                                 wideGreDir,
+                                 -1,
+                                 firefoxDir,
+                                 MAXPATHLEN,
+                                 NULL,
+                                 NULL)) {
+      return false;
     }
 
-    return NS_OK;
+    return true;
   }
 };
 
@@ -609,7 +539,6 @@ main(int argc, char* argv[])
 {
   pargc = &argc;
   pargv = &argv;
-  int result = 0;
   nsresult rv;
   char buffer[MAXPATHLEN];
   wchar_t wbuffer[MAXPATHLEN];
@@ -623,14 +552,14 @@ main(int argc, char* argv[])
 
   // Get the current directory into wbuffer
   wchar_t* lastSlash = wcsrchr(wbuffer, L'\\');
-  if(!lastSlash) {
+  if (!lastSlash) {
     Output("Application directory format not understood.");
     return 255;
   }
   *(++lastSlash) = L'\0';
 
   // Set up icon path
-  if(wcslen(wbuffer) + _countof(kICON) >= MAXPATHLEN) {
+  if (wcslen(wbuffer) + _countof(kICON) >= MAXPATHLEN) {
     Output("Application directory path is too long (couldn't set up icon path).");
   }
   wcsncpy(lastSlash, kICON, _countof(kICON));
@@ -639,7 +568,7 @@ main(int argc, char* argv[])
   *lastSlash = L'\0';
 
   // Set up backup file path
-  if(wcslen(wbuffer) + _countof(kAPP_RT_BACKUP) >= MAXPATHLEN) {
+  if (wcslen(wbuffer) + _countof(kAPP_RT_BACKUP) >= MAXPATHLEN) {
     Output("Application directory path is too long (couldn't set up backup file path).");
   }
   wcsncpy(lastSlash, kAPP_RT_BACKUP, _countof(kAPP_RT_BACKUP));
@@ -648,14 +577,14 @@ main(int argc, char* argv[])
   *lastSlash = L'\0';
 
   // Convert current directory to utf8 and stuff it in buffer
-  if(0 == WideCharToMultiByte(CP_UTF8,
-                              0,
-                              wbuffer,
-                              -1,
-                              buffer,
-                              MAXPATHLEN,
-                              NULL,
-                              NULL)) {
+  if (0 == WideCharToMultiByte(CP_UTF8,
+                               0,
+                               wbuffer,
+                               -1,
+                               buffer,
+                               MAXPATHLEN,
+                               NULL,
+                               NULL)) {
     Output("Application directory could not be processed.");
     return 255;
   }
@@ -663,7 +592,7 @@ main(int argc, char* argv[])
   // Set up appIniPath with path to webapp.ini.
   // This should be in the same directory as the running executable.
   char appIniPath[MAXPATHLEN];
-  if(NS_FAILED(joinPath(appIniPath, buffer, kWEBAPP_INI, MAXPATHLEN))) {
+  if (NS_FAILED(joinPath(appIniPath, buffer, kWEBAPP_INI, MAXPATHLEN))) {
     Output("Path to webapp.ini could not be processed.");
     return 255;
   }
@@ -671,7 +600,7 @@ main(int argc, char* argv[])
   // Open webapp.ini as an INI file (as opposed to using the
   // XRE webapp.ini-specific processing we do later)
   nsINIParser parser;
-  if(NS_FAILED(parser.Init(appIniPath))) {
+  if (NS_FAILED(parser.Init(appIniPath))) {
     Output("Could not open webapp.ini");
     return 255;
   }
@@ -686,47 +615,42 @@ main(int argc, char* argv[])
   }
 
   // Get profile dir from webapp.ini
-  if(NS_FAILED(parser.GetString("Webapp",
-                                "Profile",
-                                profile,
-                                MAXPATHLEN))) {
+  if (NS_FAILED(parser.GetString("Webapp",
+                                 "Profile",
+                                 profile,
+                                 MAXPATHLEN))) {
     Output("Unable to retrieve profile from web app INI file");
     return 255;
   }
 
   char firefoxDir[MAXPATHLEN];
 
-  { // Scope for first attempt at loading Firefox binaries
+  // First attempt at loading Firefox binaries:
+  //   Get the location of Firefox from our webapp.ini
 
-    // Get the location of Firefox from our webapp.ini
-    // XXX: This string better be UTF-8...
-    rv = parser.GetString("WebappRT",
-                          "InstallDir",
-                          firefoxDir,
-                          MAXPATHLEN);
-    if(NS_SUCCEEDED(rv)) {
-      rv = AttemptLoadFromDir(firefoxDir, &result);
-      if(NS_SUCCEEDED(rv)) {
-        return result;
-      }
+  // XXX: This string better be UTF-8...
+  rv = parser.GetString("WebappRT",
+                        "InstallDir",
+                        firefoxDir,
+                        MAXPATHLEN);
+  if (NS_SUCCEEDED(rv)) {
+    if (AttemptLoadFromDir(firefoxDir)) {
+      return 0;
     }
   }
 
-  { // Scope for second attempt at loading Firefox binaries
-
-    rv = GetFirefoxDirFromRegistry(firefoxDir);
-    if(NS_SUCCEEDED(rv)) {
-      rv = AttemptLoadFromDir(firefoxDir, &result);
-      if(NS_SUCCEEDED(rv)) {
-        // XXX: Write gre dir location to webapp.ini
-        return result;
-      }
+  // Second attempt at loading Firefox binaries:
+  //   Get the location of Firefox from the registry
+  rv = GetFirefoxDirFromRegistry(firefoxDir);
+  if (NS_SUCCEEDED(rv)) {
+    if (AttemptLoadFromDir(firefoxDir)) {
+      // XXX: Write gre dir location to webapp.ini
+      return 0;
     }
   }
 
   // We've done all we know how to do to try to find and launch FF
-  if(NS_FAILED(rv)) {
-    Output("This app requires that Firefox version 14 or above is installed.  Firefox 14+ has not been detected.");
-    return 255;
-  }
+  Output("This app requires that Firefox version 14 or above is installed."
+         " Firefox 14+ has not been detected.");
+  return 255;
 }
