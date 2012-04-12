@@ -691,13 +691,6 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
                       kAppendChromeDir,
                       directories);
 
-    nsCOMPtr<nsILocalFile> profileDir;
-    rv = GetUserDataDirectory(getter_AddRefs(profileDir), false);
-    NS_ENSURE_SUCCESS(rv, rv);
-    LoadDirIntoArray(profileDir,
-                     kAppendChromeDir,
-                     directories);
-
     rv = NS_NewArrayEnumerator(aResult, directories);
   }
   else if (!strcmp(aProperty, NS_APP_PLUGINS_DIR_LIST)) {
