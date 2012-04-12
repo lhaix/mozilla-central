@@ -269,7 +269,6 @@ main(int argc, char **argv)
         XRE_FreeAppData(webShellAppData);
       }
       NS_LogTerm();
-      XPCOMGlueShutdown();
 
       //force myself to the foreground.  exec-ing a non .app bundle normally leaves you in the background
       [NSApp activateIgnoringOtherApps:YES];
