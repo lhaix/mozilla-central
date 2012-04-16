@@ -18,7 +18,7 @@ CommandLineHandler.prototype = {
 
   handle: function handle(cmdLine) {
     Services.ww.openWindow(null,
-                           Services.prefs.getCharPref("browser.chromeURL"),
+                           "chrome://webapprt/content/webapp.xul",
                            "_blank",
                            "chrome,dialog=no,all,resizable",
                            null);
