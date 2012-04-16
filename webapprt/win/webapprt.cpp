@@ -12,7 +12,6 @@
 #include <windows.h>
 
 // Mozilla headers (alphabetical)
-#include "mozilla/FileUtils.h"  // ScopedClose
 #include "nsILocalFile.h"
 #include "nsINIParser.h"
 #include "nsWindowsWMain.cpp"   // we want a wmain entry point
@@ -32,7 +31,6 @@ namespace {
   const char kAPP_ENV_PREFIX[] = "XUL_APP_FILE=";
   const char kAPP_RT[] = "webapprt-stub.exe";
 
-  const wchar_t kICON[] = L"chrome\\icons\\default\\topwindow.ico";
   const wchar_t kAPP_RT_BACKUP[] = L"webapprt.old";
 
   wchar_t curExePath[MAXPATHLEN];
@@ -41,39 +39,6 @@ namespace {
   char profile[MAXPATHLEN];
   int* pargc;
   char*** pargv;
-
-  #pragma pack(push, 2)
-  typedef struct
-  {
-    WORD Reserved;
-    WORD ResourceType;
-    WORD ImageCount;
-  } IconHeader;
-
-  typedef struct
-  {
-    BYTE Width;
-    BYTE Height;
-    BYTE Colors;
-    BYTE Reserved;
-    WORD Planes;
-    WORD BitsPerPixel;
-    DWORD ImageSize;
-    DWORD ImageOffset;
-  } IconDirEntry;
-
-  typedef struct
-  {
-    BYTE Width;
-    BYTE Height;
-    BYTE Colors;
-    BYTE Reserved;
-    WORD Planes;
-    WORD BitsPerPixel;
-    DWORD ImageSize;
-    WORD ResourceID;    // This field is the one difference to above
-  } IconResEntry;
-  #pragma pack(pop)
 
   // Copied from toolkit/xre/nsAppData.cpp.
   void
@@ -126,48 +91,6 @@ namespace {
   };
 
   /**
-   * A helper class for scope-guarding resource update handles.
-   */
-  class ScopedResourceUpdateHandle
-  {
-    public:
-      ScopedResourceUpdateHandle()
-        : mUpdateRes(NULL) { }
-
-      void
-      beginUpdateResource(wchar_t const * const filePath,
-                          bool bDeleteExistingResources)
-      {
-        mUpdateRes = BeginUpdateResourceW(filePath,
-                                          bDeleteExistingResources);
-      }
-
-      bool
-      commitChanges()
-      {
-        bool ret = (FALSE != EndUpdateResourceW(mUpdateRes, FALSE));
-        mUpdateRes = NULL;
-        return ret;
-      }
-
-      ~ScopedResourceUpdateHandle()
-      {
-        if (NULL != mUpdateRes) {
-          EndUpdateResourceW(mUpdateRes, TRUE);  // Discard changes
-        }
-      }
-
-      operator
-      HANDLE()
-      {
-        return get();
-      }
-    private:
-      HANDLE mUpdateRes;
-      HANDLE const get() { return mUpdateRes; }
-  };
-
-  /**
    * A helper class for scope-guarding nsXREAppData.
    */
   class ScopedXREAppData
@@ -210,77 +133,6 @@ namespace {
       nsXREAppData* mAppData;
       nsXREAppData* const get() { return mAppData; }
   };
-
-  void
-  EmbedIcon(wchar_t const * const src,
-            wchar_t const * const dst)
-  {
-    ScopedResourceUpdateHandle updateRes;
-
-    nsAutoArrayPtr<BYTE> group;
-    long groupSize;
-
-    nsAutoArrayPtr<BYTE> data;
-
-    mozilla::ScopedClose file;
-    _wsopen_s( &file.mFd,
-               src,
-               _O_BINARY | _O_RDONLY,
-               _SH_DENYWR,
-               _S_IREAD);
-    if (file.mFd == -1) {
-      return;
-    }
-
-    // Load all the data from the icon file
-    long filesize = _filelength(file.mFd);
-    data = new BYTE[filesize];
-    _read(file.mFd, data, filesize);
-
-    IconHeader* header = reinterpret_cast<IconHeader*>(data.get());
-
-    // Open the target library for updating
-    updateRes.beginUpdateResource(dst, FALSE);
-    if (updateRes == NULL) {
-      return;
-    }
-
-    // Allocate the group resource entry
-    groupSize = sizeof(IconHeader) + header->ImageCount * sizeof(IconResEntry);
-    group = new BYTE[groupSize];
-    memcpy(group, data, sizeof(IconHeader));
-
-    IconDirEntry* sourceIcon =
-                    reinterpret_cast<IconDirEntry*>(data + sizeof(IconHeader));
-    IconResEntry* targetIcon =
-                    reinterpret_cast<IconResEntry*>(group + sizeof(IconHeader));
-
-    for (int id = 1; id <= header->ImageCount; id++) {
-      // Add the individual icon
-      if (!UpdateResource(updateRes,
-                          RT_ICON,
-                          MAKEINTRESOURCE(id),
-                          MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL),
-                          data + sourceIcon->ImageOffset,
-                          sourceIcon->ImageSize)) {
-        return;
-      }
-      // Copy the data for this icon (note that the structs have different sizes)
-      memcpy(targetIcon, sourceIcon, sizeof(IconResEntry));
-      targetIcon->ResourceID = id;
-      sourceIcon++;
-      targetIcon++;
-    }
-
-    if (!UpdateResource(updateRes, RT_GROUP_ICON, "MAINICON",
-                        MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL),
-                        group, groupSize)) {
-      return;
-    }
-
-    // Save the modifications
-    updateRes.commitChanges();
-  }
 
   void
   Output(const wchar_t *fmt, ... )
@@ -345,9 +197,7 @@ namespace {
       return false;
     }
 
-    // Embed the app's icon in the new exe
-    EmbedIcon(iconPath,
-              curExePath);
+    // XXX: We will soon embed the app's icon in the EXE here
 
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
@@ -356,7 +206,7 @@ namespace {
     si.cb = sizeof(si);
     ::ZeroMemory(&pi, sizeof(pi));
 
-    if (!CreateProcessW(curExePath, // No module name (use command line)
+    if (!CreateProcessW(curExePath, // Module name
                         NULL,       // Command line
                         NULL,       // Process handle not inheritable
                         NULL,       // Thread handle not inheritable
@@ -573,15 +423,6 @@ main(int argc, char* argv[])
     return 255;
   }
   *(++lastSlash) = L'\0';
-
-  // Set up icon path
-  if (wcslen(wbuffer) + _countof(kICON) >= MAXPATHLEN) {
-    Output("Application directory path is too long (couldn't set up icon path).");
-  }
-  wcsncpy(lastSlash, kICON, _countof(kICON));
-  wcsncpy(iconPath, wbuffer, MAXPATHLEN);
-
-  *lastSlash = L'\0';
 
   // Set up backup file path
   if (wcslen(wbuffer) + _countof(kAPP_RT_BACKUP) >= MAXPATHLEN) {
