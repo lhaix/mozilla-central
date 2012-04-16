@@ -270,9 +270,6 @@ main(int argc, char **argv)
       }
       NS_LogTerm();
 
-      //force myself to the foreground.  exec-ing a non .app bundle normally leaves you in the background
-      [NSApp activateIgnoringOtherApps:YES];
-
       return result;
     }
 
