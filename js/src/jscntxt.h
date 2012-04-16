@@ -362,6 +362,9 @@ struct JSRuntime : js::RuntimeFriendFields
     /* The gcNumber at the time of the most recent GC's first slice. */
     uint64_t            gcStartNumber;
 
+    /* Whether all compartments are being collected in first GC slice. */
+    bool                gcIsFull;
+
     /* The reason that an interrupt-triggered GC should be called. */
     js::gcreason::Reason gcTriggerReason;
 
@@ -1536,15 +1539,6 @@ extern JSErrorFormatString js_ErrorFormatString[JSErr_Limit];
 #endif
 
 /*
- * If the operation callback flag was set, call the operation callback.
- * This macro can run the full GC. Return true if it is OK to continue and
- * false otherwise.
- */
-#define JS_CHECK_OPERATION_LIMIT(cx)                                          \
-    (JS_ASSERT_REQUEST_DEPTH(cx),                                             \
-     (!cx->runtime->interrupt || js_InvokeOperationCallback(cx)))
-
-/*
  * Invoke the operation callback and return false if the current execution
  * is to be terminated.
  */
@@ -1559,6 +1553,18 @@ js_GetCurrentBytecodePC(JSContext* cx);
 
 extern JSScript *
 js_GetCurrentScript(JSContext* cx);
+
+/*
+ * If the operation callback flag was set, call the operation callback.
+ * This macro can run the full GC. Return true if it is OK to continue and
+ * false otherwise.
+ */
+static MOZ_ALWAYS_INLINE bool
+JS_CHECK_OPERATION_LIMIT(JSContext *cx)
+{
+    JS_ASSERT_REQUEST_DEPTH(cx);
+    return !cx->runtime->interrupt || js_InvokeOperationCallback(cx);
+}
 
 namespace js {
 
