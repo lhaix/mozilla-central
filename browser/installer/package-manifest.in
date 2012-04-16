@@ -622,7 +622,7 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 
 #ifdef MOZ_WEBAPP_RUNTIME
 ; [Webapp Runtime]
-@BINPATH@/webapprt@BIN_SUFFIX@
+@BINPATH@/webapprt-stub@BIN_SUFFIX@
 @BINPATH@/chrome/webapprt@JAREXT@
 @BINPATH@/chrome/webapprt.manifest
 @BINPATH@/components/WebappRTComponents.manifest

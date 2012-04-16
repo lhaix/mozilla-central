@@ -29,7 +29,7 @@
 #include "nsILocalFile.h"
 #include "nsStringGlue.h"
 
-const char WEBAPPRT_EXECUTABLE[] = "webapprt";
+const char WEBAPPRT_EXECUTABLE[] = "webapprt-stub";
 const char FXAPPINI_NAME[] = "application.ini";
 const char WEBAPPINI_NAME[] = "webapp.ini";
 const char WEBRTINI_NAME[] = "webapprt.ini";

@@ -30,7 +30,7 @@ namespace {
   const char kWEBAPP_INI[] = "webapp.ini";
   const char kWEBAPPRT_INI[] = "webapprt.ini";
   const char kAPP_ENV_PREFIX[] = "XUL_APP_FILE=";
-  const char kAPP_RT[] = "webapprt.exe";
+  const char kAPP_RT[] = "webapprt-stub.exe";
 
   const wchar_t kICON[] = L"chrome\\icons\\default\\topwindow.ico";
   const wchar_t kAPP_RT_BACKUP[] = L"webapprt.old";
@@ -335,7 +335,7 @@ namespace {
       return false;
     }
 
-    // Copy webapprt.exe from the Firefox dir to the app's dir
+    // Copy webapprt-stub.exe from the Firefox dir to the app's dir
     if (FALSE == ::CopyFileW(src,
                              curExePath,
                              TRUE)) {
